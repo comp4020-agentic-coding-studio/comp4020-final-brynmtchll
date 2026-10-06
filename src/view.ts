@@ -67,6 +67,36 @@ function tradeForms(m: Snapshot): string {
   </div>`;
 }
 
+// minutes and seconds, for the countdown
+const mmss = (ms: number): string => {
+  const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+// The countdown is rendered by the server, so it reads right without
+// JavaScript; the script only keeps it ticking and reloads the page once it
+// runs out, when the server will have popped the bubble.
+function clock(m: Snapshot): string {
+  if (m.bubble.popsIn === null) {
+    return `<p class="clock idle">Nobody is holding. The next buy starts the clock.</p>`;
+  }
+  return `<p class="clock">Pops in <time role="timer" id="clock" data-ms="${m.bubble.popsIn}">${mmss(m.bubble.popsIn)}</time> unless someone buys.</p>
+    <script>
+      (() => {
+        const el = document.getElementById("clock");
+        const end = performance.now() + Number(el.dataset.ms);
+        const tick = () => {
+          const left = end - performance.now();
+          if (left <= 0) return location.replace("/");
+          const s = Math.ceil(left / 1000);
+          el.textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+          setTimeout(tick, 250);
+        };
+        tick();
+      })();
+    </script>`;
+}
+
 export function marketPage(m: Snapshot, msg: string | undefined): string {
   const air = m.paper - m.pot;
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
@@ -79,6 +109,13 @@ export function marketPage(m: Snapshot, msg: string | undefined): string {
           <div><dt>On paper</dt><dd>${coins(m.me.shares * m.lastPrice)}</dd></div>
           <div><dt>If you sold everything now</dt><dd>${coins(m.me.cashOut - m.me.coins)}</dd></div>
         </dl>
+        ${
+          m.me.bags.length
+            ? `<p class="bagged">You were holding ${m.me.bags[0].shares} share${m.me.bags[0].shares === 1 ? "" : "s"} when bubble #${m.me.bags[0].bubble} popped ${ago(m.me.bags[0].at)}${
+                m.me.bags.length > 1 ? `. Caught in ${m.me.bags.length} pops, ${coins(m.me.bags.reduce((sum, g) => sum + g.lost, 0))} gone in all.` : "."
+              }</p>`
+            : ""
+        }
         ${notice}
         ${tradeForms(m)}
       </section>`
@@ -101,10 +138,20 @@ export function marketPage(m: Snapshot, msg: string | undefined): string {
     )
     .join("");
 
-  const tape = m.recent
+  const tape = m.tape
+    .map((t) =>
+      t.kind === "pop"
+        ? `<li class="pop"><strong>Bubble #${t.bubble} popped.</strong> ${coins(t.burned)} vanished. <time>${ago(t.at)}</time></li>`
+        : `<li><span class="${t.side}">${esc(t.name)} ${t.side === "buy" ? "bought" : "sold"} ${t.qty}</span> for ${coins(t.amount)} <time>${ago(t.at)}</time></li>`,
+    )
+    .join("");
+
+  const past = m.past
     .map(
-      (t) =>
-        `<li><span class="${t.side}">${esc(t.name)} ${t.side === "buy" ? "bought" : "sold"} ${t.qty}</span> for ${coins(t.amount)} <time>${ago(t.at)}</time></li>`,
+      (b) =>
+        `<tr><td>#${b.number}</td><td>${mmss(b.poppedAt - b.startedAt)}</td><td>${coins(b.peakPrice)}</td><td>${coins(b.burned)}</td><td>${
+          b.bag ? `${esc(b.bag.name)} (${b.bag.shares})` : "—"
+        }</td></tr>`,
     )
     .join("");
 
@@ -112,8 +159,10 @@ export function marketPage(m: Snapshot, msg: string | undefined): string {
     "AIR — shares in nothing",
     `<main>
   <section class="quote" aria-labelledby="price-h">
+    <p class="label">Bubble #${m.bubble.number}</p>
     <h1 id="price-h"><span class="label">Next share</span> <span class="price">${coins(m.nextPrice)}</span></h1>
-    <p class="sub">Every share costs 0.10 more than the one before. Selling walks the price back down.</p>
+    ${clock(m)}
+    <p class="sub">Every share costs 0.10 more than the one before, and selling walks the price back down. If nobody buys for five minutes, it pops: every share is wiped and the money in the pot is gone.</p>
     ${chart(m.history)}
   </section>
 
@@ -124,6 +173,7 @@ export function marketPage(m: Snapshot, msg: string | undefined): string {
       <div><dt>Worth on paper</dt><dd>${coins(m.paper)}</dd></div>
       <div><dt>Money actually in the pot</dt><dd>${coins(m.pot)}</dd></div>
       <div class="gap"><dt>Air</dt><dd>${coins(air)}</dd></div>
+      <div><dt>Lost in pops so far</dt><dd>${coins(m.burnedTotal)}</dd></div>
     </dl>
   </section>
 
@@ -142,6 +192,15 @@ export function marketPage(m: Snapshot, msg: string | undefined): string {
   <section aria-labelledby="tape-h">
     <h2 id="tape-h">Tape</h2>
     ${tape ? `<ol class="tape">${tape}</ol>` : "<p>No trades yet.</p>"}
+  </section>
+
+  <section class="wide" aria-labelledby="past-h">
+    <h2 id="past-h">Past bubbles</h2>
+    ${
+      past
+        ? `<div class="scroll"><table><thead><tr><th>Bubble</th><th>Lasted</th><th>Peak</th><th>Vanished</th><th>Biggest bag</th></tr></thead><tbody>${past}</tbody></table></div>`
+        : "<p>None yet. This is the first.</p>"
+    }
   </section>
 </main>`,
   );

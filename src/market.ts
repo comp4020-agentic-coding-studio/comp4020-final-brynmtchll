@@ -13,6 +13,11 @@ export const GRANT = 10_000; // every new player arrives with 100 coins
 export const BASE = 100; // the first share costs 1.00
 export const STEP = 10; // each share after it costs 0.10 more
 
+// Every buy restarts the clock. If nobody buys before it runs out, the bubble
+// pops: every share is wiped, the money in the pot vanishes, and a new bubble
+// starts from the first share again.
+export const POP_AFTER = 5 * 60_000;
+
 // what the k-th share in existence costs (k starts at 1)
 export const priceOf = (k: number): number => BASE + STEP * (k - 1);
 

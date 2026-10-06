@@ -46,11 +46,17 @@ a { color: var(--accent); }
 main { max-width: 960px; margin: 0 auto; padding: 16px; display: grid; gap: 24px; }
 @media (min-width: 800px) {
   main:not(.prose) { grid-template-columns: 3fr 2fr; }
-  .quote, .air { grid-column: 1 / -1; }
+  .quote, .air, .wide { grid-column: 1 / -1; }
 }
 section { min-width: 0; }
 h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
 
+.quote > .label { margin: 0 0 4px; font-size: 0.875rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.clock { margin: 8px 0 0; font-size: 1.125rem; }
+.clock time { font: 700 1.5rem ui-monospace, "SF Mono", Menlo, monospace; color: var(--down); font-variant-numeric: tabular-nums; }
+.clock.idle { color: var(--muted); }
+.bagged { margin: 12px 0 0; color: var(--down); }
+.tape .pop { color: var(--down); }
 .quote h1 { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
 .quote .label { font-size: 1rem; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 .price { font: 700 clamp(3rem, 12vw, 6rem)/1 ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }

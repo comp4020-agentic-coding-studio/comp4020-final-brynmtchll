@@ -12,6 +12,7 @@ type State = {
   nextPrice: number;
   pot: number;
   totalCoins: number;
+  burnedTotal: number;
   granted: number;
   players: Record<string, unknown>[];
   me?: { name: string; coins: number; shares: number };
@@ -37,7 +38,9 @@ async function trader(): Promise<{ post: (path: string, body: Record<string, str
   return { post, state };
 }
 
-const conserved = (s: State): void => expect(s.totalCoins + s.pot).toBe(s.granted);
+// money only ever leaves the market by vanishing in a pop, and every coin that
+// does is counted
+const conserved = (s: State): void => expect(s.totalCoins + s.pot + s.burnedTotal).toBe(s.granted);
 
 describe.skipIf(!writable)("the market", () => {
   it("gives a new trader 100 coins and remembers them on their next visit", async () => {
@@ -66,7 +69,7 @@ describe.skipIf(!writable)("the market", () => {
     expect((await t.state()).me).toMatchObject({ coins: 10_000, shares: 0 });
   });
 
-  it("never creates or destroys money, even when traders hit it at once", async () => {
+  it("never creates money or loses it outside a pop, even when traders hit it at once", async () => {
     const traders = await Promise.all([trader(), trader(), trader()]);
     await Promise.all(
       traders.flatMap((t) => [
