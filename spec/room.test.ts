@@ -137,7 +137,7 @@ describe.skipIf(!writable)("the room", () => {
     const res = await p.say({ audio: "UklGRiQAAABXQVZF", words: [word(marker, 0, { audio: "UklGRiQAAABXQVZF", blob: [1, 2, 3] })] });
     expect(res.status).toBe(201);
     const found = (await messages()).find((m) => m.text === marker)!;
-    expect(Object.keys(found.words[0]).sort()).toEqual(["end", "loud", "pitch", "rise", "start", "stretch", "w"]);
+    expect(Object.keys(found.words[0]).sort()).toEqual(["end", "held", "loud", "pitch", "rise", "start", "stretch", "w"]);
     expect(JSON.stringify(found)).not.toContain("UklGR");
   });
 

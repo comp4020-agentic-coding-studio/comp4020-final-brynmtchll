@@ -2,7 +2,7 @@
 // heard. Whisper says when each word starts and ends; this looks at the audio
 // inside those times. Every number comes out relative to the rest of the same
 // message (voice.ts says why), so nothing here needs to know whose voice it is.
-import type { Word } from "./voice.ts";
+import { letterCount, type Word } from "./voice.ts";
 
 export type Timed = { w: string; start: number; end: number };
 // active: loud enough to be part of someone speaking rather than a pause
@@ -15,6 +15,17 @@ const MAX_HZ = 450;
 const QUIET = 35; // dB below the loudest frame where speech gives way to a pause
 const PERIODIC = 0.2; // how periodic a frame must be to count as voiced (YIN's threshold)
 const MIN_VOICED = 10; // frames: under a tenth of a second voiced means nobody spoke
+// A held sound is a stretch of voice that doesn't jump in pitch from one frame
+// to the next or dip in loudness; a consonant between syllables does one or
+// the other. It may slide in pitch while it's held ("whyyy?").
+const JUMP = 1; // semitones from one frame to the next
+const DIP = 8; // dB below the loudest point of the stretch so far
+const MIN_HELD = 12; // frames: a stretch shorter than this isn't a held sound
+// A message this short has too little to compare its pace against: "nooo"
+// on its own is all one pace. Below it, the usual pace of speech stands in,
+// in seconds of speaking per letter.
+const FEW_WORDS = 3;
+const USUAL_PACE = 0.09;
 
 const median = (xs: number[]): number => {
   const s = [...xs].sort((a, b) => a - b);
@@ -23,7 +34,6 @@ const median = (xs: number[]): number => {
 };
 const percentile = (xs: number[], p: number): number => [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))];
 const round = (n: number): number => Math.round(n * 10) / 10;
-const letters = (w: string): number => Math.max(1, (w.match(/[\p{L}\p{N}]/gu) ?? []).length);
 
 // The fundamental frequency of one frame, by YIN (de Cheveigné & Kawahara,
 // 2002): find the smallest lag at which the signal most nearly repeats
@@ -71,6 +81,32 @@ export function frames(pcm: Float32Array, rate: number): Frame[] {
   return out;
 }
 
+// Where in a word the voice held one sound longest, as a fraction (0 to 1) of
+// the way through the part of the word that was spoken. Null if nothing was
+// held long enough to count.
+function heldAt(span: Frame[]): number | null {
+  const first = span.findIndex((f) => f.active);
+  const last = span.findLastIndex((f) => f.active);
+  if (first < 0) return null;
+  let best = { from: 0, length: 0 };
+  let from = -1;
+  let peak = -Infinity;
+  for (let k = first; k <= last + 1; k++) {
+    const f = k <= last ? span[k] : undefined;
+    const before = span[k - 1]?.hz ?? null;
+    const hz = f?.hz ?? null;
+    if (f && hz !== null && from >= 0 && before !== null && Math.abs(12 * Math.log2(hz / before)) < JUMP && f.db > peak - DIP) {
+      peak = Math.max(peak, f.db);
+      continue;
+    }
+    if (from >= 0 && k - from > best.length) best = { from, length: k - from };
+    from = hz === null ? -1 : k;
+    peak = f?.db ?? -Infinity;
+  }
+  if (best.length < MIN_HELD) return null;
+  return (best.from + best.length / 2 - first) / (last - first + 1);
+}
+
 // The words with how each was said, or none at all if the clip has almost
 // nothing voiced in it: Whisper invents words for silence ("you", "Thank
 // you."), and those shouldn't reach the room.
@@ -82,7 +118,8 @@ export function measure(pcm: Float32Array, rate: number, timed: Timed[]): Word[]
     const from = Math.min(fs.length - 1, Math.floor(t.start / HOP));
     // Whisper tends to let the last word before a pause run on into it, so
     // only the frames where someone was actually speaking count
-    const span = fs.slice(from, Math.max(from + 1, Math.ceil(t.end / HOP))).filter((f) => f.active);
+    const whole = fs.slice(from, Math.max(from + 1, Math.ceil(t.end / HOP)));
+    const span = whole.filter((f) => f.active);
     // semitones on an absolute scale, so they can be compared and subtracted
     const semis = span.flatMap((f) => (f.hz === null ? [] : [12 * Math.log2(f.hz)]));
     const third = Math.max(1, Math.floor(semis.length / 3));
@@ -93,7 +130,8 @@ export function measure(pcm: Float32Array, rate: number, timed: Timed[]): Word[]
       loud: span.length ? percentile(span.map((f) => f.db), 0.8) : null,
       pitch: semis.length >= 3 ? median(semis) : null,
       rise: semis.length >= 6 ? median(semis.slice(-third)) - median(semis.slice(0, third)) : 0,
-      perLetter: (Math.max(1, span.length) * HOP) / letters(t.w),
+      perLetter: (Math.max(1, span.length) * HOP) / letterCount(t.w),
+      held: heldAt(whole),
     };
   });
 
@@ -101,7 +139,8 @@ export function measure(pcm: Float32Array, rate: number, timed: Timed[]): Word[]
   const pitches = raw.flatMap((r) => (r.pitch === null ? [] : [r.pitch]));
   const typicalLoud = louds.length ? median(louds) : 0;
   const typicalPitch = pitches.length ? median(pitches) : 0;
-  const typicalPace = median(raw.map((r) => r.perLetter));
+  const pace = median(raw.map((r) => r.perLetter));
+  const typicalPace = raw.length < FEW_WORDS ? Math.min(pace, USUAL_PACE) : pace;
 
   return raw.map((r) => ({
     w: r.w,
@@ -111,5 +150,6 @@ export function measure(pcm: Float32Array, rate: number, timed: Timed[]): Word[]
     pitch: r.pitch === null ? null : round(r.pitch - typicalPitch),
     rise: round(r.rise),
     stretch: round(Math.log2(r.perLetter / typicalPace)),
+    held: r.held === null ? null : round(r.held),
   }));
 }
