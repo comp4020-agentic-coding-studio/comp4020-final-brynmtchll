@@ -3,6 +3,9 @@
 // Hugging Face; the browser caches both after the first visit. The
 // "_timestamped" export of the model is the one that can say when each word
 // starts and ends, which everything about how a word was said depends on.
+// It's base rather than tiny: tiny is half the download (41 MB to 77 MB) but
+// placed words up to a second late on a test clip, often in the pause after
+// them, and base got their starts right.
 // @ts-expect-error: a URL import the type checker can't follow
 import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0";
 
@@ -17,7 +20,7 @@ export type ToWorker = { type: "load" } | { type: "transcribe"; pcm: Float32Arra
 type Asr = (pcm: Float32Array, options: { return_timestamps: "word" }) => Promise<{ text: string; chunks: Chunk[] }>;
 type Progress = { status: string; file?: string; loaded?: number; total?: number };
 
-const MODEL = "onnx-community/whisper-tiny.en_timestamped";
+const MODEL = "onnx-community/whisper-base.en_timestamped";
 const scope = self as unknown as { postMessage(m: FromWorker): void; onmessage: ((e: MessageEvent<ToWorker>) => void) | null };
 
 // download progress across every file the model needs, reported as one total

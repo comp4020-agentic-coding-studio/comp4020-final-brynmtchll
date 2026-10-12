@@ -1,5 +1,6 @@
 // The page's script. The server renders everything already said, so the page
 // reads fine without this; the script keeps it live and lets people speak.
+import { measure } from "./prosody.ts";
 import { ago, renderWords, type Word } from "./voice.ts";
 import type { Chunk, FromWorker, ToWorker } from "./worker.ts";
 
@@ -155,12 +156,13 @@ async function resample(samples: Float32Array<ArrayBuffer>, from: number): Promi
   return (await offline.startRendering()).getChannelData(0);
 }
 
-// what Whisper heard, as words; how each was said comes next
-function toWords(chunks: Chunk[], seconds: number): Word[] {
-  return chunks
-    .map((c) => ({ text: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] ?? seconds }))
-    .filter((c) => c.text.length > 0)
-    .map((c) => ({ w: c.text, start: c.start, end: c.end, loud: 0, pitch: null, rise: 0, stretch: 0 }));
+// what Whisper heard, as words with how each was said
+function toWords(pcm: Float32Array, chunks: Chunk[]): Word[] {
+  const seconds = pcm.length / RATE;
+  const timed = chunks
+    .map((c) => ({ w: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] ?? seconds }))
+    .filter((c) => c.w.length > 0);
+  return measure(pcm, RATE, timed);
 }
 
 let recording: Recording | undefined;
@@ -216,7 +218,7 @@ async function stop(): Promise<void> {
     console.error(err);
     return idle("Something went wrong listening back. Try again.");
   }
-  pending = toWords(chunks, seconds);
+  pending = toWords(pcm, chunks);
   if (pending.length === 0) return idle("Didn't catch any words. Try again.");
   state = "preview";
   talk!.disabled = true;
@@ -249,7 +251,7 @@ if (talk) {
   if (!navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) {
     say("This browser can't record here. You can still read everything live.");
   } else {
-    idle("The first time, the speech model downloads (about 55 MB). After that it's cached.");
+    idle("The first time, the speech model downloads (about 90 MB). After that it's cached.");
     talk.addEventListener("click", () => void (state === "recording" ? stop() : start()));
     sendButton.addEventListener("click", () => void send());
     discardButton.addEventListener("click", () => idle());
