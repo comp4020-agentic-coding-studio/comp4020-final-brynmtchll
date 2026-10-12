@@ -4,8 +4,7 @@
   --muted: #6b665b;
   --rule: #d8d2c4;
   --card: #fffdf8;
-  --up: #0b7a43;
-  --down: #b3261e;
+  --live: #b3261e;
   --accent: #1d4ed8;
   color-scheme: light dark;
 }
@@ -16,8 +15,7 @@
     --muted: #9c968a;
     --rule: #2e2b25;
     --card: #1b1a16;
-    --up: #4ade80;
-    --down: #f87171;
+    --live: #f87171;
     --accent: #93b4ff;
   }
 }
@@ -40,80 +38,71 @@ a { color: var(--accent); }
   padding: 12px 16px;
   border-bottom: 1px solid var(--rule);
 }
-.ticker { font: 700 1.25rem/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.15em; color: var(--ink); text-decoration: none; }
+.name { font-weight: 800; font-size: 1.25rem; color: var(--ink); text-decoration: none; }
 .top nav { display: flex; gap: 16px; }
 
-main { max-width: 960px; margin: 0 auto; padding: 16px; display: grid; gap: 24px; }
-@media (min-width: 800px) {
-  main:not(.prose) { grid-template-columns: 3fr 2fr; }
-  .quote, .air, .wide { grid-column: 1 / -1; }
-}
+main { max-width: 760px; margin: 0 auto; padding: 16px; display: grid; gap: 24px; }
 section { min-width: 0; }
 h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
+.lede { margin: 0; font-size: 1.125rem; }
+.fine { color: var(--muted); font-size: 0.875rem; margin: 12px 0 0; }
+.notice { background: color-mix(in srgb, var(--live) 12%, transparent); border-left: 3px solid var(--live); padding: 8px 12px; margin: 12px 0; }
 
-.quote > .label { margin: 0 0 4px; font-size: 0.875rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-.clock { margin: 8px 0 0; font-size: 1.125rem; }
-.clock time { font: 700 1.5rem ui-monospace, "SF Mono", Menlo, monospace; color: var(--down); font-variant-numeric: tabular-nums; }
-.clock.idle { color: var(--muted); }
-.bagged { margin: 12px 0 0; color: var(--down); }
-.tape .pop { color: var(--down); }
-.quote h1 { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
-.quote .label { font-size: 1rem; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-.price { font: 700 clamp(3rem, 12vw, 6rem)/1 ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
-.sub { margin: 4px 0 12px; color: var(--muted); }
-.chart { width: 100%; height: 160px; display: block; }
-.chart .line { fill: none; stroke: var(--ink); stroke-width: 2; }
-.chart .fill { fill: var(--rule); opacity: 0.6; }
-
-dl { margin: 0; display: grid; gap: 8px; }
-dl div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--rule); padding: 6px 0; }
-dt { color: var(--muted); }
-dd { margin: 0; font: 600 1rem ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
-.air dl { grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); column-gap: 24px; }
-.air .gap dd { color: var(--down); }
-
-.you { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; align-self: start; }
-.you h2 { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 1.25rem; }
-.notice { background: color-mix(in srgb, var(--down) 12%, transparent); border-left: 3px solid var(--down); padding: 8px 12px; margin: 12px 0; }
-
-.trade { display: grid; gap: 8px; margin-top: 16px; }
-.trade .side { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.trade form { display: contents; }
 button {
   font: inherit;
   border: 1px solid var(--rule);
   border-radius: 6px;
-  padding: 10px 8px;
+  padding: 10px 16px;
   background: var(--bg);
   color: var(--ink);
   cursor: pointer;
   min-height: 44px;
 }
-button small { display: block; font: 0.8rem ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); }
-button.buy { border-color: var(--up); }
-button.sell { border-color: var(--down); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
 button:not(:disabled):hover { background: var(--card); }
+button.quiet { border-color: transparent; color: var(--muted); }
+
+.speak { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; }
+.speak h2 { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 1.25rem; }
+.talk { font-weight: 700; padding: 14px 24px; border: 2px solid var(--ink); border-radius: 999px; }
+/* while recording, the button's ring follows the live input level (0 to 1) */
+.talk.recording {
+  border-color: var(--live);
+  color: var(--live);
+  box-shadow: 0 0 0 calc(var(--level, 0) * 14px) color-mix(in srgb, var(--live) 25%, transparent);
+}
+.status { color: var(--muted); margin: 8px 0 0; min-height: 1.5em; }
+.preview { border-top: 1px solid var(--rule); margin-top: 12px; padding-top: 4px; }
+.preview .actions { display: flex; gap: 8px; }
 
 .join { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .join label { width: 100%; color: var(--muted); }
 .join input { flex: 1; min-width: 0; font: inherit; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); color: var(--ink); min-height: 44px; }
 
-.scroll { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
-th:nth-child(2), td:nth-child(2) { text-align: left; }
-th { color: var(--muted); font-weight: 500; }
-tr.mine td { font-weight: 700; }
-.fine { color: var(--muted); font-size: 0.875rem; }
+.messages { list-style: none; padding: 0; margin: 0; }
+.said { padding: 8px 0 4px; border-bottom: 1px solid var(--rule); }
+.who { margin: 0; font-size: 0.875rem; }
+.who time { color: var(--muted); margin-left: 6px; }
 
-.tape { list-style: none; padding: 0; margin: 0; }
-.tape li { padding: 6px 0; border-bottom: 1px solid var(--rule); }
-.tape .buy { color: var(--up); }
-.tape .sell { color: var(--down); }
-.tape time { color: var(--muted); font-size: 0.875rem; float: right; }
+/* How each word was said, drawn from the numbers voice.ts attaches to it (all
+   relative to the speaker's own voice in that message):
+     --loud     dB above or below their typical word: heavier, bigger, fainter
+     --pitch    semitones above or below their typical pitch: sits higher or lower
+     --rise     semitones the pitch moved across the word: tilts up or down
+     --stretch  how drawn-out it was per letter (log2): spreads out
+     --gap      seconds of pause before it: more space
+   The line height leaves room for words to ride up and down. */
+.words { font-size: 1.375rem; line-height: 2.4; margin: 0; overflow-wrap: anywhere; }
+.w {
+  display: inline-block;
+  font-weight: clamp(200, calc(450 + var(--loud) * 40), 900);
+  font-size: clamp(0.8em, calc(1em + var(--loud) * 0.025em), 1.5em);
+  letter-spacing: clamp(-0.03em, calc(var(--stretch) * 0.12em), 0.3em);
+  opacity: clamp(0.45, calc(1 + var(--loud) * 0.05), 1);
+  margin-left: min(calc(var(--gap) * 0.6em), 2em);
+  transform: translateY(calc(var(--pitch) * -0.07em)) rotate(clamp(-10deg, calc(var(--rise) * -1.5deg), 10deg));
+  transform-origin: left center;
+}
 
 .prose { max-width: 70ch; }
 .prose img { max-width: 100%; }
-
-.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
