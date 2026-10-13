@@ -259,15 +259,15 @@ export function spotAt(i: number): { x: number; y: number } {
   return { x: round(x * 100), y: round(y * 100) };
 }
 
-// Each person's colour, the same everywhere they appear and the same on every
-// page: a hue from their name, spread around the wheel so neighbours differ.
-// Saturation and lightness are style.css's, set per theme so every hue reads
-// against the background.
-export function hueOf(name: string): number {
-  let h = 0;
-  for (const c of name.toLowerCase()) h = (Math.imul(h, 31) + c.codePointAt(0)!) >>> 0;
-  return Math.round(((h % 360) * 137.508) % 360);
-}
+// Each person's colour, from their seat like their place, so it's the same
+// on every page and nobody's changes when someone arrives. Seats step round
+// the colour wheel by the golden angle, so people who join one after another
+// never share a colour: a hue from each name's letters gave two of the first
+// two people in a test room the same pink. Saturation and lightness are
+// style.css's, set per theme so every hue reads against the background.
+const GOLDEN_ANGLE = 137.508;
+export const hueOf = (seat: number): number => Math.round((20 + seat * GOLDEN_ANGLE) % 360);
+
 
 export const ago = (at: number, now: number = Date.now()): string => {
   const s = Math.max(0, Math.round((now - at) / 1000));

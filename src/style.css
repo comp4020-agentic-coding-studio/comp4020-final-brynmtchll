@@ -1,8 +1,11 @@
 :root {
-  /* every person's colour is a hue from their name (voice.ts) at this
-     saturation and lightness, chosen per theme so any hue reads */
-  --person-s: 70%;
-  --person-l: 36%;
+  /* every person's colour is a hue from their seat (voice.ts) at this
+     lightness and chroma, in OKLCH so every hue is equally light: chosen
+     per theme so the smallest text in any person's colour clears 4.5:1
+     against the background at every hue (hsl at a fixed lightness left
+     yellows at 2.6:1 on the light background) */
+  --person-l: 0.5;
+  --person-c: 0.13;
   --bg: #f4f1ea;
   --ink: #16140f;
   --muted: #6b665b;
@@ -14,8 +17,8 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --person-s: 75%;
-    --person-l: 72%;
+    --person-l: 0.78;
+    --person-c: 0.12;
     --bg: #12110e;
     --ink: #ece7dc;
     --muted: #9c968a;
@@ -112,7 +115,7 @@ button.quiet { border-color: transparent; color: var(--muted); }
   .stage { height: clamp(520px, 75vh, 820px); }
 }
 .spot {
-  --person: hsl(var(--hue) var(--person-s) var(--person-l));
+  --person: oklch(var(--person-l) var(--person-c) var(--hue));
   position: absolute;
   left: calc(var(--x) * 1%);
   top: calc(var(--y) * 1%);

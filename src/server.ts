@@ -125,7 +125,7 @@ const event = (m: Message): string =>
   `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({
     id: m.id,
     name: m.name,
-    hue: hueOf(m.name),
+    hue: hueOf(room.seatOf(m.name)),
     ...spotAt(room.seatOf(m.name)),
     text: m.text,
     at: m.at,
@@ -201,7 +201,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (!result.ok) return back(res, result.reason);
     // every open page gives them a place straight away
     const joined = room.findPerson(id)!;
-    const arrival = `event: joined\ndata: ${JSON.stringify({ name: joined.name, hue: hueOf(joined.name), ...spotAt(room.seatOf(joined.name)) })}\n\n`;
+    const seat = room.seatOf(joined.name);
+    const arrival = `event: joined\ndata: ${JSON.stringify({ name: joined.name, hue: hueOf(seat), ...spotAt(seat) })}\n\n`;
     for (const listener of listening) listener.write(arrival);
     // behind Fly's proxy the browser is on https, so the cookie can insist on it
     const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";

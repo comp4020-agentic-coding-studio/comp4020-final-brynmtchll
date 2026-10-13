@@ -34,7 +34,7 @@ const MESSAGES: Record<string, string> = {
 // page's one live region instead.
 export function spotHtml(name: string, seat: number, mine = false): string {
   const { x, y } = spotAt(seat);
-  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(name)};--x:${x};--y:${y}">
+  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)};--x:${x};--y:${y}">
     <span class="spot-word" aria-hidden="true"></span>
     <span class="spot-name">${esc(name)}${mine ? " (you)" : ""}</span>
   </li>`;
