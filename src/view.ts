@@ -57,7 +57,7 @@ export function roomPage(people: { name: string; seat: number }[], me: (Person &
           <button type="button" data-key="Backspace"><kbd>⌫</kbd> Delete</button>
           <button type="button" data-key="Enter"><kbd>↵</kbd> Send now</button>
         </div>
-        <p class="fine">Each word goes out a second after it reaches the front. Type to change it, or use the keys above.</p>
+        <p class="fine">Your words go out at the pace you said them, a second behind you. Type to change the next one, or use the keys above; the rest wait for you.</p>
       </section>
       <div class="speak">
         <button id="talk" type="button" class="talk" aria-pressed="false" disabled>Turn on microphone</button>

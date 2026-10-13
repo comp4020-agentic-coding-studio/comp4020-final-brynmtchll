@@ -3,7 +3,8 @@ import { queue, WAIT } from "../src/queue.ts";
 import type { Word } from "../src/voice.ts";
 
 // A speaker's words, waiting on their own screen before anyone else sees
-// them. Time is passed in, so these run without waiting.
+// them, going out at the pace they were said. Time is passed in, so these
+// run without waiting.
 const word = (w: string, extra: Partial<Word> = {}): Word => ({
   w,
   start: 0,
@@ -21,14 +22,41 @@ const type = (q: ReturnType<typeof queue>, keys: string, now: number): void => {
 };
 
 describe("a speaker's queue of words", () => {
-  it("sends the top word after a moment, then the next, in the order they were said", () => {
+  it("sends words at the pace they were said, a moment after they reach the queue", () => {
     const q = queue();
-    q.add([word("one"), word("two")], 0);
+    q.add([word("one", { start: 2 }), word("two", { start: 2.5 }), word("three", { start: 3.2 })], 0);
     expect(q.release(WAIT - 1)).toBeNull();
     expect(q.release(WAIT)?.w).toBe("one");
-    expect(q.release(WAIT + 1)).toBeNull();
-    expect(q.release(2 * WAIT)?.w).toBe("two");
-    expect(q.release(3 * WAIT)).toBeNull();
+    expect(q.release(WAIT + 499)).toBeNull();
+    expect(q.release(WAIT + 500)?.w).toBe("two");
+    expect(q.release(WAIT + 1199)).toBeNull();
+    expect(q.release(WAIT + 1200)?.w).toBe("three");
+    expect(q.release(10 * WAIT)).toBeNull();
+  });
+
+  it("sends a phrase that arrives behind waiting words after them, at its own pace", () => {
+    const q = queue();
+    q.add([word("a", { start: 0 }), word("b", { start: 0.3 })], 0); // due at WAIT and WAIT + 300
+    q.add([word("c", { start: 5 }), word("d", { start: 5.2 })], 100);
+    const out: [string, number][] = [];
+    for (let t = 0; t < 5000; t += 10) {
+      const w = q.release(t);
+      if (w) out.push([w.w, t]);
+    }
+    expect(out.map(([w]) => w)).toEqual(["a", "b", "c", "d"]);
+    // c comes a short beat after b, and d keeps c's pace
+    expect(out[2][1] - out[1][1]).toBeGreaterThanOrEqual(300);
+    expect(out[3][1] - out[2][1]).toBe(200);
+  });
+
+  it("holds the words behind the top one while it's touched, keeping their spacing", () => {
+    const q = queue();
+    q.add([word("a", { start: 0 }), word("b", { start: 0.5 })], 0); // due at 1000 and 1500
+    q.key("1", 800); // a now goes no sooner than 1800, b with it
+    expect(q.release(1700)).toBeNull();
+    expect(q.release(1800)?.w).toBe("a");
+    expect(q.release(2299)).toBeNull();
+    expect(q.release(2300)?.w).toBe("b");
   });
 
   it("replaces the top word with what's typed, keeping how it was said", () => {
