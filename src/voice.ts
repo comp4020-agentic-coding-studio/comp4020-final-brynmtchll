@@ -12,8 +12,8 @@ export type Word = {
   loud: number; // dB above (+) or below (-) this message's typical word
   pitch: number | null; // semitones above or below this message's typical pitch; null if nothing was voiced
   rise: number; // semitones the pitch moved from the start of the word to its end
-  stretch: number; // log2 of how long it took per letter, against this message's typical word
-  held: number | null; // how far through the word (0 to 1) the voice held one sound steadiest; null if it held none
+  stretch: number; // log2 of how long its longest held sound lasted, against this message's typical one; 0 if it held none
+  held: number | null; // how far through the word (0 to 1) that sound sat; null if it held none
 };
 
 export const LIMITS = { words: 120, seconds: 20, letters: 40 } as const;
@@ -96,17 +96,17 @@ export function holdLetter(w: string, held: number | null): number | null {
   return groups.reduce((best, g) => (where(g) < where(best) ? g : best))[1];
 }
 
-// A word counts as drawn out from about 1.6 times its message's usual time per
-// letter, and repeats as many letters as the extra time would have taken at
-// that usual pace, up to a point. A one-letter word never does: "I" and "a"
-// take longer than one letter's worth to say anyway, and "II" reads as a
-// numeral.
-const DRAWN_OUT = 0.7;
+// A word counts as drawn out when it held a sound at least twice as long as
+// its message usually holds one (a stressed vowel alone is longer than
+// typical, but rarely twice), and repeats two letters for each typical sound's
+// worth of extra time, up to a point. A one-letter word never repeats: "II"
+// reads as a numeral.
+const DRAWN_OUT = 1;
 const MOST_REPEATS = 5;
 
 export function repeats(x: Word): number {
   if (x.stretch < DRAWN_OUT || letterCount(x.w) < 2) return 0;
-  return Math.min(MOST_REPEATS, Math.max(1, Math.round(letterCount(x.w) * (2 ** x.stretch - 1))));
+  return Math.min(MOST_REPEATS, Math.max(1, Math.round(2 * (2 ** x.stretch - 1))));
 }
 
 // The words as HTML. Each word carries its numbers as CSS custom properties

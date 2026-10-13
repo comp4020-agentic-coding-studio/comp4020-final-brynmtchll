@@ -21,20 +21,22 @@ function tone(clip: Float32Array, from: number, to: number, hz: [number, number]
   }
 }
 
+// four one-syllable words with pauses between them, each vowel about as long
+// as a spoken one (0.2 s) except the drawn-out one
 function clip(): Float32Array {
-  const c = new Float32Array(RATE * 3.2);
-  tone(c, 0.0, 0.5, [150, 150], 0.1); // "one": ordinary
-  tone(c, 0.7, 1.2, [150, 150], 0.4); // "two": four times the amplitude, about 12 dB louder
-  tone(c, 1.4, 1.9, [180, 300], 0.1); // "six": higher, and rising
-  tone(c, 2.0, 3.0, [150, 150], 0.1); // "so": two letters over a whole second
+  const c = new Float32Array(RATE * 2.6);
+  tone(c, 0.1, 0.3, [150, 150], 0.1); // "one": ordinary
+  tone(c, 0.6, 0.8, [150, 150], 0.4); // "two": four times the amplitude, about 12 dB louder
+  tone(c, 1.1, 1.35, [180, 300], 0.1); // "six": higher, and rising
+  tone(c, 1.6, 2.4, [150, 150], 0.1); // "so": held for 0.8 s
   return c;
 }
 
 const words = [
-  { w: "one", start: 0.0, end: 0.5 },
-  { w: "two", start: 0.7, end: 1.2 },
-  { w: "six", start: 1.4, end: 1.9 },
-  { w: "so", start: 2.0, end: 3.0 },
+  { w: "one", start: 0.1, end: 0.3 },
+  { w: "two", start: 0.6, end: 0.8 },
+  { w: "six", start: 1.1, end: 1.35 },
+  { w: "so", start: 1.6, end: 2.4 },
 ];
 
 describe("hearing how a word was said", () => {
@@ -52,6 +54,7 @@ describe("hearing how a word was said", () => {
   });
 
   it("hears a drawn-out word as drawn out", () => {
+    // "so" holds its sound for 0.8 s, three times as long as the others
     expect(so.stretch).toBeGreaterThan(1);
     expect(Math.abs(one.stretch)).toBeLessThan(0.5);
   });
@@ -63,9 +66,25 @@ describe("hearing how a word was said", () => {
 
   it("doesn't count a pause as part of the word before it", () => {
     // Whisper often lets a word run on into the silence after it
-    const [late] = measure(clip(), RATE, [{ w: "one", start: 0.0, end: 0.7 }, ...words.slice(1)]);
+    const [late] = measure(clip(), RATE, [{ w: "one", start: 0.1, end: 0.55 }, ...words.slice(1)]);
     expect(Math.abs(late.stretch - one.stretch)).toBeLessThan(0.2);
     expect(Math.abs(late.loud - one.loud)).toBeLessThan(1);
+  });
+
+  it("moves a word Whisper placed in the pause after it back onto its speech, so the pause shows", () => {
+    // Whisper runs late before a pause, sometimes putting a word wholly in
+    // the silence after it (it did this to "Americans" in a JFK recording)
+    const c = new Float32Array(RATE * 2);
+    tone(c, 0.1, 0.4, [150, 150], 0.1);
+    tone(c, 1.2, 1.5, [150, 150], 0.1);
+    const [ask, not] = measure(c, RATE, [
+      { w: "ask", start: 0.45, end: 1.0 },
+      { w: "not", start: 1.3, end: 1.9 },
+    ]);
+    expect(ask.start).toBeCloseTo(0.1, 1);
+    expect(ask.end).toBeLessThanOrEqual(0.45);
+    expect(not.start).toBeCloseTo(1.2, 1);
+    expect(not.start - ask.end).toBeGreaterThan(0.7);
   });
 
   it("hears nothing in silence, so the words Whisper invents for it never get sent", () => {
