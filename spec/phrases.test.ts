@@ -39,11 +39,13 @@ function tone(clip: Float32Array, from: number, to: number, amplitude = 0.1): vo
 
 describe("cutting speech into phrases as it's said", () => {
   it("cuts JFK at his pauses, so each phrase goes out as soon as he stops", () => {
-    // he pauses after "Americans," (about 2.1 s) and after "for you," (about 7.5 s)
+    // he pauses after "Americans," (about 2.1 s), for over a second after
+    // "ask not" (about 4.3 s), and after "for you," (about 7.5 s)
     const phrases = cut(wav("jfk-1961.wav"));
-    expect(phrases).toHaveLength(3);
+    expect(phrases).toHaveLength(4);
     expect(phrases[0].at).toBeLessThan(3);
-    expect(phrases[1].at).toBeLessThan(8.5);
+    expect(phrases[1].at).toBeLessThan(5.5);
+    expect(phrases[2].at).toBeLessThan(8.5);
   });
 
   it("cuts someone who never pauses at most every six seconds, at a quiet moment rather than mid-word", () => {
@@ -56,6 +58,14 @@ describe("cutting speech into phrases as it's said", () => {
     expect(phrases.length).toBeGreaterThanOrEqual(3);
     // nothing is lost to the cuts
     expect(phrases.reduce((n, ph) => n + ph.seconds, 0)).toBeGreaterThan(13.5);
+    // and each cut falls in a gap between syllables, not in one: every
+    // phrase but the last ends within a batch of a gap
+    let start = 0;
+    for (const ph of phrases.slice(0, -1)) {
+      start += ph.seconds;
+      const into = start % 0.31;
+      expect(into, `cut at ${start.toFixed(2)} s`).toBeGreaterThan(0.25 - BATCH / RATE);
+    }
   });
 
   it("keeps none of the silence before someone starts or between their phrases", () => {
@@ -76,6 +86,26 @@ describe("cutting speech into phrases as it's said", () => {
     tone(c, 2.2, 3.5);
     tone(c, 4.2, 5.5);
     expect(cut(c)).toHaveLength(3);
+  });
+
+  it("sends a short word on its own as soon as its speaker stops, not glued to what they say next", () => {
+    const c = new Float32Array(RATE * 10);
+    tone(c, 1, 1.4); // "Yes."
+    tone(c, 7, 8.5); // something else, later
+    const phrases = cut(c);
+    expect(phrases).toHaveLength(2);
+    expect(phrases[0].at).toBeLessThan(2.5);
+    expect(phrases[0].seconds).toBeLessThan(1);
+  });
+
+  it("sends the end of a long stretch as soon as its speaker stops", () => {
+    // 6.5 s without a pause, so the last half-second is past the cap
+    const c = new Float32Array(RATE * 12);
+    for (let t = 0; t < 6.5; t += 0.31) tone(c, t, t + 0.25);
+    const phrases = cut(c);
+    expect(phrases.at(-1)!.at).toBeLessThan(8);
+    // and nothing after it, however long the quiet goes on
+    expect(phrases.every((ph) => ph.seconds > 0.1)).toBe(true);
   });
 
   it("sends nothing for a microphone that heard only the room", () => {

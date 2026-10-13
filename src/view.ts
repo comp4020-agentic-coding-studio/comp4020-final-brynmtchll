@@ -26,6 +26,7 @@ const MESSAGES: Record<string, string> = {
   "name-bad": "Pick a name between 1 and 20 characters.",
   "name-taken": "Someone here already goes by that name.",
   "no-person": "Pick a name first.",
+  "too-many-joins": "That's a lot of new names from here at once. Try again in a few minutes.",
 };
 
 // A person's spot on the stage, where their words appear one at a time as

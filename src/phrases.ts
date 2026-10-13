@@ -12,6 +12,11 @@
 const RATE = 16_000;
 const PAUSE = 0.4; // seconds of quiet that end a phrase
 const SHORTEST = 0.8; // seconds of sound before a pause can end one
+// A phrase with less sound than SHORTEST still ends once it's been quiet for
+// LONG_PAUSE: a lone "Yes." would otherwise sit behind seconds of silence
+// until the next sentence, and go out glued to it (a 0.4 s "Yes." left 6 s
+// after it was said). With no sound at all, what there is is thrown away.
+const LONG_PAUSE = 0.8;
 const LONGEST = 6; // seconds: past this, it's cut at its quietest recent moment
 const CUT_WITHIN = 1.2; // seconds back from the end to look for that moment
 const TAIL = 0.2; // seconds of quiet kept on the end, so the last word isn't clipped
@@ -119,11 +124,11 @@ export function phraser(): Phraser {
         quietFor = 0;
       }
 
-      if (quietFor >= PAUSE * RATE && sound >= SHORTEST * RATE) {
-        const phrase = take(length - Math.max(0, quietFor - TAIL * RATE));
+      if ((quietFor >= PAUSE * RATE && sound >= SHORTEST * RATE) || quietFor >= LONG_PAUSE * RATE) {
+        const phrase = sound > 0 ? take(length - Math.max(0, quietFor - TAIL * RATE)) : null;
         batches.length = 0;
         length = sound = quietFor = 0;
-        return [phrase];
+        return phrase ? [phrase] : [];
       }
       if (length >= LONGEST * RATE) return [take(quietestCut())];
       return [];

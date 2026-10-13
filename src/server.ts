@@ -110,6 +110,33 @@ function tooFast(personId: string): boolean {
   return false;
 }
 const uncount = (personId: string): void => void said.get(personId)?.pop();
+
+// Joining is limited too, by where it comes from: each join gives the person
+// a place on every open page, so a script joining over and over would fill
+// the room with names and push the people actually talking off it. Fly's
+// proxy says where a request really came from in Fly-Client-IP. A classroom
+// on one network shares an address, so the limit is a room's worth.
+const JOIN_LIMIT = 30;
+const JOIN_WINDOW = 10 * 60_000;
+const joins = new Map<string, number[]>();
+function joiningTooFast(req: IncomingMessage): boolean {
+  const from = String(req.headers["fly-client-ip"] ?? req.socket.remoteAddress ?? "");
+  // The checks join hundreds of people from the machine the app runs on (in
+  // CI, the image itself, started from the same host). A request from this
+  // machine with no Fly-Client-IP can't have come through Fly's proxy, which
+  // always sets it, so on the deployed app nobody can pass as one.
+  if (!req.headers["fly-client-ip"] && /^(::1|127\.|::ffff:127\.|172\.17\.)/.test(from)) return false;
+  const now = Date.now();
+  const recent = (joins.get(from) ?? []).filter((t) => now - t < JOIN_WINDOW);
+  joins.set(from, recent);
+  if (recent.length >= JOIN_LIMIT) return true;
+  recent.push(now);
+  return false;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [from, times] of joins) if (times.every((t) => now - t >= JOIN_WINDOW)) joins.delete(from);
+}, JOIN_WINDOW).unref();
 // so the map doesn't keep everyone who ever spoke
 setInterval(() => {
   const now = Date.now();
@@ -137,9 +164,9 @@ const event = (m: Message): string =>
     })),
   })}\n\n`;
 
-// Where a stream starts: after the message the browser last saw (Last-Event-ID,
-// which it sends itself when it reconnects), or after the newest one the page
-// was drawn with (?after=), so nothing said while the page loaded is lost.
+// Where a stream starts: after the phrase the browser last saw (Last-Event-ID,
+// which it sends itself when it reconnects), or, for a page just opened
+// (?after=now), from now: words are for the moment they're said.
 function listen(req: IncomingMessage, res: ServerResponse, after: string | null): void {
   // the page tries again itself, waiting longer each time
   if (listening.size >= MOST_LISTENING) return send(res, 503, "text/plain; charset=utf-8", "Too many people listening");
@@ -155,7 +182,10 @@ function listen(req: IncomingMessage, res: ServerResponse, after: string | null)
       }
     }
   }
-  res.write(": listening\n\n");
+  // where this page is up to, so if the stream drops before anything's been
+  // said, the browser's reconnect (which sends the last id it saw) catches up
+  // on what it missed rather than starting from "now" again
+  res.write(`id: ${Number.isSafeInteger(last) ? Math.max(last, 0) : room.newest()}\n: listening\n\n`);
   listening.add(res);
   req.on("close", () => listening.delete(res));
 }
@@ -196,6 +226,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "POST" && url.pathname === "/join") {
     if (me) return back(res);
+    if (joiningTooFast(req)) return back(res, "too-many-joins");
     const id = randomUUID();
     const result = room.join(id, new URLSearchParams((await body(req, 4096)) ?? "").get("name") ?? "");
     if (!result.ok) return back(res, result.reason);

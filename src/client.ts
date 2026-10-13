@@ -25,17 +25,39 @@ type Phrase = { id: number; name: string; hue: number; x: number; y: number; tex
 const SHORTEST_WORD = 0.25;
 const LONGEST_PAUSE = 1.5;
 const LINGER = 2;
+// A phrase that's waited longer than STALE to be played is skipped: a tab in
+// the background (where browsers slow timers to a crawl) or a reconnect that
+// catches up on many phrases would otherwise play minutes of old words.
+const STALE = 15_000; // ms
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 
-type Spot = { el: HTMLElement; word: HTMLElement; queue: Phrase[]; playing: boolean; timers: number[] };
+// A spot is "playing" while a phrase's words are going up, "lingering" while
+// its last word stays, and idle otherwise. A phrase that arrives while it
+// lingers starts at once, rather than waiting the linger out.
+type Spot = { el: HTMLElement; word: HTMLElement; queue: (Phrase & { arrived: number })[]; state: "idle" | "playing" | "lingering"; timers: number[] };
 const spots = new Map<string, Spot>();
 
-// someone who joined after the page loaded gets their spot when they first speak
+// Someone who joined after the page loaded gets their place when they join.
+// Past MOST_SPOTS, the one who's been quiet longest gives theirs up, so a
+// page never fills with names.
+const MOST_SPOTS = 24;
 function spotFor(p: Pick<Phrase, "name" | "hue" | "x" | "y">): Spot {
   const known = spots.get(p.name);
-  if (known) return known;
+  if (known) {
+    // most recently heard from last, so the quietest is first to go
+    spots.delete(p.name);
+    spots.set(p.name, known);
+    return known;
+  }
   let el = stage.querySelector<HTMLElement>(`.spot[data-name="${CSS.escape(p.name)}"]`);
   if (!el) {
+    // the quietest idle place that isn't this page's own person's
+    for (const [name, spot] of spots) {
+      if (spots.size < MOST_SPOTS) break;
+      if (spot.state !== "idle" || spot.el.classList.contains("mine")) continue;
+      spot.el.remove();
+      spots.delete(name);
+    }
     el = document.createElement("li");
     el.className = "spot";
     el.dataset.name = p.name;
@@ -52,34 +74,37 @@ function spotFor(p: Pick<Phrase, "name" | "hue" | "x" | "y">): Spot {
     stage.append(el);
     nobody.hidden = true;
   }
-  const spot: Spot = { el, word: el.querySelector(".spot-word")!, queue: [], playing: false, timers: [] };
+  const spot: Spot = { el, word: el.querySelector(".spot-word")!, queue: [], state: "idle", timers: [] };
   spots.set(p.name, spot);
   return spot;
 }
 for (const el of stage.querySelectorAll<HTMLElement>(".spot")) spotFor({ name: el.dataset.name!, hue: 0, x: 0, y: 0 });
 
 function play(spot: Spot): void {
+  for (const t of spot.timers) clearTimeout(t);
+  spot.timers = [];
+  while (spot.queue.length && Date.now() - spot.queue[0].arrived > STALE) spot.queue.shift();
   const phrase = spot.queue.shift();
   if (!phrase) {
-    spot.playing = false;
+    spot.state = "idle";
     spot.el.classList.remove("speaking");
     return;
   }
-  spot.playing = true;
+  spot.state = "playing";
   spot.el.classList.add("speaking");
   const later = (at: number, fn: () => void): void => void spot.timers.push(window.setTimeout(fn, at * 1000));
   const show = (html: string): void => {
     spot.word.classList.remove("fading");
     spot.word.innerHTML = html;
   };
-  // someone who has asked for less motion sees the phrase's last word only
+  // `at` is when each word goes up on the page; `due` is when it was said,
+  // pauses shortened. A word goes up when it was said or once the last has
+  // had its SHORTEST_WORD, whichever is later. Someone who has asked for less
+  // motion sees the phrase's last word only.
+  let at = 0;
   if (still.matches) {
     show(phrase.words.at(-1)?.html ?? "");
   } else {
-    // `at` is when each word goes up on the page; `due` is when it was said,
-    // pauses shortened. A word goes up when it was said or once the last has
-    // had its SHORTEST_WORD, whichever is later.
-    let at = 0;
     let due = 0;
     phrase.words.forEach((w, i) => {
       at = Math.max(at, due);
@@ -88,21 +113,16 @@ function play(spot: Spot): void {
       due += i + 1 < phrase.words.length ? w.d + Math.min(Math.max(0, w.gap), LONGEST_PAUSE) : w.d;
     });
     at = Math.max(at, due);
-    // the next phrase, if one's waiting, carries straight on; if not, the last
-    // word lingers and goes
-    later(at, () => {
-      if (spot.queue.length) return play(spot);
-      later(LINGER, () => {
-        if (spot.queue.length) return play(spot);
-        spot.word.classList.add("fading");
-        play(spot);
-      });
-    });
-    return;
   }
-  later(LINGER, () => {
-    spot.word.classList.add("fading");
-    play(spot);
+  // then the next phrase, if one's waiting; if not, the last word lingers
+  // and goes
+  later(at, () => {
+    if (spot.queue.length) return play(spot);
+    spot.state = "lingering";
+    later(LINGER, () => {
+      spot.word.classList.add("fading");
+      play(spot);
+    });
   });
 }
 
@@ -111,8 +131,8 @@ function play(spot: Spot): void {
 function arrive(p: Phrase): void {
   heardAloud.textContent = `${p.name}: ${p.text}`;
   const spot = spotFor(p);
-  spot.queue.push(p);
-  if (!spot.playing) play(spot);
+  spot.queue.push({ ...p, arrived: Date.now() });
+  if (spot.state !== "playing") play(spot);
 }
 
 // ---- live: every phrase, as it's said ----
@@ -164,8 +184,17 @@ const RATE = 16_000; // what Whisper listens at
 
 const talk = document.getElementById("talk") as HTMLButtonElement | null;
 const status = document.getElementById("status") as HTMLElement;
+// The status line. Something gone wrong stays up for a few seconds before
+// ordinary news ("Listening.") can replace it, or it'd be gone before anyone
+// read it.
+let holdUntil = 0;
 const say = (text: string): void => {
+  if (Date.now() < holdUntil) return;
   status.textContent = text;
+};
+const warn = (text: string): void => {
+  status.textContent = text;
+  holdUntil = Date.now() + 6000;
 };
 const mb = (bytes: number): string => (bytes / 1e6).toFixed(0);
 
@@ -173,23 +202,33 @@ const mb = (bytes: number): string => (bytes / 1e6).toFixed(0);
 // microphone on, so people who only read never download the model.
 let worker: Worker | undefined;
 let modelReady = false;
-let waiting: { resolve: (chunks: Heard[]) => void; reject: (e: Error) => void }[] = [];
+// what each transcription asked for is waiting on, by its id
+const waiting = new Map<number, { resolve: (chunks: Heard[]) => void; reject: (e: Error) => void }>();
+let nextId = 1;
 
 function whisper(): Worker {
   if (worker) return worker;
   worker = new Worker("/js/worker.ts", { type: "module" });
   worker.onmessage = (e: MessageEvent<FromWorker>) => {
     const m = e.data;
-    if (m.type === "loading" && !modelReady && m.total > 0) {
-      say(`Downloading the speech model, once: ${mb(m.loaded)} of ${mb(m.total)} MB. Keep talking; it'll catch up.`);
+    if (m.type === "loading" && !modelReady && m.total > 1e6) {
+      downloaded = `${mb(m.loaded)} of ${mb(m.total)} MB`;
+      showBehind();
     } else if (m.type === "ready") {
       modelReady = true;
-      showBehind();
+      if (on) showBehind();
+      else say("Ready. Turn your microphone on to talk.");
     } else if (m.type === "heard") {
       modelReady = true;
-      waiting.shift()?.resolve(m.chunks);
+      waiting.get(m.id)?.resolve(m.chunks);
+      waiting.delete(m.id);
+    } else if (m.type === "failed" && m.id !== null) {
+      waiting.get(m.id)?.reject(new Error(m.error));
+      waiting.delete(m.id);
     } else if (m.type === "failed") {
-      waiting.shift()?.reject(new Error(m.error));
+      // the model itself didn't load: everything waiting on it fails
+      for (const w of waiting.values()) w.reject(new Error(m.error));
+      waiting.clear();
     }
   };
   // The worker couldn't even start: its import from the CDN failed (a flaky
@@ -199,19 +238,35 @@ function whisper(): Worker {
     e.preventDefault();
     worker?.terminate();
     worker = undefined;
-    for (const w of waiting) w.reject(new Error(e.message || "the speech model's worker didn't start"));
-    waiting = [];
+    for (const w of waiting.values()) w.reject(new Error(e.message || "the speech model's worker didn't start"));
+    waiting.clear();
   };
   worker.postMessage({ type: "load" } satisfies ToWorker);
   return worker;
 }
 
-// The worker answers in the order it was asked, so answers are matched to
-// questions in order.
+// Each transcription is matched to its answer by id. One that takes longer
+// than TRANSCRIBE_LIMIT fails, so a phone that quietly kills the worker for
+// its memory doesn't hold every later phrase back for good; the worker is
+// started afresh for the next.
+const TRANSCRIBE_LIMIT = 60_000;
 function transcribe(pcm: Float32Array): Promise<Heard[]> {
+  const id = nextId++;
   return new Promise((resolve, reject) => {
-    waiting.push({ resolve, reject });
-    whisper().postMessage({ type: "transcribe", pcm } satisfies ToWorker, [pcm.buffer]);
+    const timer = setTimeout(() => {
+      if (!waiting.has(id)) return;
+      waiting.delete(id);
+      worker?.terminate();
+      worker = undefined;
+      for (const w of waiting.values()) w.reject(new Error("the speech model stopped answering"));
+      waiting.clear();
+      reject(new Error("the speech model stopped answering"));
+    }, TRANSCRIBE_LIMIT);
+    waiting.set(id, {
+      resolve: (c) => (clearTimeout(timer), resolve(c)),
+      reject: (e) => (clearTimeout(timer), reject(e)),
+    });
+    whisper().postMessage({ type: "transcribe", id, pcm } satisfies ToWorker, [pcm.buffer]);
   });
 }
 
@@ -220,6 +275,7 @@ function transcribe(pcm: Float32Array): Promise<Heard[]> {
 // it ends; averaging also keeps sounds too high for 16 kHz from folding down
 // into the speech.
 function downsampler(from: number): (input: Float32Array) => Float32Array {
+  if (from < RATE) return upsampler(from);
   const ratio = from / RATE;
   let carry = 0; // where the next output sample starts, in input samples, relative to this batch
   let sum = 0;
@@ -241,6 +297,31 @@ function downsampler(from: number): (input: Float32Array) => Float32Array {
   };
 }
 
+// A microphone slower than 16 kHz (a Bluetooth headset on its hands-free
+// link runs at 8) is stretched up to it by drawing straight lines between its
+// samples; averaging down would hand Whisper half the samples, and speech at
+// twice the speed.
+function upsampler(from: number): (input: Float32Array) => Float32Array {
+  const step = from / RATE; // input samples per output sample, under 1
+  let pos = 0; // where the next output sample falls, in input samples, from the last one kept
+  let last = 0; // the last input sample of the previous batch
+  return (input) => {
+    const out: number[] = [];
+    // positions are measured from `last`, at -1, then this batch's 0, 1, ...
+    while (pos < input.length - 1 + 1) {
+      const i = Math.floor(pos) - 1;
+      const a = i < 0 ? last : input[i];
+      const b = input[i + 1];
+      if (b === undefined) break;
+      out.push(a + (b - a) * (pos - Math.floor(pos)));
+      pos += step;
+    }
+    pos -= input.length;
+    last = input[input.length - 1] ?? last;
+    return Float32Array.from(out);
+  };
+}
+
 type FromTap = { samples: Float32Array } | { last: Float32Array };
 
 // While the microphone is on, phrases.ts cuts what's said into phrases, and
@@ -252,9 +333,13 @@ let phrases: Phraser = phraser();
 let sending: Promise<void> = Promise.resolve();
 let behind = 0;
 
+let downloaded = "";
 const showBehind = (): void => {
-  if (!on) return;
-  say(!modelReady ? "Listening. The speech model is downloading, once." : behind > 1 ? `Listening. Catching up on ${behind} phrases…` : "Listening.");
+  if (!modelReady && downloaded) {
+    say(on ? `Listening. Downloading the speech model, once: ${downloaded}. Keep talking; it'll catch up.` : `Downloading the speech model, once: ${downloaded}.`);
+  } else if (on) {
+    say(!modelReady ? "Listening. The speech model is downloading, once." : behind > 1 ? `Listening. Catching up on ${behind} phrases…` : "Listening.");
+  }
 };
 
 function onAudio(samples: Float32Array): void {
@@ -273,22 +358,24 @@ function send(pcm: Float32Array): void {
     try {
       const result = hear(pcm, RATE, words(await heard, pcm.length / RATE));
       if (result.words.length === 0) return;
+      // a send that hangs mustn't hold up every phrase after it
       const res = await fetch("/say", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(result),
+        signal: AbortSignal.timeout(15_000),
       });
       if (res.status === 401) {
-        say("You've been signed out. Reload the page and join again.");
         void turnOff();
+        warn("You've been signed out. Reload the page and join again.");
       } else if (res.status === 429) {
-        say("That's a lot at once. Some of it didn't send.");
+        warn("That's a lot at once. Some of it didn't send.");
       } else if (!res.ok) {
-        say("Something you said couldn't be sent.");
+        warn("Something you said couldn't be sent.");
       }
     } catch (err) {
       console.error(err);
-      say(modelReady ? "Something you said couldn't be heard or sent." : "Couldn't download the speech model. Check your connection and try again.");
+      warn(modelReady ? "Something you said couldn't be heard or sent." : "Couldn't download the speech model. Check your connection and try again.");
     } finally {
       behind--;
       showBehind();
@@ -319,6 +406,18 @@ async function record(ctx: AudioContext): Promise<() => Promise<void>> {
     release();
     throw err;
   }
+  // The microphone can stop without anyone turning it off: the phone locks,
+  // a call comes in, a headset drops out. Then the page says so rather than
+  // go on saying "Listening." to nothing.
+  for (const track of mic.getAudioTracks()) {
+    track.addEventListener("ended", () => {
+      if (!on) return;
+      void turnOff().then(() => warn("Your microphone stopped. Turn it on again to carry on."));
+    });
+  }
+  ctx.addEventListener("statechange", () => {
+    if (on && (ctx.state as string) === "interrupted") warn("Your microphone's paused by your phone. It'll carry on when it can.");
+  });
   const down = downsampler(ctx.sampleRate);
   let flushed: (() => void) | undefined;
   tap.port.onmessage = (e: MessageEvent<FromTap>) => {
@@ -398,7 +497,15 @@ if (talk) {
     say("This browser can't record here. You can still watch and read everything live.");
   } else {
     showOn(false);
-    say("The first time, the speech model downloads (about 80 MB). After that it's cached.");
     talk.addEventListener("click", () => void (on ? turnOff() : turnOn()));
+    // Someone who's joined is here to talk, so the speech model starts
+    // downloading now rather than when they first press the button: the
+    // first time, on a slow connection, that's the difference between
+    // talking straight away and waiting most of a minute. It waits until the
+    // page has loaded and settled, so it doesn't hold the page itself up.
+    say("Getting the speech model ready (about 80 MB, once).");
+    const warm = (): void => void setTimeout(() => whisper(), 500);
+    if (document.readyState === "complete") warm();
+    else addEventListener("load", warm, { once: true });
   }
 }

@@ -100,6 +100,9 @@ button.quiet { border-color: transparent; color: var(--muted); }
    and on a phone it's taller than wide, as the screen is. */
 /* The stage breaks out of the page's reading column to the whole width of
    the screen, so a room spreads out across it. */
+/* 100vw counts a classic scrollbar (Windows), which would scroll the page
+   sideways; the page's own width doesn't */
+html { overflow-x: clip; }
 .stage-wrap { width: 100vw; margin-inline: calc(50% - 50vw); padding-inline: 16px; }
 .stage-wrap > .room-head, .stage-wrap > #nobody, .stage-wrap > .speak { max-width: 728px; margin-inline: auto; }
 .stage-wrap > .speak { margin-block: 8px 0; }

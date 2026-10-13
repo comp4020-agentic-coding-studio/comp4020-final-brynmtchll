@@ -47,7 +47,7 @@ async function person() {
 function listen(headers: Record<string, string> = {}, query = "") {
   const controller = new AbortController();
   const ready = fetch(new URL(`/events${query}`, baseUrl), { headers, signal: controller.signal });
-  const seen: { id: number }[] = [];
+  const seen: { id: number; type: string }[] = [];
   const waiting = new Set<() => void>();
   const reading = (async () => {
     const res = await ready;
@@ -61,9 +61,11 @@ function listen(headers: Record<string, string> = {}, query = "") {
         buffer += value;
         let cut: number;
         while ((cut = buffer.indexOf("\n\n")) !== -1) {
-          const data = buffer.slice(0, cut).split("\n").find((l) => l.startsWith("data: "));
+          const lines = buffer.slice(0, cut).split("\n");
+          const data = lines.find((l) => l.startsWith("data: "));
+          const type = lines.find((l) => l.startsWith("event: "))?.slice(7) ?? "message";
           buffer = buffer.slice(cut + 2);
-          if (data) seen.push(JSON.parse(data.slice(6)));
+          if (data) seen.push({ ...JSON.parse(data.slice(6)), type });
           for (const wake of waiting) wake();
         }
       }
@@ -71,7 +73,7 @@ function listen(headers: Record<string, string> = {}, query = "") {
       // closed
     }
   })();
-  const waitFor = (needle: string, ms = 3000): Promise<{ id: number; name?: string }> =>
+  const waitFor = (needle: string, ms = 3000): Promise<{ id: number; type: string; name?: string }> =>
     new Promise((resolve, reject) => {
       const check = (): void => {
         const found = seen.find((e) => JSON.stringify(e).includes(needle));
@@ -112,18 +114,26 @@ describe.skipIf(!writable)("the room", () => {
     const place = (page: string, name: string) =>
       page.match(new RegExp(`data-name="${name}" style="--hue:(\\d+);--x:([\\d.]+);--y:([\\d.]+)"`))?.slice(1);
     const [fromA, fromB] = [await a.page(), await b.page()];
-    expect(place(fromA, a.name)).toBeDefined();
+    for (const [page, name] of [[fromA, a.name], [fromB, a.name], [fromB, b.name]]) {
+      expect(place(page, name), `${name}'s place`).toHaveLength(3);
+    }
     expect(place(fromB, a.name)).toEqual(place(fromA, a.name));
-    expect(place(fromB, b.name)).not.toEqual(place(fromB, a.name));
+    // a different place and a different colour from the person before them
+    expect(place(fromB, b.name)!.slice(1)).not.toEqual(place(fromB, a.name)!.slice(1));
+    expect(place(fromB, b.name)![0]).not.toEqual(place(fromB, a.name)![0]);
   });
 
   it("gives someone a place on every open page the moment they join", async () => {
     const watcher = listen();
     await watcher.ready;
     const p = await person();
-    const e = (await watcher.waitFor(p.name)) as unknown as { name: string; x: number; y: number };
-    expect(e).toMatchObject({ name: p.name });
-    expect(e.x).toBeGreaterThanOrEqual(0);
+    const e = (await watcher.waitFor(p.name)) as unknown as { type: string; name: string; hue: number; x: number; y: number };
+    expect(e).toMatchObject({ type: "joined", name: p.name });
+    for (const k of ["x", "y"] as const) {
+      expect(e[k]).toBeGreaterThanOrEqual(0);
+      expect(e[k]).toBeLessThanOrEqual(100);
+    }
+    expect(e.hue).toBeLessThan(360);
     watcher.close();
   });
 
@@ -136,6 +146,7 @@ describe.skipIf(!writable)("the room", () => {
     const e = (await watcher.waitFor(`first${stamp}`)) as unknown as { name: string; hue: number; words: { html: string; t: number; d: number }[] };
     expect(e.name).toBe(p.name);
     expect(e.hue).toBeGreaterThanOrEqual(0);
+    expect(e.hue).toBeLessThan(360);
     expect(e.words.map((w) => [w.t, w.d])).toEqual([[0.2, 0.3], [0.9, 0.3]]);
     expect(e.words[1].html).toContain("second");
     watcher.close();
@@ -243,6 +254,25 @@ describe.skipIf(!writable)("the room", () => {
     expect(statuses.filter((s) => s === 201)).toHaveLength(20);
   });
 
+  it("won't let one place fill the room with new names", async () => {
+    // the checks themselves join a lot from one address, so this asks as a
+    // different one (the server takes Fly's word for where a request is from)
+    const from = `2001:db8::${Date.now().toString(16)}`;
+    const results: (string | null)[] = [];
+    for (let i = 0; i < 31; i++) {
+      const res = await fetch(new URL("/join", baseUrl), {
+        method: "POST",
+        body: new URLSearchParams({ name: `fl${Math.random().toString(36).slice(2, 9)}${i}` }),
+        headers: { "fly-client-ip": from },
+        redirect: "manual",
+      });
+      results.push(new URL(res.headers.get("location")!, baseUrl).searchParams.get("m"));
+    }
+    // a classroom's worth gets in; past that, no
+    expect(results.slice(0, 30).every((m) => m === null)).toBe(true);
+    expect(results[30]).toBe("too-many-joins");
+  });
+
   it("only takes changes from the app's own pages, so another site can't sign someone in as someone new", async () => {
     const p = await person();
     const res = await fetch(new URL("/join", baseUrl), {
@@ -316,6 +346,25 @@ describe.skipIf(!writable)("the room", () => {
     expect(e.words[0].html).not.toContain("<script>");
     expect(e.words[0].html).toContain("&lt;script&gt;");
     watcher.close();
+  });
+
+  it("lets a page that drops off before anything's said catch up when it reconnects", async () => {
+    // a new page's stream says where it's up to; the browser sends that back
+    // when it reconnects
+    const controller = new AbortController();
+    const res = await fetch(new URL("/events?after=now", baseUrl), { signal: controller.signal });
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+    let head = "";
+    while (!head.includes("\n\n")) head += (await reader.read()).value;
+    controller.abort();
+    const id = head.match(/^id: (\d+)/m)?.[1];
+    expect(id).toBeDefined();
+    const p = await person();
+    const meanwhile = `blip${Date.now()}`;
+    await p.say({ words: [word(meanwhile, 0)] });
+    const back = listen({ "last-event-id": id! });
+    expect((await back.waitFor(meanwhile)).type).toBe("said");
+    back.close();
   });
 
   it("starts a newly opened page from now, not from everything ever said", async () => {

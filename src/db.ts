@@ -40,6 +40,9 @@ export function openRoom(file: string, now: () => number = Date.now) {
   const columns = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);
   if (!columns.includes("voice")) db.exec("ALTER TABLE messages ADD COLUMN voice TEXT");
   if (!columns.includes("usual")) db.exec("ALTER TABLE messages ADD COLUMN usual TEXT");
+  // a phrase every second or two per person adds up: who's been speaking
+  // lately and someone's last few voices are looked up by person, newest first
+  db.exec("CREATE INDEX IF NOT EXISTS messages_by_person ON messages (person_id, id)");
 
   const findPerson = (id: string | undefined): Person | undefined =>
     id ? (db.prepare("SELECT * FROM people WHERE id = ?").get(id) as Person | undefined) : undefined;

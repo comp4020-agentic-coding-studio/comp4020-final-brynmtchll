@@ -12,12 +12,14 @@ import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers
 import type { Heard } from "./prosody.ts";
 
 export type Chunk = Heard;
+// Each transcription carries an id, and its answer the same one, so an answer
+// can't be taken for another phrase's.
 export type FromWorker =
   | { type: "loading"; loaded: number; total: number }
   | { type: "ready" }
-  | { type: "heard"; chunks: Chunk[] }
-  | { type: "failed"; error: string };
-export type ToWorker = { type: "load" } | { type: "transcribe"; pcm: Float32Array };
+  | { type: "heard"; id: number; chunks: Chunk[] }
+  | { type: "failed"; id: number | null; error: string };
+export type ToWorker = { type: "load" } | { type: "transcribe"; id: number; pcm: Float32Array };
 
 type Asr = (pcm: Float32Array, options: { return_timestamps: "word" }) => Promise<{ text: string; chunks: Chunk[] }>;
 type Progress = { status: string; file?: string; loaded?: number; total?: number };
@@ -43,16 +45,22 @@ let asr: Promise<Asr> | undefined;
 const load = (): Promise<Asr> =>
   (asr ??= pipeline("automatic-speech-recognition", MODEL, { dtype: "q8", device: "wasm", progress_callback: progress }) as Promise<Asr>);
 
-// Messages are handled in order, so a clip sent while the model is still
-// downloading waits for it rather than failing.
-scope.onmessage = async (e) => {
-  try {
-    const run = await load();
-    if (e.data.type === "load") return scope.postMessage({ type: "ready" });
-    const out = await run(e.data.pcm, { return_timestamps: "word" });
-    scope.postMessage({ type: "heard", chunks: out.chunks });
-  } catch (err) {
-    asr = undefined;
-    scope.postMessage({ type: "failed", error: String(err) });
-  }
+// One at a time, in the order asked: an async handler alone doesn't wait for
+// the last message, so phrases sent while the model downloaded all ran at
+// once, interleaved, and the shortest finished first. A clip sent while the
+// model is still downloading waits for it rather than failing.
+let queue: Promise<void> = Promise.resolve();
+scope.onmessage = (e) => {
+  const m = e.data;
+  queue = queue.then(async () => {
+    try {
+      const run = await load();
+      if (m.type === "load") return scope.postMessage({ type: "ready" });
+      const out = await run(m.pcm, { return_timestamps: "word" });
+      scope.postMessage({ type: "heard", id: m.id, chunks: out.chunks });
+    } catch (err) {
+      asr = undefined;
+      scope.postMessage({ type: "failed", id: m.type === "transcribe" ? m.id : null, error: String(err) });
+    }
+  });
 };
