@@ -98,6 +98,18 @@ describe("hearing how a word was said", () => {
     ]);
   });
 
+  it("joins a word Whisper split in two back into one", () => {
+    // what it gave for a CREMA-D actor's "It's eleven o'clock"
+    const chunks: { text: string; timestamp: [number, number | null] }[] = [
+      { text: " It's", timestamp: [1.34, 1.58] },
+      { text: " 11", timestamp: [1.58, 1.8] },
+      { text: " o", timestamp: [1.8, 2] },
+      { text: "'clock.", timestamp: [2, null] },
+    ];
+    expect(heard(chunks, 2.9).map((w) => w.w)).toEqual(["It's", "11", "o'clock."]);
+    expect(heard(chunks, 2.9).at(-1)).toMatchObject({ start: 1.8, end: 2.9 });
+  });
+
   it("hears nothing in silence, so the words Whisper invents for it never get sent", () => {
     expect(measure(new Float32Array(RATE * 2), RATE, [{ w: "you", start: 0, end: 1 }])).toEqual([]);
   });

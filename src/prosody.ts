@@ -308,7 +308,17 @@ export function words(chunks: Heard[], seconds: number): Timed[] {
       if (w.endsWith(closing)) closing = null;
       continue;
     }
-    if (/[\p{L}\p{N}]/u.test(w)) out.push({ w, start: c.timestamp[0], end: c.timestamp[1] ?? seconds });
+    if (!/[\p{L}\p{N}]/u.test(w)) continue;
+    const end = c.timestamp[1] ?? seconds;
+    // Whisper starts every word with a space; a piece without one carries on
+    // the word before it ("o" then "'clock."), so the two are one word
+    const prev = out.at(-1);
+    if (prev && !/^\s/.test(c.text)) {
+      prev.w += w;
+      prev.end = Math.max(prev.end, end);
+    } else {
+      out.push({ w, start: c.timestamp[0], end });
+    }
   }
   return out;
 }
