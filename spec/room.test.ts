@@ -41,35 +41,60 @@ async function person() {
   return { name, cookie, say, page };
 }
 
-// an open page's live stream: resolves with the first message event whose
-// HTML mentions `needle`
+// An open page's live stream. One reader collects every message event as it
+// comes; waitFor resolves with the first one whose HTML mentions `needle`,
+// whether it came before or after the call, so several can wait at once.
 function listen(headers: Record<string, string> = {}, query = "") {
   const controller = new AbortController();
   const ready = fetch(new URL(`/events${query}`, baseUrl), { headers, signal: controller.signal });
-  const waitFor = async (needle: string, ms = 3000): Promise<{ id: number; html: string }> => {
+  const seen: { id: number; html: string }[] = [];
+  const waiting = new Set<() => void>();
+  const reading = (async () => {
     const res = await ready;
     expect(res.headers.get("content-type")).toMatch(/^text\/event-stream/);
     const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
-    const deadline = setTimeout(() => controller.abort(), ms);
     try {
       for (;;) {
         const { value, done } = await reader.read();
-        if (done) throw new Error(`stream ended before "${needle}" arrived`);
+        if (done) return;
         buffer += value;
         let cut: number;
         while ((cut = buffer.indexOf("\n\n")) !== -1) {
-          const frame = buffer.slice(0, cut);
+          const data = buffer.slice(0, cut).split("\n").find((l) => l.startsWith("data: "));
           buffer = buffer.slice(cut + 2);
-          const data = frame.split("\n").find((l) => l.startsWith("data: "));
-          if (data?.includes(needle)) return JSON.parse(data.slice(6));
+          if (data) seen.push(JSON.parse(data.slice(6)));
+          for (const wake of waiting) wake();
         }
       }
-    } finally {
-      clearTimeout(deadline);
+    } catch {
+      // closed
     }
+  })();
+  const waitFor = (needle: string, ms = 3000): Promise<{ id: number; html: string }> =>
+    new Promise((resolve, reject) => {
+      const check = (): void => {
+        const found = seen.find((e) => e.html.includes(needle));
+        if (!found) return;
+        waiting.delete(check);
+        clearTimeout(timer);
+        resolve(found);
+      };
+      const timer = setTimeout(() => {
+        waiting.delete(check);
+        reject(new Error(`"${needle}" didn't arrive within ${ms} ms`));
+      }, ms);
+      waiting.add(check);
+      check();
+    });
+  return {
+    ready,
+    waitFor,
+    close: () => {
+      controller.abort();
+      void reading;
+    },
   };
-  return { ready, waitFor, close: () => controller.abort() };
 }
 
 const messages = async (): Promise<Said[]> =>
@@ -113,6 +138,21 @@ describe.skipIf(!writable)("the room", () => {
     const found = (await messages()).find((m) => m.text === marker);
     expect(found).toMatchObject({ name: p.name, text: marker });
     expect(await (await fetch(new URL("/", baseUrl))).text()).toContain(marker);
+  });
+
+  it("gets everyone's message to every open page when several speak at the same moment", async () => {
+    const watchers = [listen(), listen(), listen()];
+    await Promise.all(watchers.map((w) => w.ready));
+    const speakers = await Promise.all([person(), person(), person(), person()]);
+    const stamp = Date.now();
+    const said = speakers.map((_, i) => `together${i}x${stamp}`);
+    const arrivals = watchers.flatMap((w) => said.map((m) => w.waitFor(m)));
+    const statuses = await Promise.all(speakers.map((p, i) => p.say({ words: [word(said[i], 0)] }).then((r) => r.status)));
+    expect(statuses).toEqual([201, 201, 201, 201]);
+    // waitFor reads from the start of each stream, so each needle is found in turn
+    const got = await Promise.allSettled(arrivals);
+    expect(got.filter((g) => g.status === "rejected")).toHaveLength(0);
+    for (const w of watchers) w.close();
   });
 
   it("only lets someone who has joined say anything", async () => {
