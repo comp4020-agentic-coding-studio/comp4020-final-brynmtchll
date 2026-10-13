@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { measure } from "../src/prosody.ts";
+import { measure, words as heard } from "../src/prosody.ts";
 import { renderWords, type Word } from "../src/voice.ts";
 
 // What the app hears in a voice, checked on made-up audio whose loudness,
@@ -85,6 +85,18 @@ describe("hearing how a word was said", () => {
     expect(ask.end).toBeLessThanOrEqual(0.45);
     expect(not.start).toBeCloseTo(1.2, 1);
     expect(not.start - ask.end).toBeGreaterThan(0.7);
+  });
+
+  it("drops the labels Whisper puts on sounds that aren't words", () => {
+    const chunks = ["[BLANK_AUDIO]", " (music)", " ♪", " *laughs*", " hello", " -", " there."].map((text, i) => ({
+      text,
+      timestamp: [i, i + 1] as [number, number | null],
+    }));
+    chunks.at(-1)!.timestamp[1] = null;
+    expect(heard(chunks, 9)).toEqual([
+      { w: "hello", start: 4, end: 5 },
+      { w: "there.", start: 6, end: 9 },
+    ]);
   });
 
   it("hears nothing in silence, so the words Whisper invents for it never get sent", () => {

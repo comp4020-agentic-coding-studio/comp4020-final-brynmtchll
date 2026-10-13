@@ -67,10 +67,27 @@ const back = (res: ServerResponse, msg?: string, headers: Record<string, string>
 // carries the message id, so a page that drops off and reconnects says the
 // last one it saw (the browser does this itself) and gets what it missed.
 const listening = new Set<ServerResponse>();
+// each open page holds a connection on a 256 MB machine, so there's a ceiling
+const MOST_LISTENING = 500;
+
+// No one person can fill the room: at most SAY_LIMIT messages in any
+// SAY_WINDOW. Speaking, listening back and sending takes a few seconds each
+// time, so ordinary talk never meets it. Kept in memory; a restart forgets.
+const SAY_LIMIT = 6;
+const SAY_WINDOW = 30_000;
+const said = new Map<string, number[]>();
+function tooFast(personId: string): boolean {
+  const now = Date.now();
+  const recent = (said.get(personId) ?? []).filter((t) => now - t < SAY_WINDOW);
+  said.set(personId, recent);
+  return recent.length >= SAY_LIMIT;
+}
 
 const event = (m: Message): string => `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({ id: m.id, html: messageHtml(m) })}\n\n`;
 
 function listen(req: IncomingMessage, res: ServerResponse): void {
+  // the browser tries again on its own a little later
+  if (listening.size >= MOST_LISTENING) return send(res, 503, "text/plain; charset=utf-8", "Too many people listening");
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   const last = Number(req.headers["last-event-id"]);
   if (Number.isSafeInteger(last)) for (const m of room.since(last)) res.write(event(m));
@@ -122,6 +139,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "POST" && url.pathname === "/say") {
     if (!me) return json(res, 401, { error: "no-person" });
+    if (tooFast(me.id)) return json(res, 429, { error: "too-fast" });
     const raw = await body(req, 64 * 1024);
     let parsed: unknown;
     try {
@@ -132,6 +150,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const words = clean((parsed as { words?: unknown } | null)?.words);
     if (!words) return json(res, 400, { error: "not-a-message" });
     const m = room.say(me.id, words);
+    said.get(me.id)!.push(m.at);
     for (const listener of listening) listener.write(event(m));
     return json(res, 201, { id: m.id });
   }

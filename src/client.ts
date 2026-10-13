@@ -1,6 +1,6 @@
 // The page's script. The server renders everything already said, so the page
 // reads fine without this; the script keeps it live and lets people speak.
-import { measure } from "./prosody.ts";
+import { measure, words } from "./prosody.ts";
 import { ago, renderWords, type Word } from "./voice.ts";
 import type { Chunk, FromWorker, ToWorker } from "./worker.ts";
 
@@ -170,13 +170,7 @@ function resampleByHand(samples: Float32Array, from: number): Float32Array<Array
 }
 
 // what Whisper heard, as words with how each was said
-function toWords(pcm: Float32Array, chunks: Chunk[]): Word[] {
-  const seconds = pcm.length / RATE;
-  const timed = chunks
-    .map((c) => ({ w: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] ?? seconds }))
-    .filter((c) => c.w.length > 0);
-  return measure(pcm, RATE, timed);
-}
+const toWords = (pcm: Float32Array, chunks: Chunk[]): Word[] => measure(pcm, RATE, words(chunks, pcm.length / RATE));
 
 let recording: Recording | undefined;
 let stopTimer: ReturnType<typeof setTimeout> | undefined;
@@ -254,6 +248,7 @@ async function send(): Promise<void> {
       body: JSON.stringify({ words: pending }),
     });
     if (res.status === 401) return idle("Join the room first.");
+    if (res.status === 429) return idle("That's a lot at once. Try again in a few seconds.");
     if (!res.ok) return idle("That couldn't be sent. Try saying it again.");
     pending = [];
     idle("Sent.");

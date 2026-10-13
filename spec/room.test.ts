@@ -149,6 +149,16 @@ describe.skipIf(!writable)("the room", () => {
     expect(w).toMatchObject({ loud: 18, pitch: -12, rise: 12, stretch: -2 });
   });
 
+  it("won't let one person fill the room, and doesn't hold that against anyone else", async () => {
+    const loud = await person();
+    const statuses: number[] = [];
+    for (let i = 0; i < 7; i++) statuses.push((await loud.say({ words: [word(`again${i}`, 0)] })).status);
+    expect(statuses.slice(0, 6)).toEqual([201, 201, 201, 201, 201, 201]);
+    expect(statuses[6]).toBe(429);
+    const other = await person();
+    expect((await other.say({ words: [word("meanwhile", 0)] })).status).toBe(201);
+  });
+
   it("escapes what people say, so nobody can put markup on anyone else's page", async () => {
     const p = await person();
     await p.say({ words: [word("<script>alert(1)</script>", 0)] });

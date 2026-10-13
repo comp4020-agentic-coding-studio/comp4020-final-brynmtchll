@@ -9,7 +9,9 @@
 // @ts-expect-error: a URL import the type checker can't follow
 import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0";
 
-export type Chunk = { text: string; timestamp: [number, number | null] };
+import type { Heard } from "./prosody.ts";
+
+export type Chunk = Heard;
 export type FromWorker =
   | { type: "loading"; loaded: number; total: number }
   | { type: "ready" }

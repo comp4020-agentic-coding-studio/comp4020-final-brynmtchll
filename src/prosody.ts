@@ -6,6 +6,8 @@
 import { letterCount, type Word } from "./voice.ts";
 
 export type Timed = { w: string; start: number; end: number };
+// a word as Whisper hands it over: leading space, and no end on the last one
+export type Heard = { text: string; timestamp: [number, number | null] };
 // active: loud enough to be part of someone speaking rather than a pause
 export type Frame = { db: number; hz: number | null; active: boolean };
 // a run of speech between two pauses, in frames (to is exclusive)
@@ -220,6 +222,15 @@ export function holds(fs: Frame[]): Phrase[] {
     peak = f?.db ?? -Infinity;
   }
   return out;
+}
+
+// What Whisper heard, as timed words. It labels sounds it can't make words of
+// ("[BLANK_AUDIO]", "(music)", "♪") and those aren't anything anyone said, so
+// they're dropped, along with anything left with no letters or digits.
+export function words(chunks: Heard[], seconds: number): Timed[] {
+  return chunks
+    .map((c) => ({ w: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] ?? seconds }))
+    .filter((c) => !/^[[(*♪].*[\])*♪]$/u.test(c.w) && /[\p{L}\p{N}]/u.test(c.w));
 }
 
 // The words with how each was said, or none at all if the clip has almost
