@@ -102,6 +102,21 @@ describe("hearing how a word was said", () => {
     expect(measure(new Float32Array(RATE * 2), RATE, [{ w: "you", start: 0, end: 1 }])).toEqual([]);
   });
 
+  it("hears a whisper, which has no pitch to find, as someone speaking", () => {
+    // noise shaped into syllables: loudness rising and falling four times a
+    // second, as a whispered sentence does, with nothing voiced
+    const c = new Float32Array(RATE * 2);
+    let seed = 5;
+    for (let i = 0; i < c.length; i++) {
+      const t = i / RATE;
+      const syllable = Math.max(0, Math.sin(2 * Math.PI * 4 * t)) ** 2;
+      c[i] = ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * (0.002 + 0.05 * syllable);
+    }
+    const [x] = measure(c, RATE, [{ w: "secret", start: 0.1, end: 1.8 }]);
+    expect(x.w).toBe("secret");
+    expect(x.pitch).toBeNull();
+  });
+
   it("hears nothing in a room's background noise either, hum and all", () => {
     // what a quiet room gives a laptop: hiss, plus mains hum and its harmonics
     const c = new Float32Array(RATE * 2);

@@ -48,12 +48,14 @@ const LEAST_PACE = 0.04;
 const PERIODIC = 0.2;
 const LOOSELY = 0.45;
 const CARRIES = 1.5;
-// Somebody spoke if a tenth of a second was voiced, or, for a voice the pitch
-// tracker can barely follow, if MIN_SPOKEN of sound stood clear of the
-// background in phrases. Silence and steady room noise do neither: noise has
-// no pauses to make phrases of, and its level sets the background.
+// Somebody spoke if a tenth of a second was voiced, or, for a voice with
+// little or no pitch to track (a whisper, a breathy sad take), if the
+// loudness moves the way syllables make it: speech rises and falls several
+// times a second and room noise holds steady. Measured as the spread of the
+// loudness smoothed over 50 ms: whispered and sad takes in EARS and CREMA-D
+// spread 3.4 to 11.5 dB; hiss, mains hum and a fan, 0.1 to 0.6.
 const MIN_VOICED = 10; // frames
-const MIN_SPOKEN = 30; // frames
+const SYLLABIC = 2; // dB
 // A held sound is a stretch of voice that doesn't jump in pitch from one frame
 // to the next or dip in loudness; a consonant between syllables does one or
 // the other. It may slide in pitch while it's held ("whyyy?").
@@ -63,15 +65,22 @@ const MIN_HOLD = 5; // frames: anything shorter is a transition, not a sound
 // How long a held sound usually lasts, as the yardstick for drawn out: the
 // long end of ordinary (the 75th percentile of the message's held sounds),
 // since half of them are fragments where the pitch broke up and a stressed
-// vowel is ordinary too. In recorded speeches (JFK, MLK) these came to 0.2 to
-// 0.25 s and nothing was held past 0.37 s. It's kept between TYPICAL_HOLD's
-// bounds, so a fast talker's stressed vowel isn't drawn out and a message
-// that's mostly drawn out ("sooo goood") isn't its own yardstick; with fewer
-// than FEW_HOLDS ("nooo" alone has one) there's too little to measure, and
+// vowel is ordinary too. It's kept between TYPICAL_HOLD's bounds: the lower
+// one so a fast reader's stressed vowel isn't drawn out (twice it, 0.38 s, is
+// the least a sound must be held), the upper so a message that's mostly
+// drawn out ("sooo goood") isn't its own yardstick; with fewer than
+// FEW_HOLDS ("nooo" alone has one) there's too little to measure, and
 // USUAL_HOLD stands in.
+//
+// The lower bound was tuned on two EARS speakers reading the same passages
+// regular, fast and slow (3844 words) against JFK's "so" lengthened by 0.12,
+// 0.24 and 0.5 s: at 0.15, 2.6% of words read carefully came out drawn out
+// and every lengthening was caught; at 0.19, 1.5% and still every one; at
+// 0.21, 0.9% but the 0.12 s one was missed. Some of that 1.5% is real
+// ("rouuund arch", "nooo more"); some isn't.
 const FEW_HOLDS = 3;
 const USUAL_HOLD = 0.2;
-const TYPICAL_HOLD = [0.15, 0.25] as const;
+const TYPICAL_HOLD = [0.19, 0.25] as const;
 
 const median = (xs: number[]): number => {
   const s = [...xs].sort((a, b) => a - b);
@@ -241,6 +250,18 @@ export function align(timed: Timed[], ps: Phrase[]): Timed[] {
   return out;
 }
 
+// how much a clip's loudness rises and falls at the pace of syllables: the
+// spread of its loudness smoothed over five frames, in dB
+function wobble(fs: Frame[]): number {
+  if (fs.length === 0) return 0;
+  const smooth = fs.map((_, i) => {
+    const near = fs.slice(Math.max(0, i - 2), i + 3);
+    return near.reduce((n, f) => n + f.db, 0) / near.length;
+  });
+  const mean = smooth.reduce((a, b) => a + b, 0) / smooth.length;
+  return Math.sqrt(smooth.reduce((n, d) => n + (d - mean) ** 2, 0) / smooth.length);
+}
+
 // The sounds the voice held, roughly one per syllable: the vowels, mostly,
 // and the hummed consonants that run into them. Only clearly voiced frames
 // count: a held vowel is clear, and a pitch followed through noise would make
@@ -327,9 +348,7 @@ function contourOf(span: Frame[], n: number): (number | null)[] {
 // person's other messages.
 export function hear(pcm: Float32Array, rate: number, timed: Timed[]): { words: Word[]; voice: Voice | null } {
   const fs = frames(pcm, rate);
-  const voicedFrames = fs.filter((f) => f.hz !== null).length;
-  const spoken = phrases(fs).reduce((n, p) => n + p.to - p.from, 0);
-  const anyone = voicedFrames >= MIN_VOICED || (spoken >= MIN_SPOKEN && spoken < fs.length * 0.95);
+  const anyone = fs.filter((f) => f.hz !== null).length >= MIN_VOICED || wobble(fs) >= SYLLABIC;
   if (!anyone || timed.length === 0) return { words: [], voice: null };
 
   const sounds = holds(fs);
