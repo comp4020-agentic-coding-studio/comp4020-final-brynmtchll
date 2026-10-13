@@ -43,8 +43,14 @@ async function body(req: IncomingMessage, limit: number): Promise<string | null>
   return text;
 }
 
+// Pages are cross-origin isolated, which is what lets Whisper's WebAssembly
+// runtime use more than one CPU core (it needs SharedArrayBuffer). The price:
+// anything a page loads from another site must say it may be embedded, which
+// the CDN and Hugging Face both do.
+const ISOLATED = { "cross-origin-opener-policy": "same-origin", "cross-origin-embedder-policy": "require-corp" };
+
 function send(res: ServerResponse, status: number, type: string, payload: string | Buffer): void {
-  res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
+  res.writeHead(status, { "content-type": type, "cache-control": "no-store", ...ISOLATED });
   res.end(payload);
 }
 

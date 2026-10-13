@@ -12,6 +12,7 @@ export function layout(title: string, body: string, script = ""): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:,">
 ${script}
 </head>
 <body>
