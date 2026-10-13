@@ -64,7 +64,10 @@ export function roomPage(messages: Message[], me: Person | undefined, msg: strin
   return layout(
     `${APP}: say it how you mean it`,
     `<main class="room">
-  <p class="lede">Everything here was spoken. Louder words are heavier, higher words sit higher, rising words tilt up, and drawn-out sounds repeat, sooo.</p>
+  <div class="intro">
+    <h1>Say it how you mean it</h1>
+    <p class="lede">Everything here was spoken. Louder words are heavier, higher words sit higher, rising words tilt up, and drawn-out sounds repeat, sooo.</p>
+  </div>
   ${speak}
   <section aria-labelledby="room-h">
     <h2 id="room-h">The room</h2>
