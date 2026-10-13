@@ -1,4 +1,8 @@
 :root {
+  /* every person's colour is a hue from their name (voice.ts) at this
+     saturation and lightness, chosen per theme so any hue reads */
+  --person-s: 70%;
+  --person-l: 36%;
   --bg: #f4f1ea;
   --ink: #16140f;
   --muted: #6b665b;
@@ -10,6 +14,8 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    --person-s: 75%;
+    --person-l: 72%;
     --bg: #12110e;
     --ink: #ece7dc;
     --muted: #9c968a;
@@ -65,16 +71,16 @@ button.quiet { border-color: transparent; color: var(--muted); }
 
 .speak { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; }
 .speak h2 { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 1.25rem; }
+.speak:not(section) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.speak:not(section) .status { margin: 0; }
 .talk { font-weight: 700; padding: 14px 24px; border: 2px solid var(--ink); border-radius: 999px; }
-/* while recording, the button's ring follows the live input level (0 to 1) */
+/* while on, the button's ring follows the live input level (0 to 1) */
 .talk.recording {
   border-color: var(--live);
   color: var(--live);
   box-shadow: 0 0 0 calc(var(--level, 0) * 14px) color-mix(in srgb, var(--live) 25%, transparent);
 }
 .status { color: var(--muted); margin: 8px 0 0; min-height: 1.5em; }
-.preview { border-top: 1px solid var(--rule); margin-top: 12px; padding-top: 4px; }
-.preview .actions { display: flex; gap: 8px; }
 
 .join { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .join label { width: 100%; color: var(--muted); }
@@ -84,32 +90,82 @@ button.quiet { border-color: transparent; color: var(--muted); }
 .live { margin: 0; font-size: 0.875rem; color: var(--muted); }
 .live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
 .live.on::before { background: #16a34a; }
-.messages { list-style: none; padding: 0; margin: 0; }
-.said { padding: 8px 0 4px; border-bottom: 1px solid var(--rule); }
-.who { margin: 0; font-size: 0.875rem; }
-.who time { color: var(--muted); margin-left: 6px; }
+/* The stage: everyone scattered across it, each at the place their seat gives
+   them (--x, --y, 0-100, from voice.ts), in their colour, with no box around
+   them. Their words appear one at a time where they stand. It's tall enough
+   for a word to sit above each name without running into the next person's,
+   and on a phone it's taller than wide, as the screen is. */
+/* The stage breaks out of the page's reading column to the whole width of
+   the screen, so a room spreads out across it. */
+.stage-wrap { width: 100vw; margin-inline: calc(50% - 50vw); padding-inline: 16px; }
+.stage-wrap > .room-head, .stage-wrap > #nobody, .stage-wrap > .speak { max-width: 728px; margin-inline: auto; }
+.stage-wrap > .speak { margin-block: 8px 0; }
+.stage {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  height: clamp(440px, 72vh, 900px);
+  overflow: hidden;
+}
+@media (max-width: 600px) {
+  .stage { height: clamp(520px, 75vh, 820px); }
+}
+.spot {
+  --person: hsl(var(--hue) var(--person-s) var(--person-l));
+  position: absolute;
+  left: calc(var(--x) * 1%);
+  top: calc(var(--y) * 1%);
+  /* the point is where the name sits; the word rises above it, centred */
+  width: min(16rem, 46%);
+  translate: -50% -100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+/* placed within the part of the stage a word above the name can't hang off:
+   half a spot's width in from each side, a word's height down from the top */
+.spot {
+  --inset: min(8rem, 23%);
+  left: calc(var(--inset) + (100% - 2 * var(--inset)) * var(--x) / 100);
+  top: calc(5rem + (100% - 5.5rem) * var(--y) / 100);
+}
+.spot-name { font-size: 0.875rem; font-weight: 700; color: var(--person); opacity: 0.75; transition: opacity 0.3s; }
+.spot.speaking .spot-name { opacity: 1; }
+.spot-word {
+  min-height: 1.4em;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-size: clamp(1.75rem, 1.25rem + 2vw, 2.75rem);
+  line-height: 1.2;
+  color: var(--person);
+  overflow-wrap: anywhere;
+  transition: opacity 0.6s;
+}
+.spot-word .w { margin: 0; }
+/* the last word, once someone stops, lingers and then goes */
+.spot-word.fading { opacity: 0; transition: opacity 1.2s; }
+
 
 /* How each word was said, drawn from the numbers voice.ts attaches to it (all
-   relative to the speaker's own voice in that message):
+   relative to the speaker's own voice in that phrase):
      --loud     dB above or below their typical word: heavier, bigger, fainter
      --pitch    semitones above or below their typical pitch: sits higher or lower
-     --rise     semitones the pitch moved across the word: tilts up or down
      --gap      seconds of pause after it: more space
    A drawn-out word isn't styled here: voice.ts repeats one of its letters.
-   A word with a pitch line (.has-pitch) draws its pitch there instead, so it
-   doesn't also ride up and down and tilt.
 
-   How the whole message compared with how its speaker usually sounds
-   (--u-loud, --u-range, --u-pitch, each -1 to 1, unset until they've said a
-   few things) scales the lot: louder than usual is bigger, more animated
-   spreads the words' weights further apart. Higher than usual has no look of
-   its own; the line under it says so. Pace has none either: playback shows it. */
+   How the whole phrase compared with how its speaker usually sounds (--u-loud,
+   --u-range, --u-pitch, each -1 to 1, unset until they've said a few things)
+   scales the lot: louder than usual is bigger, more animated spreads the
+   words' weights further apart. Higher than usual has no look of its own;
+   the note under it says so. */
 .words {
   font-size: calc(clamp(1.25rem, 1rem + 1vw, 1.75rem) * (1 + var(--u-loud, 0) * 0.18));
-  line-height: 2.6;
+  line-height: 2.4;
   margin: 0;
-  /* room under the last line for its pitch line */
-  padding-bottom: 0.6em;
   overflow-wrap: anywhere;
 }
 .w {
@@ -120,32 +176,8 @@ button.quiet { border-color: transparent; color: var(--muted); }
   /* no fainter than 0.6, which still reads at about 4.5:1 in both themes */
   opacity: clamp(0.6, calc(1 + var(--loud) * 0.05), 1);
   margin-right: min(calc(var(--gap) * 0.6em), 2em);
-  transform: translateY(calc(var(--pitch) * -0.07em)) rotate(clamp(-10deg, calc(var(--rise) * -1.5deg), 10deg));
-  transform-origin: left center;
+  transform: translateY(calc(var(--pitch) * -0.07em));
 }
-.w.has-pitch { position: relative; transform: none; }
-/* The pitch line runs under each word and on under the space after it, so a
-   phrase's line reads as one melody. Its box is the same height everywhere,
-   whatever size the word is, so a high note is equally high under any word. */
-.pitch {
-  position: absolute;
-  left: 0;
-  top: 100%;
-  width: calc(100% + 0.3em);
-  height: calc(0.9rem + 0.4vw);
-  margin-top: -0.2em;
-  overflow: visible;
-  pointer-events: none;
-}
-.pitch path { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.pitch .usual { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 2 3; }
-.said > .usual { margin: 0 0 8px; font-size: 0.875rem; color: var(--muted); font-style: italic; }
-
-/* playing a message back at the pace it was said: words not yet spoken are
-   held back, and the drawn-out letters of the word being said come in one by one */
-.words.playing .w.unsaid { visibility: hidden; }
-.words.playing .held > .unsaid { visibility: hidden; }
-.replay { font-size: 0.8125rem; min-height: 0; padding: 2px 10px; margin-left: 6px; border-radius: 999px; color: var(--muted); }
 
 .prose { max-width: 70ch; }
 .prose img { max-width: 100%; }

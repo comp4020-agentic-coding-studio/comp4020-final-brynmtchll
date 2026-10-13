@@ -222,54 +222,51 @@ export function repeats(x: Word): number {
   return Math.min(MOST_REPEATS, Math.max(1, Math.round(2 * (2 ** x.stretch - 1))));
 }
 
-// The pitch line under a word: its contour as an SVG path in a box 100 wide
-// and 24 high, against the message's typical pitch as a dotted line at the
-// middle. Each gap where nothing was voiced breaks the line. Hidden from
-// screen readers, which have the words.
-// semitones from the middle to the top or bottom edge: ordinary speech moves
-// two to four either side of typical, which should fill most of the height
-const PITCH_SPAN = 6;
-function pitchLine(contour: (number | null)[]): string {
-  if (contour.every((p) => p === null)) return "";
-  const x = (k: number): number => (contour.length === 1 ? 50 : (k / (contour.length - 1)) * 100);
-  const y = (p: number): number => 12 - (clamp(p, -PITCH_SPAN, PITCH_SPAN) / PITCH_SPAN) * 11;
-  // each unbroken run of voiced points is one stroke; a lone point, a short dash
-  const runs: string[][] = [[]];
-  contour.forEach((p, k) => {
-    if (p === null) runs.push([]);
-    else runs.at(-1)!.push(`${round(x(k))} ${round(y(p))}`);
-  });
-  const d = runs
-    .filter((r) => r.length > 0)
-    .map((r) => (r.length === 1 ? `M${r[0]}h4` : `M${r.join("L")}`))
-    .join("");
-  return `<svg class="pitch" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><path class="usual" d="M0 12H100"/><path d="${d}"/></svg>`;
+// One word as HTML, styled by how it was said: its numbers go on as CSS
+// custom properties and style.css decides what they look like, so how loud
+// becomes how heavy is tuned in one place. A drawn-out word repeats a letter
+// the way people type it ("sooo"); the repeats are hidden from screen
+// readers, which read the word as said.
+export function wordHtml(x: Word, gap = 0): string {
+  const vars = `--loud:${x.loud};--pitch:${x.pitch ?? 0};--rise:${x.rise};--gap:${round(clamp(gap, 0, 3))}`;
+  const n = repeats(x);
+  const at = n > 0 ? holdLetter(x.w, x.held ?? null) : null;
+  const cs = chars(x.w);
+  const shown =
+    at === null || cs[at] === undefined
+      ? esc(x.w)
+      : `${esc(cs.slice(0, at + 1).join(""))}<span class="held" aria-hidden="true">${esc(cs[at].repeat(n))}</span>${esc(cs.slice(at + 1).join(""))}`;
+  return `<span class="w" style="${vars}">${shown}</span>`;
 }
 
-// The words as HTML. Each word carries its numbers as CSS custom properties
-// and style.css decides what they look like, so how loud becomes how heavy is
-// tuned in one place. A pause hangs off the end of the word before it, so a
-// pause that falls at a line break doesn't indent the next line. A drawn-out
-// word repeats a letter the way people type it ("sooo"); the repeats are
-// hidden from screen readers, which read the word as said. Each word also
-// carries when it was said (data-t, data-d: start and length in seconds) so
-// the page can play the message back at the pace it was spoken.
+// A message's words as HTML, a pause hanging off the end of the word before
+// it (so a pause at a line break doesn't indent the next line).
 export function renderWords(words: Word[]): string {
-  return words
-    .map((x, i) => {
-      const gap = i + 1 < words.length ? clamp(words[i + 1].start - x.end, 0, 3) : 0;
-      const vars = `--loud:${x.loud};--pitch:${x.pitch ?? 0};--rise:${x.rise};--gap:${round(gap)}`;
-      const n = repeats(x);
-      const at = n > 0 ? holdLetter(x.w, x.held ?? null) : null;
-      const cs = chars(x.w);
-      const shown =
-        at === null || cs[at] === undefined
-          ? esc(x.w)
-          : `${esc(cs.slice(0, at + 1).join(""))}<span class="held" aria-hidden="true">${esc(cs[at].repeat(n))}</span>${esc(cs.slice(at + 1).join(""))}`;
-      const line = pitchLine(x.contour ?? []);
-      return `<span class="w${line ? " has-pitch" : ""}" style="${vars}" data-t="${round(x.start)}" data-d="${round(x.end - x.start)}">${shown}${line}</span>`;
-    })
-    .join(" ");
+  return words.map((x, i) => wordHtml(x, i + 1 < words.length ? words[i + 1].start - x.end : 0)).join(" ");
+}
+
+// Where the i-th person stands on the stage, as 0-100 across and down it.
+// The R2 sequence (Roberts, 2018) spreads its first n points well for any n,
+// so the stage looks scattered with two people or twelve, and nobody moves
+// when someone new arrives. Starting it at 0.67 rather than the usual 0.5
+// leaves the largest empty patch about a fifth smaller with two to eight
+// people, the usual size of a room.
+const PLASTIC = 1.324717957244746;
+const R2_START = 0.67;
+export function spotAt(i: number): { x: number; y: number } {
+  const x = (R2_START + (i + 1) / PLASTIC) % 1;
+  const y = (R2_START + (i + 1) / (PLASTIC * PLASTIC)) % 1;
+  return { x: round(x * 100), y: round(y * 100) };
+}
+
+// Each person's colour, the same everywhere they appear and the same on every
+// page: a hue from their name, spread around the wheel so neighbours differ.
+// Saturation and lightness are style.css's, set per theme so every hue reads
+// against the background.
+export function hueOf(name: string): number {
+  let h = 0;
+  for (const c of name.toLowerCase()) h = (Math.imul(h, 31) + c.codePointAt(0)!) >>> 0;
+  return Math.round(((h % 360) * 137.508) % 360);
 }
 
 export const ago = (at: number, now: number = Date.now()): string => {

@@ -42,12 +42,12 @@ async function person() {
 }
 
 // An open page's live stream. One reader collects every message event as it
-// comes; waitFor resolves with the first one whose HTML mentions `needle`,
+// comes; waitFor resolves with the first one that mentions `needle`,
 // whether it came before or after the call, so several can wait at once.
 function listen(headers: Record<string, string> = {}, query = "") {
   const controller = new AbortController();
   const ready = fetch(new URL(`/events${query}`, baseUrl), { headers, signal: controller.signal });
-  const seen: { id: number; html: string }[] = [];
+  const seen: { id: number }[] = [];
   const waiting = new Set<() => void>();
   const reading = (async () => {
     const res = await ready;
@@ -71,10 +71,10 @@ function listen(headers: Record<string, string> = {}, query = "") {
       // closed
     }
   })();
-  const waitFor = (needle: string, ms = 3000): Promise<{ id: number; html: string }> =>
+  const waitFor = (needle: string, ms = 3000): Promise<{ id: number; name?: string }> =>
     new Promise((resolve, reject) => {
       const check = (): void => {
-        const found = seen.find((e) => e.html.includes(needle));
+        const found = seen.find((e) => JSON.stringify(e).includes(needle));
         if (!found) return;
         waiting.delete(check);
         clearTimeout(timer);
@@ -103,7 +103,32 @@ const messages = async (): Promise<Said[]> =>
 describe.skipIf(!writable)("the room", () => {
   it("remembers who you are when you come back", async () => {
     const p = await person();
-    expect(await p.page()).toContain(`Say something, ${p.name}`);
+    expect(await p.page()).toContain(`${p.name} (you)`);
+  });
+
+  it("gives everyone a place of their own, the same on every page, each in their own colour", async () => {
+    const [a, b] = [await person(), await person()];
+    await a.say({ words: [word("spot", 0)] });
+    const place = (page: string, name: string) =>
+      page.match(new RegExp(`data-name="${name}" style="--hue:(\\d+);--x:([\\d.]+);--y:([\\d.]+)"`))?.slice(1);
+    const [fromA, fromB] = [await a.page(), await b.page()];
+    expect(place(fromA, a.name)).toBeDefined();
+    expect(place(fromB, a.name)).toEqual(place(fromA, a.name));
+    expect(place(fromB, b.name)).not.toEqual(place(fromB, a.name));
+  });
+
+  it("sends each phrase with what a page needs to play it word by word", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const stamp = Date.now();
+    await p.say({ words: [word(`first${stamp}`, 0.2), word("second", 0.9)] });
+    const e = (await watcher.waitFor(`first${stamp}`)) as unknown as { name: string; hue: number; words: { html: string; t: number; d: number }[] };
+    expect(e.name).toBe(p.name);
+    expect(e.hue).toBeGreaterThanOrEqual(0);
+    expect(e.words.map((w) => [w.t, w.d])).toEqual([[0.2, 0.3], [0.9, 0.3]]);
+    expect(e.words[1].html).toContain("second");
+    watcher.close();
   });
 
   it("shows what one person says on every other open page within a second, without a reload", async () => {
@@ -116,7 +141,7 @@ describe.skipIf(!writable)("the room", () => {
     expect((await speaker.say({ words: [word(marker, 0)] })).status).toBe(201);
     const event = await arrived;
     expect(performance.now() - started).toBeLessThan(1000);
-    expect(event.html).toContain(speaker.name);
+    expect(event.name).toBe(speaker.name);
     watcher.close();
   });
 
@@ -137,7 +162,8 @@ describe.skipIf(!writable)("the room", () => {
     await p.say({ words: [word(marker, 0)] });
     const found = (await messages()).find((m) => m.text === marker);
     expect(found).toMatchObject({ name: p.name, text: marker });
-    expect(await (await fetch(new URL("/", baseUrl))).text()).toContain(marker);
+    // and who said it keeps their place in the room
+    expect(await (await fetch(new URL("/", baseUrl))).text()).toContain(`data-name="${p.name}"`);
   });
 
   it("gets everyone's message to every open page when several speak at the same moment", async () => {
@@ -192,17 +218,19 @@ describe.skipIf(!writable)("the room", () => {
   it("won't let one person fill the room, and doesn't hold that against anyone else", async () => {
     const loud = await person();
     const statuses: number[] = [];
-    for (let i = 0; i < 7; i++) statuses.push((await loud.say({ words: [word(`again${i}`, 0)] })).status);
-    expect(statuses.slice(0, 6)).toEqual([201, 201, 201, 201, 201, 201]);
-    expect(statuses[6]).toBe(429);
+    // someone talking without a break sends a phrase every second or two;
+    // the limit (20 in 30 s) is past that
+    for (let i = 0; i < 21; i++) statuses.push((await loud.say({ words: [word(`again${i}`, 0)] })).status);
+    expect(statuses.slice(0, 20).every((s) => s === 201)).toBe(true);
+    expect(statuses[20]).toBe(429);
     const other = await person();
     expect((await other.say({ words: [word("meanwhile", 0)] })).status).toBe(201);
   });
 
   it("holds to the limit even when someone sends a burst all at once", async () => {
     const burst = await person();
-    const statuses = await Promise.all(Array.from({ length: 20 }, (_, i) => burst.say({ words: [word(`burst${i}`, 0)] }).then((r) => r.status)));
-    expect(statuses.filter((s) => s === 201)).toHaveLength(6);
+    const statuses = await Promise.all(Array.from({ length: 40 }, (_, i) => burst.say({ words: [word(`burst${i}`, 0)] }).then((r) => r.status)));
+    expect(statuses.filter((s) => s === 201)).toHaveLength(20);
   });
 
   it("only takes changes from the app's own pages, so another site can't sign someone in as someone new", async () => {
@@ -215,7 +243,7 @@ describe.skipIf(!writable)("the room", () => {
     });
     expect(res.status).toBe(403);
     expect(res.headers.get("set-cookie")).toBeNull();
-    expect(await p.page()).toContain(`Say something, ${p.name}`);
+    expect(await p.page()).toContain(`${p.name} (you)`);
   });
 
   it("won't let a new name pass as an existing one with invisible characters", async () => {
@@ -232,12 +260,14 @@ describe.skipIf(!writable)("the room", () => {
     const p = await person();
     // "İ" is two characters once lowercased, which once shifted the drawn-out
     // letter off the end of the word and took the whole page down
+    const watcher = listen();
+    await watcher.ready;
     for (const w of ["İoo", "𝐚𝐚h", "naïve", "ÆGIR"]) {
       expect((await p.say({ words: [word(w, 0, { stretch: 2, held: 0.5 })] })).status).toBe(201);
     }
-    const page = await fetch(new URL("/", baseUrl));
-    expect(page.status).toBe(200);
-    expect(await page.text()).toContain("İoo");
+    expect((await watcher.waitFor("ÆGIR")).id).toBeGreaterThan(0);
+    expect((await fetch(new URL("/", baseUrl))).status).toBe(200);
+    watcher.close();
   });
 
   it("catches a page up on what was said while it loaded", async () => {
@@ -262,14 +292,33 @@ describe.skipIf(!writable)("the room", () => {
     for (let k = 1; k < 3; k++) await p.say({ words: [word(marker(k), 0)], voice: usual });
     const excited = marker(9);
     await p.say({ words: [word(excited, 0)], voice: { pitch: 25, range: 12, loud: -10, pace: 6 } });
-    const page = await (await fetch(new URL("/", baseUrl))).text();
-    expect(page).toMatch(new RegExp(`${excited}[\\s\\S]*?Higher, more animated and louder than ${p.name} usually sounds`));
+    const found = (await messages()).find((m) => m.text === excited) as Said & { usual: Record<string, number> };
+    expect(found.usual.pitch).toBeGreaterThan(2.5);
+    expect(found.usual.loud).toBeGreaterThan(5);
   });
 
   it("escapes what people say, so nobody can put markup on anyone else's page", async () => {
+    const watcher = listen();
+    await watcher.ready;
     const p = await person();
     await p.say({ words: [word("<script>alert(1)</script>", 0)] });
-    expect(await (await fetch(new URL("/", baseUrl))).text()).not.toContain("<script>alert(1)</script>");
+    const e = (await watcher.waitFor("alert(1)")) as unknown as { words: { html: string }[] };
+    expect(e.words[0].html).not.toContain("<script>");
+    expect(e.words[0].html).toContain("&lt;script&gt;");
+    watcher.close();
+  });
+
+  it("starts a newly opened page from now, not from everything ever said", async () => {
+    const p = await person();
+    const old = `before${Date.now()}`;
+    await p.say({ words: [word(old, 0)] });
+    const fresh = listen({}, "?after=now");
+    await fresh.ready;
+    const next = `after${Date.now()}`;
+    await p.say({ words: [word(next, 0)] });
+    await fresh.waitFor(next);
+    await expect(fresh.waitFor(old, 300)).rejects.toThrow();
+    fresh.close();
   });
 
   it("never shows anyone another person's id, since it doubles as their login", async () => {

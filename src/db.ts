@@ -98,7 +98,28 @@ export function openRoom(file: string, now: () => number = Date.now) {
   const since = (id: number, limit = 200): Message[] =>
     (db.prepare(`${SELECT} WHERE m.id > ? ORDER BY m.id ASC LIMIT ?`).all(id, limit) as MessageRow[]).map(toMessage);
 
-  return { findPerson, join, say, recent, since, close: () => db.close() };
+  // Who stands on the stage, and where: everyone who has said something in
+  // the last WHILE, or joined in that time, most recent first, at most
+  // `limit`. Each keeps the place they were given when they joined (their
+  // join order, as `seat`), so nobody moves when someone arrives or leaves,
+  // and every page puts them in the same spot.
+  const WHILE = 60 * 60_000;
+  const people = (limit = 16): { name: string; seat: number }[] =>
+    (
+      db
+        .prepare(
+          `SELECT p.name, p.rowid AS seat, MAX(COALESCE(MAX(m.at), 0), p.joined_at) AS last FROM people p
+           LEFT JOIN messages m ON m.person_id = p.id
+           GROUP BY p.id HAVING last > ? ORDER BY last DESC LIMIT ?`,
+        )
+        .all(now() - WHILE, limit) as { name: string; seat: number }[]
+    ).map((r) => ({ name: r.name, seat: Number(r.seat) }));
+  const seatOf = (name: string): number =>
+    Number((db.prepare("SELECT rowid AS seat FROM people WHERE name = ?").get(name) as { seat: number } | undefined)?.seat ?? 0);
+
+  const newest = (): number => Number((db.prepare("SELECT COALESCE(MAX(id), 0) AS n FROM messages").get() as { n: number }).n);
+
+  return { findPerson, join, say, recent, since, people, seatOf, newest, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;

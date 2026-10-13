@@ -356,6 +356,18 @@ function contourOf(span: Frame[], n: number): (number | null)[] {
 // The words, and the message's voice as a whole (null with no words). The
 // voice is on absolute scales so the server can compare it with the same
 // person's other messages.
+// Whether a stretch of microphone is worth asking Whisper about, decided
+// before it's asked: Whisper hears words in almost anything, and given a
+// phrase that was mostly a breath, a click or the room it wrote whole
+// sentences nobody said ("My name is Bernoulli.", "We'll see you next
+// time."). A phrase needs ENOUGH_VOICE of clear voice, or a whisper's
+// syllable rhythm across most of it.
+const ENOUGH_VOICE = 30; // frames
+export function spoke(pcm: Float32Array, rate: number): boolean {
+  const fs = frames(pcm, rate);
+  return fs.filter((f) => f.clear).length >= ENOUGH_VOICE || (fs.length >= 50 && wobble(fs) >= SYLLABIC * 1.5);
+}
+
 export function hear(pcm: Float32Array, rate: number, timed: Timed[]): { words: Word[]; voice: Voice | null } {
   const fs = frames(pcm, rate);
   const anyone = fs.filter((f) => f.hz !== null).length >= MIN_VOICED || wobble(fs) >= SYLLABIC;

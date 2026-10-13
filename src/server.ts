@@ -5,8 +5,8 @@ import { join as joinPath } from "node:path";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { marked } from "marked";
 import { openRoom, type Message } from "./db.ts";
-import { APP, messageHtml, readmePage, roomPage } from "./view.ts";
-import { clean, cleanVoice } from "./voice.ts";
+import { APP, readmePage, roomPage } from "./view.ts";
+import { clean, cleanVoice, hueOf, spotAt, wordHtml } from "./voice.ts";
 
 const css = readFileSync(new URL("./style.css", import.meta.url));
 const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")));
@@ -87,10 +87,12 @@ const listening = new Set<ServerResponse>();
 // each open page holds a connection on a 256 MB machine, so there's a ceiling
 const MOST_LISTENING = 500;
 
-// No one person can fill the room: at most SAY_LIMIT messages in any
-// SAY_WINDOW. Speaking, listening back and sending takes a few seconds each
-// time, so ordinary talk never meets it. Kept in memory; a restart forgets.
-const SAY_LIMIT = 6;
+// No one person can fill the room: at most SAY_LIMIT phrases in any
+// SAY_WINDOW. Someone talking without a break sends a phrase at every pause,
+// and Whisper takes most of a second on each even on a fast machine, so
+// ordinary talk sends one every second or two at most. Kept in memory; a
+// restart forgets.
+const SAY_LIMIT = 20;
 const SAY_WINDOW = 30_000;
 // A send counts from when it arrives, before its body is read, so a burst of
 // sends at once can't all slip in under the limit; one that turns out not to
@@ -114,7 +116,26 @@ setInterval(() => {
   for (const [id, times] of said) if (times.every((t) => now - t >= SAY_WINDOW)) said.delete(id);
 }, SAY_WINDOW).unref();
 
-const event = (m: Message): string => `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({ id: m.id, html: messageHtml(m) })}\n\n`;
+const tenths = (n: number): number => Math.round(n * 10) / 10;
+
+// A phrase goes out as what the stage needs to play it: who, where they
+// stand and in what colour, each word as HTML with when it was said, and the
+// plain text for screen readers.
+const event = (m: Message): string =>
+  `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({
+    id: m.id,
+    name: m.name,
+    hue: hueOf(m.name),
+    ...spotAt(room.seatOf(m.name)),
+    text: m.text,
+    at: m.at,
+    words: m.words.map((w, i) => ({
+      html: wordHtml(w),
+      t: w.start,
+      d: tenths(w.end - w.start),
+      gap: tenths((m.words[i + 1]?.start ?? w.end) - w.end),
+    })),
+  })}\n\n`;
 
 // Where a stream starts: after the message the browser last saw (Last-Event-ID,
 // which it sends itself when it reconnects), or after the newest one the page
@@ -123,7 +144,8 @@ function listen(req: IncomingMessage, res: ServerResponse, after: string | null)
   // the page tries again itself, waiting longer each time
   if (listening.size >= MOST_LISTENING) return send(res, 503, "text/plain; charset=utf-8", "Too many people listening");
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive", ...ISOLATED });
-  const last = Number(req.headers["last-event-id"] ?? after ?? NaN);
+  // a reconnecting page catches up on what it missed; a new one starts now
+  const last = Number(req.headers["last-event-id"] ?? (after === "now" ? room.newest() : after) ?? NaN);
   if (Number.isSafeInteger(last)) {
     for (const m of room.since(last)) {
       try {
@@ -148,7 +170,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const me = room.findPerson(cookieId(req));
 
   if (req.method === "GET" && url.pathname === "/") {
-    return send(res, 200, "text/html; charset=utf-8", roomPage(room.recent(), me, url.searchParams.get("m") ?? undefined));
+    const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
+    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined));
   }
   if (req.method === "GET" && (url.pathname === "/readme/" || url.pathname === "/readme")) {
     return send(res, 200, "text/html; charset=utf-8", readme);

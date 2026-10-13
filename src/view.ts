@@ -1,5 +1,5 @@
 import type { Message, Person } from "./db.ts";
-import { ago, describe, esc, renderWords, usualVars } from "./voice.ts";
+import { esc, hueOf, spotAt } from "./voice.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
@@ -28,38 +28,25 @@ const MESSAGES: Record<string, string> = {
   "no-person": "Pick a name first.",
 };
 
-// One message. The same markup goes into the page and down the live stream,
-// so a message that arrives live looks exactly like one that was already there.
-// The words as drawn play back a word at a time, which a screen reader would
-// announce in pieces, so they're hidden from it and it reads the plain text.
-// How it compared with how its speaker usually sounds sets the whole
-// message's style (style.css says how) and, past a noticeable difference, a
-// line that says so. The replay button needs the page's script, so it's
-// hidden until the script shows it.
-export function messageHtml(m: Message, now = Date.now()): string {
-  const usual = describe(m.usual, m.name);
-  return `<li id="m${m.id}" class="said" style="${usualVars(m.usual)}">
-    <p class="who"><strong>${esc(m.name)}</strong> <time datetime="${new Date(m.at).toISOString()}" data-at="${m.at}">${ago(m.at, now)}</time>
-      <button type="button" class="replay" aria-label="Replay ${esc(m.name)}'s message" hidden>Replay</button></p>
-    <p class="words" aria-hidden="true">${renderWords(m.words)}</p>
-    <p class="visually-hidden">${esc(m.text)}</p>
-    ${usual ? `<p class="usual">${esc(usual)}</p>` : ""}
+// A person's spot on the stage, where their words appear one at a time as
+// they're said: at the place their seat gives them, in their colour. The live
+// word is hidden from screen readers, which hear each whole phrase from the
+// page's one live region instead.
+export function spotHtml(name: string, seat: number, mine = false): string {
+  const { x, y } = spotAt(seat);
+  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(name)};--x:${x};--y:${y}">
+    <span class="spot-word" aria-hidden="true"></span>
+    <span class="spot-name">${esc(name)}${mine ? " (you)" : ""}</span>
   </li>`;
 }
 
-export function roomPage(messages: Message[], me: Person | undefined, msg: string | undefined): string {
+export function roomPage(people: { name: string; seat: number }[], me: (Person & { seat: number }) | undefined, msg: string | undefined): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
   const speak = me
-    ? `<section class="speak" aria-labelledby="speak-h">
-        <h2 id="speak-h">Say something, ${esc(me.name)}</h2>
-        <button id="talk" type="button" class="talk" disabled>Start talking</button>
+    ? `<div class="speak">
+        <button id="talk" type="button" class="talk" aria-pressed="false" disabled>Turn on microphone</button>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
-        <div id="preview" class="preview" hidden>
-          <p class="words" id="preview-words"></p>
-          <div class="actions"><button id="send" type="button">Send</button><button id="discard" type="button" class="quiet">Say it again</button></div>
-        </div>
-        <p class="fine">Your voice is turned into words in this browser. Only the words, and how loud, high and drawn-out each one was, leave it. No recording is kept anywhere.</p>
-      </section>`
+      </div>`
     : `<section class="speak" aria-labelledby="join-h">
         <h2 id="join-h">Join the room</h2>
         ${notice}
@@ -70,30 +57,23 @@ export function roomPage(messages: Message[], me: Person | undefined, msg: strin
         </form>
       </section>`;
 
-  // one message that can't be drawn mustn't take the page down with it
-  const list = messages
-    .map((m) => {
-      try {
-        return messageHtml(m);
-      } catch (err) {
-        console.error(`message ${m.id} couldn't be drawn`, err);
-        return "";
-      }
-    })
-    .join("");
+  const here = me && !people.some((p) => p.name === me.name) ? [{ name: me.name, seat: me.seat }, ...people] : people;
+  const stage = here.map((p) => spotHtml(p.name, p.seat, p.name === me?.name)).join("");
   return layout(
     `${APP}: say it how you mean it`,
     `<main class="room">
   <div class="intro">
     <h1>Say it how you mean it</h1>
-    <p class="lede">Everything here was spoken, and plays back at the pace it was said. Louder words are heavier, drawn-out sounds repeat (sooo), and the line underneath follows the voice up and down.</p>
+    <p class="lede">Turn your microphone on and talk. Your words appear where you are, as you say them, for everyone here: louder is heavier, higher sits higher, drawn-out sounds repeat (sooo).</p>
   </div>
-  ${speak}
-  <section aria-labelledby="room-h">
-    <div class="room-head"><h2 id="room-h">The room</h2><p id="live" class="live" role="status" hidden></p></div>
-    <p id="empty" ${list ? "hidden" : ""}>Nobody has said anything yet.</p>
-    <ol id="messages" class="messages" aria-live="polite">${list}</ol>
+  <section class="stage-wrap" aria-labelledby="stage-h">
+    <div class="room-head"><h2 id="stage-h">In the room</h2><p id="live" class="live" role="status" hidden></p></div>
+    ${speak}
+    <ul id="stage" class="stage">${stage}</ul>
+    <p id="nobody" class="fine" ${stage ? "hidden" : ""}>Nobody's here yet.</p>
+    <p id="heard" class="visually-hidden" aria-live="polite"></p>
   </section>
+  <p class="fine">Your voice is turned into words in this browser. Only the words, and how loud, high and drawn-out each one was, leave it. No recording is kept anywhere.</p>
 </main>`,
     `<script type="module" src="/js/client.ts"></script>`,
   );
