@@ -3,7 +3,7 @@
 // word onto the speech it belongs to and looks at the audio there. Every
 // number comes out relative to the rest of the same message (voice.ts says
 // why), so nothing here needs to know whose voice it is.
-import { letterCount, type Word } from "./voice.ts";
+import { LIMITS, letterCount, type Voice, type Word } from "./voice.ts";
 
 export type Timed = { w: string; start: number; end: number };
 // a word as Whisper hands it over: leading space, and no end on the last one
@@ -225,20 +225,68 @@ export function holds(fs: Frame[]): Phrase[] {
 }
 
 // What Whisper heard, as timed words. It labels sounds it can't make words of
-// ("[BLANK_AUDIO]", "(music)", "♪") and those aren't anything anyone said, so
-// they're dropped, along with anything left with no letters or digits.
+// ("[BLANK_AUDIO]", "(upbeat music)", "♪", "*laughs*") and those aren't
+// anything anyone said, so they're dropped, along with anything left with no
+// letters or digits. A label of several words arrives split ("(upbeat",
+// "music)"), so everything from an opening bracket to its closing one goes.
+const OPENS: Record<string, string> = { "[": "]", "(": ")", "*": "*", "♪": "♪" };
 export function words(chunks: Heard[], seconds: number): Timed[] {
-  return chunks
-    .map((c) => ({ w: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] ?? seconds }))
-    .filter((c) => !/^[[(*♪].*[\])*♪]$/u.test(c.w) && /[\p{L}\p{N}]/u.test(c.w));
+  const out: Timed[] = [];
+  let closing: string | null = null;
+  for (const c of chunks) {
+    const w = c.text.trim();
+    if (closing === null && w && w[0] in OPENS) {
+      closing = OPENS[w[0]];
+      // a label that opens and closes in one piece ("[BLANK_AUDIO]"); a lone
+      // "♪" or "*" opens, since singing between notes isn't speech either
+      if (w.length > 1 && w.endsWith(closing)) closing = null;
+      continue;
+    }
+    if (closing !== null) {
+      if (w.endsWith(closing)) closing = null;
+      continue;
+    }
+    if (/[\p{L}\p{N}]/u.test(w)) out.push({ w, start: c.timestamp[0], end: c.timestamp[1] ?? seconds });
+  }
+  return out;
 }
 
 // The words with how each was said, or none at all if the clip has almost
 // nothing voiced in it: Whisper invents words for silence ("you", "Thank
 // you."), and those shouldn't reach the room.
 export function measure(pcm: Float32Array, rate: number, timed: Timed[]): Word[] {
+  return hear(pcm, rate, timed).words;
+}
+
+// A pitch track sampled at up to n evenly spaced points: the median of the
+// voiced frames around each, or null where none were voiced. A point that
+// leaps from both its neighbours and lands back is the pitch tracker jumping
+// an octave for a frame or two, not the voice, so it's smoothed over.
+const LEAP = 4; // semitones
+function contourOf(span: Frame[], n: number): (number | null)[] {
+  if (span.length === 0) return [];
+  const points = Math.min(n, Math.max(2, Math.round(span.length / 4)));
+  const out = Array.from({ length: points }, (_, k) => {
+    const a = Math.floor((k * span.length) / points);
+    const b = Math.max(a + 1, Math.floor(((k + 1) * span.length) / points));
+    const semis = span.slice(a, b).flatMap((f) => (f.hz === null ? [] : [12 * Math.log2(f.hz)]));
+    return semis.length ? median(semis) : null;
+  });
+  for (let k = 1; k + 1 < out.length; k++) {
+    const [a, b, c] = [out[k - 1], out[k], out[k + 1]];
+    if (a !== null && b !== null && c !== null && Math.abs(b - a) > LEAP && Math.abs(b - c) > LEAP && Math.abs(a - c) < LEAP) {
+      out[k] = (a + c) / 2;
+    }
+  }
+  return out;
+}
+
+// The words, and the message's voice as a whole (null with no words). The
+// voice is on absolute scales so the server can compare it with the same
+// person's other messages.
+export function hear(pcm: Float32Array, rate: number, timed: Timed[]): { words: Word[]; voice: Voice | null } {
   const fs = frames(pcm, rate);
-  if (fs.filter((f) => f.hz !== null).length < MIN_VOICED) return [];
+  if (fs.filter((f) => f.hz !== null).length < MIN_VOICED || timed.length === 0) return { words: [], voice: null };
 
   const sounds = holds(fs);
   const lengths = sounds.map((h) => (h.to - h.from) * HOP);
@@ -266,6 +314,7 @@ export function measure(pcm: Float32Array, rate: number, timed: Timed[]): Word[]
       rise: semis.length >= 6 ? median(semis.slice(-third)) - median(semis.slice(0, third)) : 0,
       hold: longest ? (longest.to - longest.from) * HOP : null,
       held: longest ? (((longest.from + longest.to) / 2) * HOP - t.start) / Math.max(HOP, t.end - t.start) : null,
+      contour: contourOf(span, LIMITS.contour),
     };
   });
 
@@ -274,7 +323,7 @@ export function measure(pcm: Float32Array, rate: number, timed: Timed[]): Word[]
   const typicalLoud = louds.length ? median(louds) : 0;
   const typicalPitch = pitches.length ? median(pitches) : 0;
 
-  return raw.map((r) => ({
+  const words = raw.map((r) => ({
     w: r.w,
     start: round(r.start),
     end: round(r.end),
@@ -283,5 +332,18 @@ export function measure(pcm: Float32Array, rate: number, timed: Timed[]): Word[]
     rise: round(r.rise),
     stretch: r.hold === null ? 0 : round(Math.log2(r.hold / typicalHold)),
     held: r.held === null ? null : round(r.held),
+    contour: r.contour.map((p) => (p === null || pitches.length === 0 ? null : round(p - typicalPitch))),
   }));
+
+  // the whole message's voice: pitch above A1 (55 Hz) so it's never negative,
+  // and pace as held sounds per second of speech, which tracks syllables
+  const voiced = fs.flatMap((f) => (f.active && f.hz !== null ? [12 * Math.log2(f.hz / 55)] : []));
+  const speaking = fs.filter((f) => f.active).length * HOP;
+  const voice: Voice = {
+    pitch: voiced.length ? round(median(voiced)) : null,
+    range: voiced.length ? round(percentile(voiced, 0.9) - percentile(voiced, 0.1)) : 0,
+    loud: louds.length ? round(typicalLoud) : -100,
+    pace: speaking > 0 ? round(sounds.length / speaking) : 0,
+  };
+  return { words, voice };
 }

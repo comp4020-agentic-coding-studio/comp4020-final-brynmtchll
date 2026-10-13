@@ -1,36 +1,112 @@
 // The page's script. The server renders everything already said, so the page
-// reads fine without this; the script keeps it live and lets people speak.
-import { measure, words } from "./prosody.ts";
-import { ago, renderWords, type Word } from "./voice.ts";
-import type { Chunk, FromWorker, ToWorker } from "./worker.ts";
+// reads fine without this; the script keeps it live, plays messages back at
+// the pace they were said, and lets people speak.
+import { hear, words, type Heard } from "./prosody.ts";
+import { ago, renderWords, type Voice, type Word } from "./voice.ts";
+import type { FromWorker, ToWorker } from "./worker.ts";
 
 const list = document.getElementById("messages") as HTMLOListElement;
 const empty = document.getElementById("empty") as HTMLElement;
+const live = document.getElementById("live") as HTMLElement;
+
+// ---- playing a message back at the pace it was said ----
+
+// Each word carries when it was said (data-t, data-d, in seconds into the
+// clip). Playing a message hides every word, then shows each when it was
+// said, and a drawn-out word's repeated letters one by one across its length.
+// A long pause is shortened so nobody waits on one, and someone who has asked
+// for less motion sees the message whole.
+const LONGEST_PAUSE = 2;
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+const playing = new WeakMap<HTMLElement, number[]>();
+
+function play(words: HTMLElement): void {
+  for (const t of playing.get(words) ?? []) clearTimeout(t);
+  const ws = [...words.querySelectorAll<HTMLElement>(".w")];
+  if (still.matches || ws.length === 0) return;
+  const timers: number[] = [];
+  const later = (at: number, fn: () => void): void => void timers.push(window.setTimeout(fn, at * 1000));
+  words.classList.add("playing");
+  // when each word starts, with long pauses shortened
+  let lost = 0;
+  let lastEnd = Number(ws[0].dataset.t);
+  for (const w of ws) {
+    const t = Number(w.dataset.t);
+    const d = Number(w.dataset.d);
+    lost += Math.max(0, t - lastEnd - LONGEST_PAUSE);
+    lastEnd = Math.max(lastEnd, t + d);
+    const at = t - Number(ws[0].dataset.t) - lost;
+    w.classList.add("unsaid");
+    later(at, () => w.classList.remove("unsaid"));
+    const held = w.querySelector(".held");
+    if (held?.textContent) {
+      // the repeats, a letter at a time across the word
+      const letters = [...held.textContent];
+      held.innerHTML = letters.map((c) => `<span class="unsaid">${c}</span>`).join("");
+      letters.forEach((_, k) => later(at + (d * (k + 1)) / (letters.length + 1), () => held.children[k]?.classList.remove("unsaid")));
+    }
+  }
+  later(lastEnd - Number(ws[0].dataset.t) - lost + 0.05, () => words.classList.remove("playing"));
+  playing.set(words, timers);
+}
+
+// Replay buttons are in the server's markup, hidden, since they need this
+// script; one handler serves every message, however it arrived.
+function canReplay(root: ParentNode): void {
+  if (still.matches) return;
+  for (const b of root.querySelectorAll<HTMLButtonElement>(".replay")) b.hidden = false;
+}
+list.addEventListener("click", (e) => {
+  const button = (e.target as HTMLElement).closest(".replay");
+  const words = button?.closest(".said")?.querySelector<HTMLElement>(".words");
+  if (words) play(words);
+});
+canReplay(list);
+
+// ---- live: every new message, as it's said ----
 
 // Every new message arrives as ready-made HTML, the same markup the server
-// put in the page. The browser reconnects on its own if the stream drops,
-// and the server replays whatever was said in between, so a message already
-// on the page is skipped.
-const stream = new EventSource("/events");
+// put in the page, and plays as it arrives. The stream starts from the newest
+// message the page was drawn with, so anything said while the page loaded
+// isn't lost; and a message already on the page is skipped.
+//
+// The browser reconnects a dropped stream on its own, but gives up for good
+// if the server answers with an error (a deploy, a restart, a full room), so
+// the page then opens a new one itself, waiting longer each time.
+const newest = (): number => Number(list.querySelector(".said")?.id.slice(1) ?? 0);
+let lastSeen = newest();
+let wait = 1000;
 
-// whether this page is hearing the room right now, so "nothing new" and "lost
-// the room" don't look the same
-const live = document.getElementById("live") as HTMLElement;
 const showLive = (on: boolean, text: string): void => {
   live.hidden = false;
   live.classList.toggle("on", on);
   live.textContent = text;
 };
-stream.addEventListener("open", () => showLive(true, "Live"));
-stream.addEventListener("error", () =>
-  showLive(false, stream.readyState === EventSource.CLOSED ? "Disconnected. Reload to get back in." : "Reconnecting…"),
-);
-stream.addEventListener("said", (e) => {
-  const { id, html } = JSON.parse((e as MessageEvent<string>).data) as { id: number; html: string };
-  if (document.getElementById(`m${id}`)) return;
-  list.insertAdjacentHTML("afterbegin", html);
-  empty.hidden = true;
-});
+
+function connect(): void {
+  const stream = new EventSource(`/events?after=${lastSeen}`);
+  stream.addEventListener("open", () => {
+    wait = 1000;
+    showLive(true, "Live");
+  });
+  stream.addEventListener("error", () => {
+    if (stream.readyState !== EventSource.CLOSED) return showLive(false, "Reconnecting…");
+    showLive(false, "Reconnecting…");
+    setTimeout(connect, wait);
+    wait = Math.min(wait * 2, 30_000);
+  });
+  stream.addEventListener("said", (e) => {
+    const { id, html } = JSON.parse((e as MessageEvent<string>).data) as { id: number; html: string };
+    lastSeen = Math.max(lastSeen, id);
+    if (document.getElementById(`m${id}`)) return;
+    list.insertAdjacentHTML("afterbegin", html);
+    empty.hidden = true;
+    const added = list.firstElementChild as HTMLElement;
+    canReplay(added);
+    play(added.querySelector(".words")!);
+  });
+}
+connect();
 
 // "just now" goes stale, so the times keep counting
 setInterval(() => {
@@ -60,9 +136,9 @@ const mb = (bytes: number): string => (bytes / 1e6).toFixed(0);
 // talk, so people who only read never download the model.
 let worker: Worker | undefined;
 let modelReady = false;
-let heard: ((chunks: Chunk[]) => void) | undefined;
+let heard: ((chunks: Heard[]) => void) | undefined;
 let failed: ((error: Error) => void) | undefined;
-let state: "idle" | "recording" | "working" | "preview" = "idle";
+let state: "idle" | "starting" | "recording" | "working" | "preview" | "sending" = "idle";
 
 function whisper(): Worker {
   if (worker) return worker;
@@ -80,11 +156,20 @@ function whisper(): Worker {
       failed?.(new Error(m.error));
     }
   };
+  // The worker couldn't even start: its import from the CDN failed (a flaky
+  // connection, a blocked CDN) or the browser can't run module workers. It's
+  // thrown away so the next try starts a fresh one.
+  worker.onerror = (e) => {
+    e.preventDefault();
+    worker?.terminate();
+    worker = undefined;
+    failed?.(new Error(e.message || "the speech model's worker didn't start"));
+  };
   worker.postMessage({ type: "load" } satisfies ToWorker);
   return worker;
 }
 
-function transcribe(pcm: Float32Array): Promise<Chunk[]> {
+function transcribe(pcm: Float32Array): Promise<Heard[]> {
   return new Promise((resolve, reject) => {
     heard = resolve;
     failed = reject;
@@ -99,14 +184,26 @@ type FromTap = { samples: Float32Array } | { last: Float32Array };
 // automatic gain and noise suppression are turned off: gain control flattens
 // loudness, which is half of what this app is trying to hear. The audio
 // context is made by the caller, inside the tap or click that started it,
-// since phones only let sound start from one.
+// since phones only let sound start from one. If anything after the
+// microphone opens fails, the microphone is let go again before the error goes
+// on, so it doesn't stay on behind a message saying it couldn't start.
 async function record(ctx: AudioContext, onLevel: (level: number) => void): Promise<Recording> {
   const mic = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: false, autoGainControl: false },
   });
-  await ctx.audioWorklet.addModule("/js/tap.ts");
-  const source = ctx.createMediaStreamSource(mic);
-  const tap = new AudioWorkletNode(ctx, "tap");
+  const release = (): void => {
+    for (const track of mic.getTracks()) track.stop();
+  };
+  let source: MediaStreamAudioSourceNode;
+  let tap: AudioWorkletNode;
+  try {
+    await ctx.audioWorklet.addModule("/js/tap.ts");
+    source = ctx.createMediaStreamSource(mic);
+    tap = new AudioWorkletNode(ctx, "tap");
+  } catch (err) {
+    release();
+    throw err;
+  }
   const parts: Float32Array[] = [];
   let finished: (() => void) | undefined;
   tap.port.onmessage = (e: MessageEvent<FromTap>) => {
@@ -133,7 +230,7 @@ async function record(ctx: AudioContext, onLevel: (level: number) => void): Prom
       tap.port.onmessage = null;
       source.disconnect();
       tap.disconnect();
-      for (const track of mic.getTracks()) track.stop();
+      release();
       const rate = ctx.sampleRate;
       await ctx.close();
       const length = parts.reduce((n, p) => n + p.length, 0);
@@ -182,15 +279,13 @@ function resampleByHand(samples: Float32Array, from: number): Float32Array<Array
   return out;
 }
 
-// what Whisper heard, as words with how each was said
-const toWords = (pcm: Float32Array, chunks: Chunk[]): Word[] => measure(pcm, RATE, words(chunks, pcm.length / RATE));
-
 let recording: Recording | undefined;
 let stopTimer: ReturnType<typeof setTimeout> | undefined;
-let pending: Word[] = [];
+let pending: { words: Word[]; voice: Voice | null } | undefined;
 
 function idle(text = ""): void {
   state = "idle";
+  pending = undefined;
   talk!.disabled = false;
   talk!.textContent = "Start talking";
   talk!.classList.remove("recording");
@@ -199,6 +294,8 @@ function idle(text = ""): void {
 }
 
 async function start(): Promise<void> {
+  if (state !== "idle") return;
+  state = "starting";
   talk!.disabled = true;
   // made before anything is awaited, while this still counts as the tap
   const ctx = new AudioContext();
@@ -233,9 +330,8 @@ async function stop(): Promise<void> {
   say(modelReady ? "Listening back…" : "Listening back, once the speech model has downloaded…");
   const pcm = await recording.stop();
   recording = undefined;
-  const seconds = pcm.length / RATE;
-  if (seconds < 0.3) return idle("That was too short to hear anything.");
-  let chunks: Chunk[];
+  if (pcm.length / RATE < 0.3) return idle("That was too short to hear anything.");
+  let chunks: Heard[];
   try {
     chunks = await transcribe(pcm.slice());
   } catch (err) {
@@ -246,33 +342,45 @@ async function stop(): Promise<void> {
         : "Couldn't download the speech model. Check your connection and try again.",
     );
   }
-  pending = toWords(pcm, chunks);
-  if (pending.length === 0) return idle("Didn't catch any words. Try again.");
+  const result = hear(pcm, RATE, words(chunks, pcm.length / RATE));
+  if (result.words.length === 0) return idle("Didn't catch any words. Try again.");
+  pending = result;
   state = "preview";
   talk!.disabled = true;
-  previewWords.innerHTML = renderWords(pending);
+  previewWords.innerHTML = renderWords(result.words);
   preview.hidden = false;
   say("This is how it will look to everyone.");
+  play(previewWords);
   sendButton.focus();
 }
 
+// A send that fails keeps the preview, so it can be sent again without saying
+// it again; "Say it again" waits while a send is on its way, so an answer
+// can't land after a new recording has started.
 async function send(): Promise<void> {
+  if (state !== "preview" || !pending) return;
+  state = "sending";
   sendButton.disabled = true;
+  discardButton.disabled = true;
+  const keep = (text: string): void => {
+    state = "preview";
+    say(text);
+  };
   try {
     const res = await fetch("/say", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ words: pending }),
+      body: JSON.stringify(pending),
     });
     if (res.status === 401) return idle("Join the room first.");
-    if (res.status === 429) return idle("That's a lot at once. Try again in a few seconds.");
-    if (!res.ok) return idle("That couldn't be sent. Try saying it again.");
-    pending = [];
+    if (res.status === 429) return keep("That's a lot at once. Send it again in a few seconds.");
+    if (!res.ok) return keep("That couldn't be sent. Try sending it again.");
     idle("Sent.");
   } catch {
-    idle("Couldn't reach the room. Check your connection and try again.");
+    keep("Couldn't reach the room. Check your connection and send it again.");
   } finally {
     sendButton.disabled = false;
+    discardButton.disabled = false;
   }
 }
 
@@ -280,9 +388,11 @@ if (talk) {
   if (!navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) {
     say("This browser can't record here. You can still read everything live.");
   } else {
-    idle("The first time, the speech model downloads (about 90 MB). After that it's cached.");
+    idle("The first time, the speech model downloads (about 80 MB). After that it's cached.");
     talk.addEventListener("click", () => void (state === "recording" ? stop() : start()));
     sendButton.addEventListener("click", () => void send());
-    discardButton.addEventListener("click", () => idle());
+    discardButton.addEventListener("click", () => {
+      if (state === "preview") idle();
+    });
   }
 }

@@ -1,5 +1,5 @@
 import type { Message, Person } from "./db.ts";
-import { ago, esc, renderWords } from "./voice.ts";
+import { ago, describe, esc, renderWords, usualVars } from "./voice.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
@@ -30,10 +30,17 @@ const MESSAGES: Record<string, string> = {
 
 // One message. The same markup goes into the page and down the live stream,
 // so a message that arrives live looks exactly like one that was already there.
+// How it compared with how its speaker usually sounds sets the whole
+// message's style (style.css says how) and, past a noticeable difference, a
+// line that says so. The replay button needs the page's script, so it's
+// hidden until the script shows it.
 export function messageHtml(m: Message, now = Date.now()): string {
-  return `<li id="m${m.id}" class="said">
-    <p class="who"><strong>${esc(m.name)}</strong> <time datetime="${new Date(m.at).toISOString()}" data-at="${m.at}">${ago(m.at, now)}</time></p>
+  const usual = describe(m.usual, m.name);
+  return `<li id="m${m.id}" class="said" style="${usualVars(m.usual)}">
+    <p class="who"><strong>${esc(m.name)}</strong> <time datetime="${new Date(m.at).toISOString()}" data-at="${m.at}">${ago(m.at, now)}</time>
+      <button type="button" class="replay" hidden>Replay</button></p>
     <p class="words">${renderWords(m.words)}</p>
+    ${usual ? `<p class="usual">${esc(usual)}</p>` : ""}
   </li>`;
 }
 
@@ -60,13 +67,23 @@ export function roomPage(messages: Message[], me: Person | undefined, msg: strin
         </form>
       </section>`;
 
-  const list = messages.map((m) => messageHtml(m)).join("");
+  // one message that can't be drawn mustn't take the page down with it
+  const list = messages
+    .map((m) => {
+      try {
+        return messageHtml(m);
+      } catch (err) {
+        console.error(`message ${m.id} couldn't be drawn`, err);
+        return "";
+      }
+    })
+    .join("");
   return layout(
     `${APP}: say it how you mean it`,
     `<main class="room">
   <div class="intro">
     <h1>Say it how you mean it</h1>
-    <p class="lede">Everything here was spoken. Louder words are heavier, higher words sit higher, rising words tilt up, and drawn-out sounds repeat, sooo.</p>
+    <p class="lede">Everything here was spoken, and plays back at the pace it was said. Louder words are heavier, drawn-out sounds repeat (sooo), and the line underneath follows the voice up and down.</p>
   </div>
   ${speak}
   <section aria-labelledby="room-h">

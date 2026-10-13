@@ -2,9 +2,11 @@
 // serves this file to the page with its types stripped).
 //
 // A message is kept as its words and a few numbers about how each one was
-// said, never as audio. Every number is relative to the speaker's own voice in
-// that same message, so a deep voice doesn't read as a sad one and a quiet
-// room doesn't read as a whisper.
+// said, never as audio. Every number on a word is relative to the speaker's
+// own voice in that same message, so a deep voice doesn't read as a sad one
+// and a quiet room doesn't read as a whisper. The message as a whole also
+// keeps a few absolute numbers (Voice), so the server can say how it compares
+// with how that person usually sounds.
 export type Word = {
   w: string; // the word as it was heard, punctuation and all
   start: number; // seconds into the clip
@@ -14,9 +16,26 @@ export type Word = {
   rise: number; // semitones the pitch moved from the start of the word to its end
   stretch: number; // log2 of how long its longest held sound lasted, against this message's typical one; 0 if it held none
   held: number | null; // how far through the word (0 to 1) that sound sat; null if it held none
+  // the word's pitch as it went, evenly spaced through the word, in semitones
+  // against this message's typical pitch; null where nothing was voiced
+  contour: (number | null)[];
 };
 
-export const LIMITS = { words: 120, seconds: 20, letters: 40 } as const;
+// the whole message's voice, on absolute scales so messages can be compared
+export type Voice = {
+  pitch: number | null; // typical pitch, in semitones above 55 Hz (A1); null if nothing was voiced
+  range: number; // how widely the pitch moved: semitones between its 10th and 90th percentiles
+  loud: number; // typical loudness of its words, dB against digital full scale
+  pace: number; // held sounds per second of speaking: roughly syllables per second
+};
+
+// How a message compares with how its speaker usually sounds, worked out by
+// the server when it's said and kept with it: the gap on each scale, or null
+// while there's too little history to say. Positive is higher, wider, louder,
+// faster.
+export type Usual = { pitch: number; range: number; loud: number; pace: number };
+
+export const LIMITS = { words: 120, seconds: 20, letters: 40, contour: 8 } as const;
 
 // the furthest each number may stray from typical, so one shout or one squeak
 // can't take over the page
@@ -48,9 +67,86 @@ export function clean(input: unknown): Word[] | null {
       rise: round(finite(raw.rise) ? clamp(raw.rise, -RANGE.rise, RANGE.rise) : 0),
       stretch: round(finite(raw.stretch) ? clamp(raw.stretch, -RANGE.stretch, RANGE.stretch) : 0),
       held: finite(raw.held) ? round(clamp(raw.held, 0, 1)) : null,
+      contour: Array.isArray(raw.contour)
+        ? (raw.contour as unknown[]).slice(0, LIMITS.contour).map((p) => (finite(p) ? round(clamp(p, -RANGE.pitch, RANGE.pitch)) : null))
+        : [],
     });
   }
   return words;
+}
+
+// the voice summary as a client sent it, pulled into plausible ranges, or
+// null if it isn't one; a message without one simply isn't compared
+export function cleanVoice(input: unknown): Voice | null {
+  if (typeof input !== "object" || input === null) return null;
+  const v = input as Record<string, unknown>;
+  if (!finite(v.range) || !finite(v.loud) || !finite(v.pace)) return null;
+  return {
+    pitch: finite(v.pitch) ? round(clamp(v.pitch, 0, 60)) : null,
+    range: round(clamp(v.range, 0, 36)),
+    loud: round(clamp(v.loud, -100, 0)),
+    pace: round(clamp(v.pace, 0, 15)),
+  };
+}
+
+// The few messages before this one are someone's usual. Fewer than
+// USUAL_AFTER and there's no usual yet; past USUAL_OVER, older ones stop
+// counting, so a usual can drift as someone settles in.
+export const USUAL_AFTER = 3;
+export const USUAL_OVER = 20;
+
+const median = (xs: number[]): number => {
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+};
+
+// how a voice compares with the ones before it, or null with too few before it
+export function compare(voice: Voice, before: Voice[]): Usual | null {
+  const recent = before.slice(-USUAL_OVER);
+  if (recent.length < USUAL_AFTER) return null;
+  const pitches = recent.flatMap((v) => (v.pitch === null ? [] : [v.pitch]));
+  return {
+    pitch: voice.pitch === null || pitches.length === 0 ? 0 : round(voice.pitch - median(pitches)),
+    range: round(voice.range - median(recent.map((v) => v.range))),
+    loud: round(voice.loud - median(recent.map((v) => v.loud))),
+    // as a ratio, in log2: 1 is twice as fast
+    pace: round(Math.log2(Math.max(0.1, voice.pace) / Math.max(0.1, median(recent.map((v) => v.pace))))),
+  };
+}
+
+// How far off usual counts as noticeably different on each scale, and the
+// words that say which way. Someone's own voice varies a semitone or two and
+// a few dB from one message to the next, and mic distance moves loudness, so
+// the bars are set past that.
+const NOTICE = { pitch: 2.5, range: 4, loud: 5, pace: 0.3 } as const;
+const SAYS: Record<keyof Usual, [string, string]> = {
+  pitch: ["higher", "lower"],
+  range: ["more animated", "flatter"],
+  loud: ["louder", "quieter"],
+  pace: ["faster", "slower"],
+};
+
+// "higher and faster than sam usually sounds", or null when it's within usual
+export function describe(usual: Usual | null, name: string): string | null {
+  if (!usual) return null;
+  const ways = (Object.keys(SAYS) as (keyof Usual)[])
+    .filter((k) => Math.abs(usual[k]) >= NOTICE[k])
+    .map((k) => SAYS[k][usual[k] > 0 ? 0 : 1]);
+  if (ways.length === 0) return null;
+  const list = ways.length === 1 ? ways[0] : `${ways.slice(0, -1).join(", ")} and ${ways.at(-1)}`;
+  return `${list[0].toUpperCase()}${list.slice(1)} than ${name} usually sounds`;
+}
+
+// The message as a whole, as CSS custom properties, from how it compares with
+// usual: --u-loud and --u-pace and so on, each pulled to -1..1 at about twice
+// the notice bar. Nothing is set without a usual, so a newcomer's messages
+// draw plain.
+export function usualVars(usual: Usual | null): string {
+  if (!usual) return "";
+  return (Object.keys(NOTICE) as (keyof Usual)[])
+    .map((k) => `--u-${k}:${round(clamp(usual[k] / (NOTICE[k] * 2), -1, 1))}`)
+    .join(";");
 }
 
 export const textOf = (words: Word[]): string => words.map((x) => x.w).join(" ");
@@ -60,36 +156,47 @@ export const esc = (s: string): string =>
 
 export const letterCount = (w: string): number => Math.max(1, (w.match(/[\p{L}\p{N}]/gu) ?? []).length);
 
-// index of the last letter, so trailing punctuation ("so.") is skipped
-const lastLetter = (w: string): number => w.search(/\p{L}(?=\P{L}*$)/u);
+// A word's characters, whole: a letter outside the basic plane ("𝐚") is two
+// UTF-16 units, and splitting it would draw half a character. Every index
+// below counts these, never UTF-16 units.
+const chars = (w: string): string[] => Array.from(w);
 
-// The vowel sounds in a word's spelling, as [first, last] letter indexes. y
-// counts as a vowel unless it starts the word or comes before another vowel
+// index of the last letter, so trailing punctuation ("so.") is skipped
+const lastLetter = (cs: string[]): number => cs.findLastIndex((c) => /\p{L}/u.test(c));
+
+// Matched one character at a time, case-insensitively, rather than by
+// lowercasing the word: some letters change length when lowercased ("İ" is
+// two characters lower), which would shift every index after them.
+const VOWEL = /^[aeiou]$/i;
+const Y = /^y$/i;
+const E = /^e$/i;
+
+// The vowel sounds in a word's spelling, as [first, last] character indexes.
+// y counts as a vowel unless it starts the word or comes before another vowel
 // ("yes", "beyond"), and a lone e ending a word with other vowels is silent
 // ("please", "time").
 export function vowels(w: string): [number, number][] {
-  const lower = w.toLowerCase();
-  const isVowel = (i: number): boolean =>
-    "aeiou".includes(lower[i]) || (lower[i] === "y" && i > 0 && !"aeiou".includes(lower[i + 1] ?? ""));
+  const cs = chars(w);
+  const isVowel = (i: number): boolean => VOWEL.test(cs[i]) || (Y.test(cs[i]) && i > 0 && !VOWEL.test(cs[i + 1] ?? ""));
   const groups: [number, number][] = [];
-  for (let i = 0; i < lower.length; i++) {
+  for (let i = 0; i < cs.length; i++) {
     if (!isVowel(i)) continue;
     const prev = groups.at(-1);
     if (prev && prev[1] === i - 1) prev[1] = i;
     else groups.push([i, i]);
   }
   const tail = groups.at(-1);
-  if (groups.length > 1 && tail && tail[0] === tail[1] && lower[tail[0]] === "e" && tail[0] === lastLetter(w)) groups.pop();
+  if (groups.length > 1 && tail && tail[0] === tail[1] && E.test(cs[tail[0]]) && tail[0] === lastLetter(cs)) groups.pop();
   return groups;
 }
 
-// The letter a drawn-out word repeats: the vowel nearest to where the voice
-// held steadiest, or, when it held nothing in particular, the last vowel
+// The character a drawn-out word repeats: the vowel nearest to where the
+// voice held steadiest, or, when it held nothing in particular, the last vowel
 // that's sounded. A word with no vowel at all ("hmm", "shh") repeats its last
 // letter. A vowel pair repeats its second letter ("pleaaase", "goooood").
 export function holdLetter(w: string, held: number | null): number | null {
   const groups = vowels(w);
-  const end = lastLetter(w);
+  const end = lastLetter(chars(w));
   if (groups.length === 0) return end >= 0 ? end : null;
   if (held === null) return groups.at(-1)![1];
   const where = (g: [number, number]): number => Math.abs((g[0] + g[1] + 1) / 2 / (end + 1) - held);
@@ -109,11 +216,38 @@ export function repeats(x: Word): number {
   return Math.min(MOST_REPEATS, Math.max(1, Math.round(2 * (2 ** x.stretch - 1))));
 }
 
+// The pitch line under a word: its contour as an SVG path in a box 100 wide
+// and 24 high, against the message's typical pitch as a dotted line at the
+// middle. Each gap where nothing was voiced breaks the line. Hidden from
+// screen readers, which have the words.
+// semitones from the middle to the top or bottom edge: ordinary speech moves
+// two to four either side of typical, which should fill most of the height
+const PITCH_SPAN = 6;
+function pitchLine(contour: (number | null)[]): string {
+  if (contour.every((p) => p === null)) return "";
+  const x = (k: number): number => (contour.length === 1 ? 50 : (k / (contour.length - 1)) * 100);
+  const y = (p: number): number => 12 - (clamp(p, -PITCH_SPAN, PITCH_SPAN) / PITCH_SPAN) * 11;
+  // each unbroken run of voiced points is one stroke; a lone point, a short dash
+  const runs: string[][] = [[]];
+  contour.forEach((p, k) => {
+    if (p === null) runs.push([]);
+    else runs.at(-1)!.push(`${round(x(k))} ${round(y(p))}`);
+  });
+  const d = runs
+    .filter((r) => r.length > 0)
+    .map((r) => (r.length === 1 ? `M${r[0]}h4` : `M${r.join("L")}`))
+    .join("");
+  return `<svg class="pitch" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><path class="usual" d="M0 12H100"/><path d="${d}"/></svg>`;
+}
+
 // The words as HTML. Each word carries its numbers as CSS custom properties
 // and style.css decides what they look like, so how loud becomes how heavy is
 // tuned in one place. A pause hangs off the end of the word before it, so a
-// pause that falls at a line break doesn't indent the next line. A drawn-out word repeats a letter the way people type it ("sooo");
-// the repeats are hidden from screen readers, which read the word as said.
+// pause that falls at a line break doesn't indent the next line. A drawn-out
+// word repeats a letter the way people type it ("sooo"); the repeats are
+// hidden from screen readers, which read the word as said. Each word also
+// carries when it was said (data-t, data-d: start and length in seconds) so
+// the page can play the message back at the pace it was spoken.
 export function renderWords(words: Word[]): string {
   return words
     .map((x, i) => {
@@ -121,11 +255,13 @@ export function renderWords(words: Word[]): string {
       const vars = `--loud:${x.loud};--pitch:${x.pitch ?? 0};--rise:${x.rise};--gap:${round(gap)}`;
       const n = repeats(x);
       const at = n > 0 ? holdLetter(x.w, x.held ?? null) : null;
+      const cs = chars(x.w);
       const shown =
-        at === null
+        at === null || cs[at] === undefined
           ? esc(x.w)
-          : `${esc(x.w.slice(0, at + 1))}<span class="held" aria-hidden="true">${esc(x.w[at].repeat(n))}</span>${esc(x.w.slice(at + 1))}`;
-      return `<span class="w" style="${vars}">${shown}</span>`;
+          : `${esc(cs.slice(0, at + 1).join(""))}<span class="held" aria-hidden="true">${esc(cs[at].repeat(n))}</span>${esc(cs.slice(at + 1).join(""))}`;
+      const line = pitchLine(x.contour ?? []);
+      return `<span class="w${line ? " has-pitch" : ""}" style="${vars}" data-t="${round(x.start)}" data-d="${round(x.end - x.start)}">${shown}${line}</span>`;
     })
     .join(" ");
 }

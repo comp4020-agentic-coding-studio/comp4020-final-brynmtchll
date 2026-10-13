@@ -87,25 +87,36 @@ describe("hearing how a word was said", () => {
     expect(not.start - ask.end).toBeGreaterThan(0.7);
   });
 
-  it("drops the labels Whisper puts on sounds that aren't words", () => {
-    const chunks = ["[BLANK_AUDIO]", " (music)", " ♪", " *laughs*", " hello", " -", " there."].map((text, i) => ({
-      text,
-      timestamp: [i, i + 1] as [number, number | null],
-    }));
+  it("drops the labels Whisper puts on sounds that aren't words, even split over several", () => {
+    const chunks = ["[BLANK_AUDIO]", " (upbeat", " music)", " *laughs*", " hello", " -", " ♪", " la", " ♪", " there."].map(
+      (text, i) => ({ text, timestamp: [i, i + 1] as [number, number | null] }),
+    );
     chunks.at(-1)!.timestamp[1] = null;
-    expect(heard(chunks, 9)).toEqual([
+    expect(heard(chunks, 20)).toEqual([
       { w: "hello", start: 4, end: 5 },
-      { w: "there.", start: 6, end: 9 },
+      { w: "there.", start: 9, end: 20 },
     ]);
   });
 
   it("hears nothing in silence, so the words Whisper invents for it never get sent", () => {
     expect(measure(new Float32Array(RATE * 2), RATE, [{ w: "you", start: 0, end: 1 }])).toEqual([]);
   });
+
+  it("hears nothing in a room's background noise either, hum and all", () => {
+    // what a quiet room gives a laptop: hiss, plus mains hum and its harmonics
+    const c = new Float32Array(RATE * 2);
+    let seed = 1;
+    const noise = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.004;
+    for (let i = 0; i < c.length; i++) {
+      const t = i / RATE;
+      c[i] = noise() + 0.002 * Math.sin(2 * Math.PI * 50 * t) + 0.001 * Math.sin(2 * Math.PI * 100 * t) + 0.0005 * Math.sin(2 * Math.PI * 150 * t);
+    }
+    expect(measure(c, RATE, [{ w: "you", start: 0, end: 1 }])).toEqual([]);
+  });
 });
 
 describe("drawing a drawn-out word", () => {
-  const word = (x: Partial<Word> & { w: string }): Word => ({ start: 0, end: 0.5, loud: 0, pitch: 0, rise: 0, stretch: 0, held: null, ...x });
+  const word = (x: Partial<Word> & { w: string }): Word => ({ start: 0, end: 0.5, loud: 0, pitch: 0, rise: 0, stretch: 0, held: null, contour: [], ...x });
   // what a reader sees, tags stripped
   const seen = (x: Word): string => renderWords([x]).replace(/<[^>]+>/g, "");
 

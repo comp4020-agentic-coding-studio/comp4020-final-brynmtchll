@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { marked } from "marked";
 import { openRoom, type Message } from "./db.ts";
 import { APP, messageHtml, readmePage, roomPage } from "./view.ts";
-import { clean } from "./voice.ts";
+import { clean, cleanVoice } from "./voice.ts";
 
 const css = readFileSync(new URL("./style.css", import.meta.url));
 const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")));
@@ -34,13 +34,30 @@ const YEAR = 60 * 60 * 24 * 365;
 const cookieId = (req: IncomingMessage): string | undefined =>
   req.headers.cookie?.match(new RegExp(`(?:^|;\\s*)${COOKIE}=([\\w-]+)`))?.[1];
 
+// the request body as text, or null past `limit` bytes; decoded once at the
+// end, since a character can be split across two chunks
 async function body(req: IncomingMessage, limit: number): Promise<string | null> {
-  let text = "";
-  for await (const chunk of req) {
-    text += chunk;
-    if (text.length > limit) return null;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req as AsyncIterable<Buffer>) {
+    size += chunk.length;
+    if (size > limit) return null;
+    chunks.push(chunk);
   }
-  return text;
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+// A change can only come from this site's own pages. Without this, another
+// site could submit a form to /join: the browser doesn't send the SameSite
+// cookie on that, so the server would make a new person and the browser would
+// keep the new cookie in place of the old. Browsers say where a request came
+// from in Sec-Fetch-Site (or, older ones, Origin); a request with neither,
+// like a script or a check, isn't a browser being tricked.
+function sameSite(req: IncomingMessage): boolean {
+  const site = req.headers["sec-fetch-site"];
+  if (site) return site === "same-origin" || site === "none";
+  const origin = req.headers.origin;
+  return !origin || new URL(origin).host === req.headers.host;
 }
 
 // Pages are cross-origin isolated, which is what lets Whisper's WebAssembly
@@ -75,22 +92,47 @@ const MOST_LISTENING = 500;
 // time, so ordinary talk never meets it. Kept in memory; a restart forgets.
 const SAY_LIMIT = 6;
 const SAY_WINDOW = 30_000;
+// A send counts from when it arrives, before its body is read, so a burst of
+// sends at once can't all slip in under the limit; one that turns out not to
+// be a message is uncounted again.
 const said = new Map<string, number[]>();
 function tooFast(personId: string): boolean {
   const now = Date.now();
   const recent = (said.get(personId) ?? []).filter((t) => now - t < SAY_WINDOW);
+  if (recent.length >= SAY_LIMIT) {
+    said.set(personId, recent);
+    return true;
+  }
+  recent.push(now);
   said.set(personId, recent);
-  return recent.length >= SAY_LIMIT;
+  return false;
 }
+const uncount = (personId: string): void => void said.get(personId)?.pop();
+// so the map doesn't keep everyone who ever spoke
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, times] of said) if (times.every((t) => now - t >= SAY_WINDOW)) said.delete(id);
+}, SAY_WINDOW).unref();
 
 const event = (m: Message): string => `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({ id: m.id, html: messageHtml(m) })}\n\n`;
 
-function listen(req: IncomingMessage, res: ServerResponse): void {
-  // the browser tries again on its own a little later
+// Where a stream starts: after the message the browser last saw (Last-Event-ID,
+// which it sends itself when it reconnects), or after the newest one the page
+// was drawn with (?after=), so nothing said while the page loaded is lost.
+function listen(req: IncomingMessage, res: ServerResponse, after: string | null): void {
+  // the page tries again itself, waiting longer each time
   if (listening.size >= MOST_LISTENING) return send(res, 503, "text/plain; charset=utf-8", "Too many people listening");
-  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
-  const last = Number(req.headers["last-event-id"]);
-  if (Number.isSafeInteger(last)) for (const m of room.since(last)) res.write(event(m));
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive", ...ISOLATED });
+  const last = Number(req.headers["last-event-id"] ?? after ?? NaN);
+  if (Number.isSafeInteger(last)) {
+    for (const m of room.since(last)) {
+      try {
+        res.write(event(m));
+      } catch (err) {
+        console.error(`message ${m.id} couldn't be drawn`, err);
+      }
+    }
+  }
   res.write(": listening\n\n");
   listening.add(res);
   req.on("close", () => listening.delete(res));
@@ -119,10 +161,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return send(res, 200, "text/javascript; charset=utf-8", script);
   }
   if (req.method === "GET" && url.pathname === "/events") {
-    return listen(req, res);
+    return listen(req, res, url.searchParams.get("after"));
   }
   if (req.method === "GET" && url.pathname === "/api/messages") {
     return json(res, 200, { me: me ? { name: me.name } : null, messages: room.recent() });
+  }
+
+  if (req.method === "POST" && !sameSite(req)) {
+    return send(res, 403, "text/plain; charset=utf-8", "Changes can only come from this site's own pages");
   }
 
   if (req.method === "POST" && url.pathname === "/join") {
@@ -148,10 +194,19 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       parsed = null;
     }
     const words = clean((parsed as { words?: unknown } | null)?.words);
-    if (!words) return json(res, 400, { error: "not-a-message" });
-    const m = room.say(me.id, words);
-    said.get(me.id)!.push(m.at);
-    for (const listener of listening) listener.write(event(m));
+    if (!words) {
+      uncount(me.id);
+      return json(res, 400, { error: "not-a-message" });
+    }
+    const m = room.say(me.id, words, cleanVoice((parsed as { voice?: unknown }).voice));
+    // stored, so it's sent: one listener that can't take it doesn't fail the rest
+    let payload = "";
+    try {
+      payload = event(m);
+    } catch (err) {
+      console.error(`message ${m.id} couldn't be drawn`, err);
+    }
+    if (payload) for (const listener of listening) listener.write(payload);
     return json(res, 201, { id: m.id });
   }
 
