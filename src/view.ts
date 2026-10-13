@@ -30,6 +30,8 @@ const MESSAGES: Record<string, string> = {
 
 // One message. The same markup goes into the page and down the live stream,
 // so a message that arrives live looks exactly like one that was already there.
+// The words as drawn play back a word at a time, which a screen reader would
+// announce in pieces, so they're hidden from it and it reads the plain text.
 // How it compared with how its speaker usually sounds sets the whole
 // message's style (style.css says how) and, past a noticeable difference, a
 // line that says so. The replay button needs the page's script, so it's
@@ -38,8 +40,9 @@ export function messageHtml(m: Message, now = Date.now()): string {
   const usual = describe(m.usual, m.name);
   return `<li id="m${m.id}" class="said" style="${usualVars(m.usual)}">
     <p class="who"><strong>${esc(m.name)}</strong> <time datetime="${new Date(m.at).toISOString()}" data-at="${m.at}">${ago(m.at, now)}</time>
-      <button type="button" class="replay" hidden>Replay</button></p>
-    <p class="words">${renderWords(m.words)}</p>
+      <button type="button" class="replay" aria-label="Replay ${esc(m.name)}'s message" hidden>Replay</button></p>
+    <p class="words" aria-hidden="true">${renderWords(m.words)}</p>
+    <p class="visually-hidden">${esc(m.text)}</p>
     ${usual ? `<p class="usual">${esc(usual)}</p>` : ""}
   </li>`;
 }
