@@ -79,52 +79,44 @@ function transcribe(pcm: Float32Array): Promise<Chunk[]> {
   });
 }
 
-// An audio worklet that hands the raw samples back in batches. It's tiny, so
-// it travels as a string rather than as another file to serve.
-const TAP = URL.createObjectURL(
-  new Blob(
-    [
-      `registerProcessor("tap", class extends AudioWorkletProcessor {
-        constructor() { super(); this.buf = new Float32Array(2048); this.n = 0; }
-        process([input]) {
-          const ch = input[0];
-          if (ch) for (let i = 0; i < ch.length; i++) {
-            this.buf[this.n++] = ch[i];
-            if (this.n === this.buf.length) { this.port.postMessage(this.buf); this.buf = new Float32Array(2048); this.n = 0; }
-          }
-          return true;
-        }
-      });`,
-    ],
-    { type: "text/javascript" },
-  ),
-);
-
 type Recording = { stop: () => Promise<Float32Array<ArrayBuffer>> };
+type FromTap = { samples: Float32Array } | { last: Float32Array };
 
-// Records the microphone as raw samples. The browser's automatic gain and
-// noise suppression are turned off: gain control flattens loudness, which is
-// half of what this app is trying to hear.
-async function record(onLevel: (level: number) => void): Promise<Recording> {
+// Records the microphone as raw samples, through tap.ts. The browser's
+// automatic gain and noise suppression are turned off: gain control flattens
+// loudness, which is half of what this app is trying to hear. The audio
+// context is made by the caller, inside the tap or click that started it,
+// since phones only let sound start from one.
+async function record(ctx: AudioContext, onLevel: (level: number) => void): Promise<Recording> {
   const mic = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: false, autoGainControl: false },
   });
-  const ctx = new AudioContext();
-  await ctx.audioWorklet.addModule(TAP);
+  await ctx.audioWorklet.addModule("/js/tap.ts");
   const source = ctx.createMediaStreamSource(mic);
   const tap = new AudioWorkletNode(ctx, "tap");
   const parts: Float32Array[] = [];
-  tap.port.onmessage = (e: MessageEvent<Float32Array>) => {
-    parts.push(e.data);
+  let finished: (() => void) | undefined;
+  tap.port.onmessage = (e: MessageEvent<FromTap>) => {
+    if ("last" in e.data) {
+      parts.push(e.data.last);
+      return finished?.();
+    }
+    parts.push(e.data.samples);
     let sum = 0;
-    for (const s of e.data) sum += s * s;
-    onLevel(Math.min(1, Math.sqrt(sum / e.data.length) * 8));
+    for (const s of e.data.samples) sum += s * s;
+    onLevel(Math.min(1, Math.sqrt(sum / e.data.samples.length) * 8));
   };
   source.connect(tap);
   tap.connect(ctx.destination); // the tap outputs silence; this just keeps it running
 
   return {
     async stop() {
+      // ask for the last partial batch, but don't wait long for it
+      await new Promise<void>((done) => {
+        finished = done;
+        tap.port.postMessage("flush");
+        setTimeout(done, 300);
+      });
       tap.port.onmessage = null;
       source.disconnect();
       tap.disconnect();
@@ -143,17 +135,38 @@ async function record(onLevel: (level: number) => void): Promise<Recording> {
   };
 }
 
+// Whisper listens at 16 kHz and microphones record at 44.1 or 48. The
+// browser's own resampler does it best, but some (older Safari) won't run an
+// offline audio context that slow, so there's a plain one to fall back on.
 async function resample(samples: Float32Array<ArrayBuffer>, from: number): Promise<Float32Array<ArrayBuffer>> {
-  if (samples.length === 0) return samples;
-  if (from === RATE) return samples;
-  const offline = new OfflineAudioContext(1, Math.ceil((samples.length * RATE) / from), RATE);
-  const buffer = offline.createBuffer(1, samples.length, from);
-  buffer.copyToChannel(samples, 0);
-  const source = offline.createBufferSource();
-  source.buffer = buffer;
-  source.connect(offline.destination);
-  source.start();
-  return (await offline.startRendering()).getChannelData(0);
+  if (samples.length === 0 || from === RATE) return samples;
+  try {
+    const offline = new OfflineAudioContext(1, Math.ceil((samples.length * RATE) / from), RATE);
+    const buffer = offline.createBuffer(1, samples.length, from);
+    buffer.copyToChannel(samples, 0);
+    const source = offline.createBufferSource();
+    source.buffer = buffer;
+    source.connect(offline.destination);
+    source.start();
+    return (await offline.startRendering()).getChannelData(0);
+  } catch {
+    return resampleByHand(samples, from);
+  }
+}
+
+// each output sample is the average of the input it spans, which also keeps
+// sounds too high for 16 kHz from folding down into the speech
+function resampleByHand(samples: Float32Array, from: number): Float32Array<ArrayBuffer> {
+  const ratio = from / RATE;
+  const out = new Float32Array(Math.floor(samples.length / ratio));
+  for (let i = 0; i < out.length; i++) {
+    const a = Math.floor(i * ratio);
+    const b = Math.min(samples.length, Math.max(a + 1, Math.floor((i + 1) * ratio)));
+    let sum = 0;
+    for (let k = a; k < b; k++) sum += samples[k];
+    out[i] = sum / (b - a);
+  }
+  return out;
 }
 
 // what Whisper heard, as words with how each was said
@@ -180,10 +193,14 @@ function idle(text = ""): void {
 
 async function start(): Promise<void> {
   talk!.disabled = true;
+  // made before anything is awaited, while this still counts as the tap
+  const ctx = new AudioContext();
+  void ctx.resume();
   whisper(); // start the download now, so it overlaps with talking
   try {
-    recording = await record((level) => talk!.style.setProperty("--level", level.toFixed(2)));
+    recording = await record(ctx, (level) => talk!.style.setProperty("--level", level.toFixed(2)));
   } catch (err) {
+    void ctx.close();
     const blocked = err instanceof DOMException && err.name === "NotAllowedError";
     return idle(
       blocked
