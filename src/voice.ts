@@ -19,7 +19,14 @@ export type Word = {
   // the word's pitch as it went, evenly spaced through the word, in semitones
   // against this message's typical pitch; null where nothing was voiced
   contour: (number | null)[];
+  // an effect its speaker put on it before it went out, if any
+  effect?: Effect;
 };
+
+// What a speaker can do to a word while it waits in their queue, each on a
+// number key. style.css says what each looks like.
+export const EFFECTS = ["impact", "whisper", "glow"] as const;
+export type Effect = (typeof EFFECTS)[number];
 
 // the whole message's voice, on absolute scales so messages can be compared
 export type Voice = {
@@ -70,6 +77,7 @@ export function clean(input: unknown): Word[] | null {
       contour: Array.isArray(raw.contour)
         ? (raw.contour as unknown[]).slice(0, LIMITS.contour).map((p) => (finite(p) ? round(clamp(p, -RANGE.pitch, RANGE.pitch)) : null))
         : [],
+      ...((EFFECTS as readonly unknown[]).includes(raw.effect) ? { effect: raw.effect as Effect } : {}),
     });
   }
   return words;
@@ -236,7 +244,7 @@ export function wordHtml(x: Word, gap = 0): string {
     at === null || cs[at] === undefined
       ? esc(x.w)
       : `${esc(cs.slice(0, at + 1).join(""))}<span class="held" aria-hidden="true">${esc(cs[at].repeat(n))}</span>${esc(cs.slice(at + 1).join(""))}`;
-  return `<span class="w" style="${vars}">${shown}</span>`;
+  return `<span class="w${x.effect ? ` fx-${x.effect}` : ""}" style="${vars}">${shown}</span>`;
 }
 
 // A message's words as HTML, a pause hanging off the end of the word before

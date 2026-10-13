@@ -106,6 +106,29 @@ html { overflow-x: clip; }
 .stage-wrap { width: 100vw; margin-inline: calc(50% - 50vw); padding-inline: 16px; }
 .stage-wrap > .room-head, .stage-wrap > #nobody, .stage-wrap > .speak { max-width: 728px; margin-inline: auto; }
 .stage-wrap > .speak { margin-block: 8px 0; }
+
+/* Once you've joined, your microphone and your queue sit in a dock along the
+   bottom of the screen, over the stage, so you can watch your words land
+   while you work on the next one; on a phone it's where your thumb is. The
+   page leaves room at its foot so nothing's hidden behind it. */
+.dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--rule);
+}
+.dock > * { max-width: 728px; margin-inline: auto; }
+.dock .speak { padding: 0; border: 0; background: none; }
+.dock .queue { margin: 0 auto 10px; }
+/* the stage ends above the dock, so nobody's place is behind it */
+body:has(.dock) .stage { height: clamp(360px, calc(100vh - 20rem), 900px); }
+body:has(.dock .queue:not([hidden])) .stage { height: clamp(300px, calc(100vh - 30rem), 900px); }
+body:has(.dock) main { padding-bottom: calc(var(--dock-h, 6rem) + 16px); }
 .stage {
   position: relative;
   list-style: none;
@@ -183,6 +206,87 @@ html { overflow-x: clip; }
   opacity: clamp(0.6, calc(1 + var(--loud) * 0.05), 1);
   margin-right: min(calc(var(--gap) * 0.6em), 2em);
   transform: translateY(calc(var(--pitch) * -0.07em));
+}
+
+/* Your queue: the words you've said that haven't gone out yet, top first,
+   in your colour. The next one is big, with a bar under it that runs down
+   to when it goes; it stops while you're typing over it. */
+.queue {
+  max-width: 728px;
+  margin: 8px auto 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+}
+.queue-words {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  font-size: 1.125rem;
+  color: var(--muted);
+}
+.queue { --person: oklch(var(--person-l) var(--person-c) var(--hue, 250)); }
+.queue-words li.next {
+  position: relative;
+  font-size: 2rem;
+  color: var(--person);
+  padding-bottom: 6px;
+}
+.queue-words li.next::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--person);
+  transform-origin: left;
+  animation: queue-wait var(--wait) linear forwards;
+}
+.queue-words li.next.held::after { animation: none; transform: scaleX(1); opacity: 0.4; }
+@keyframes queue-wait { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.queue .typing { font-style: normal; }
+.queue .caret { display: inline-block; width: 2px; height: 0.9em; margin-left: 2px; background: currentColor; vertical-align: -0.1em; animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.queue-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.queue-tools button { padding: 6px 10px; min-height: 40px; font-size: 0.875rem; }
+.queue-tools kbd { font: 600 0.75rem ui-monospace, Menlo, monospace; padding: 1px 5px; margin-right: 4px; border: 1px solid var(--rule); border-radius: 4px; }
+.queue .fine { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .queue-words li.next::after, .queue .caret { animation: none; }
+}
+
+/* Effects a speaker puts on a word in their queue (voice.ts EFFECTS). Each
+   builds on how the word was said rather than replacing it. */
+.w.fx-impact {
+  font-weight: 900;
+  font-size: 1.5em;
+  letter-spacing: -0.01em;
+  animation: impact 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+@keyframes impact {
+  0% { transform: scale(2.2); opacity: 0; }
+  45% { transform: scale(0.94) translateX(-3px); opacity: 1; }
+  60% { transform: scale(1.02) translateX(3px); }
+  75% { transform: translateX(-2px); }
+  100% { transform: none; }
+}
+.w.fx-whisper { font-weight: 300; font-size: 0.75em; font-style: italic; opacity: 0.6; letter-spacing: 0.04em; }
+.w.fx-glow {
+  text-shadow: 0 0 0.25em var(--person, currentColor), 0 0 0.6em var(--person, currentColor);
+  animation: glow 2.4s ease-in-out infinite alternate;
+}
+@keyframes glow {
+  from { text-shadow: 0 0 0.15em var(--person, currentColor), 0 0 0.4em var(--person, currentColor); }
+  to { text-shadow: 0 0 0.3em var(--person, currentColor), 0 0 0.9em var(--person, currentColor); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .w.fx-impact, .w.fx-glow { animation: none; }
 }
 
 .prose { max-width: 70ch; }

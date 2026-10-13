@@ -239,19 +239,19 @@ describe.skipIf(!writable)("the room", () => {
   it("won't let one person fill the room, and doesn't hold that against anyone else", async () => {
     const loud = await person();
     const statuses: number[] = [];
-    // someone talking without a break sends a phrase every second or two;
-    // the limit (20 in 30 s) is past that
-    for (let i = 0; i < 21; i++) statuses.push((await loud.say({ words: [word(`again${i}`, 0)] })).status);
-    expect(statuses.slice(0, 20).every((s) => s === 201)).toBe(true);
-    expect(statuses[20]).toBe(429);
+    // each word goes out on its own, two or three a second for someone
+    // talking on; the limit (150 in 30 s) is past that
+    for (let i = 0; i < 151; i++) statuses.push((await loud.say({ words: [word(`again${i}`, 0)] })).status);
+    expect(statuses.slice(0, 150).every((s) => s === 201)).toBe(true);
+    expect(statuses[150]).toBe(429);
     const other = await person();
     expect((await other.say({ words: [word("meanwhile", 0)] })).status).toBe(201);
   });
 
   it("holds to the limit even when someone sends a burst all at once", async () => {
     const burst = await person();
-    const statuses = await Promise.all(Array.from({ length: 40 }, (_, i) => burst.say({ words: [word(`burst${i}`, 0)] }).then((r) => r.status)));
-    expect(statuses.filter((s) => s === 201)).toHaveLength(20);
+    const statuses = await Promise.all(Array.from({ length: 200 }, (_, i) => burst.say({ words: [word(`burst${i}`, 0)] }).then((r) => r.status)));
+    expect(statuses.filter((s) => s === 201)).toHaveLength(150);
   });
 
   it("won't let one place fill the room with new names", async () => {

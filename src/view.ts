@@ -43,10 +43,26 @@ export function spotHtml(name: string, seat: number, mine = false): string {
 
 export function roomPage(people: { name: string; seat: number }[], me: (Person & { seat: number }) | undefined, msg: string | undefined): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
+  // The queue is where your words wait before anyone else sees them, with
+  // what you can do to the top one. Only you see it.
   const speak = me
-    ? `<div class="speak">
+    ? `<div class="dock">
+      <section id="queue" class="queue" aria-labelledby="queue-h" hidden>
+        <h2 id="queue-h" class="visually-hidden">Your words, before they're sent</h2>
+        <ol id="queue-words" class="queue-words"></ol>
+        <div class="queue-tools" role="toolbar" aria-label="The next word">
+          <button type="button" data-key="1"><kbd>1</kbd> Impact</button>
+          <button type="button" data-key="2"><kbd>2</kbd> Whisper</button>
+          <button type="button" data-key="3"><kbd>3</kbd> Glow</button>
+          <button type="button" data-key="Backspace"><kbd>⌫</kbd> Delete</button>
+          <button type="button" data-key="Enter"><kbd>↵</kbd> Send now</button>
+        </div>
+        <p class="fine">Each word goes out a second after it reaches the front. Type to change it, or use the keys above.</p>
+      </section>
+      <div class="speak">
         <button id="talk" type="button" class="talk" aria-pressed="false" disabled>Turn on microphone</button>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
+      </div>
       </div>`
     : `<section class="speak" aria-labelledby="join-h">
         <h2 id="join-h">Join the room</h2>

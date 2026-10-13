@@ -16,7 +16,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "queue.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),
@@ -87,12 +87,11 @@ const listening = new Set<ServerResponse>();
 // each open page holds a connection on a 256 MB machine, so there's a ceiling
 const MOST_LISTENING = 500;
 
-// No one person can fill the room: at most SAY_LIMIT phrases in any
-// SAY_WINDOW. Someone talking without a break sends a phrase at every pause,
-// and Whisper takes most of a second on each even on a fast machine, so
-// ordinary talk sends one every second or two at most. Kept in memory; a
-// restart forgets.
-const SAY_LIMIT = 20;
+// No one person can fill the room: at most SAY_LIMIT sends in any
+// SAY_WINDOW. Each word goes out on its own as it leaves its speaker's queue,
+// and someone talking without a break says two or three a second, so the
+// limit is past that. Kept in memory; a restart forgets.
+const SAY_LIMIT = 150;
 const SAY_WINDOW = 30_000;
 // A send counts from when it arrives, before its body is read, so a burst of
 // sends at once can't all slip in under the limit; one that turns out not to

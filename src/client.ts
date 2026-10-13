@@ -4,6 +4,8 @@
 // at a time and sends each phrase as it's heard.
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, spoke, words, type Heard } from "./prosody.ts";
+import { queue as wordQueue } from "./queue.ts";
+import { wordHtml, type Voice, type Word } from "./voice.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
 
 const stage = document.getElementById("stage") as HTMLUListElement;
@@ -330,7 +332,6 @@ type FromTap = { samples: Float32Array } | { last: Float32Array };
 let on = false;
 let stopRecording: (() => Promise<void>) | undefined;
 let phrases: Phraser = phraser();
-let sending: Promise<void> = Promise.resolve();
 let behind = 0;
 
 let downloaded = "";
@@ -348,21 +349,77 @@ function onAudio(samples: Float32Array): void {
 }
 
 // A phrase that's mostly a breath, a click or the room is never sent to
-// Whisper, which would hear a sentence in it (spoke() says why).
+// Whisper, which would hear a sentence in it (spoke() says why). What's heard
+// goes into the speaker's queue, in the order it was said.
 function send(pcm: Float32Array): void {
   if (!spoke(pcm, RATE)) return;
   behind++;
   showBehind();
   const heard = transcribe(pcm.slice());
-  sending = sending.then(async () => {
+  hearing = hearing.then(async () => {
     try {
       const result = hear(pcm, RATE, words(await heard, pcm.length / RATE));
       if (result.words.length === 0) return;
-      // a send that hangs mustn't hold up every phrase after it
+      // the phrase's voice goes with its first word, for the usual-voice
+      // comparison; the words keep their own timing within it
+      voiceFor.set(result.words[0], result.voice);
+      mine.add(result.words, Date.now());
+      showQueue();
+    } catch (err) {
+      console.error(err);
+      warn(modelReady ? "Something you said couldn't be heard." : "Couldn't download the speech model. Check your connection and try again.");
+    } finally {
+      behind--;
+      showBehind();
+    }
+  });
+}
+
+// ---- the queue: your words, before anyone else sees them ----
+
+const queueEl = document.getElementById("queue") as HTMLElement | null;
+const queueWords = document.getElementById("queue-words") as HTMLOListElement | null;
+const mine = wordQueue();
+// the queue is in your colour, as your place is
+const myHue = stage.querySelector<HTMLElement>(".spot.mine")?.style.getPropertyValue("--hue");
+if (queueEl && myHue) queueEl.style.setProperty("--hue", myHue);
+const voiceFor = new WeakMap<Word, Voice | null>();
+let hearing: Promise<void> = Promise.resolve(); // so phrases queue in order
+let posting: Promise<void> = Promise.resolve(); // so words go out in order
+
+// the page keeps room at its foot for the dock, however tall it is now
+const dock = document.querySelector<HTMLElement>(".dock");
+if (dock) new ResizeObserver(() => document.body.style.setProperty("--dock-h", `${dock.offsetHeight}px`)).observe(dock);
+
+// What's waiting, top first: the top word as it'll look (or as it's being
+// typed over), and a countdown to when it goes.
+function showQueue(): void {
+  if (!queueEl || !queueWords) return;
+  const ws = mine.words();
+  queueEl.hidden = ws.length === 0;
+  const typing = mine.typing();
+  queueWords.innerHTML = ws
+    .map((w, i) => {
+      const html = i === 0 && typing !== null ? `<span class="w typing">${typing.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}<span class="caret"></span></span>` : wordHtml(w);
+      return `<li${i === 0 ? ` class="next"` : ""}>${html}</li>`;
+    })
+    .join("");
+  const due = mine.due();
+  queueWords.style.setProperty("--wait", due === null ? "0" : `${Math.max(0, due - Date.now())}ms`);
+  queueWords.firstElementChild?.classList.toggle("held", typing !== null);
+}
+
+// Each word goes out on its own as it leaves the queue, in order: it plays in
+// your place for everyone the moment it does.
+function post(w: Word): void {
+  const voice = voiceFor.get(w) ?? null;
+  posting = posting.then(async () => {
+    try {
       const res = await fetch("/say", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(result),
+        body: JSON.stringify({ words: [{ ...w, start: 0, end: w.end - w.start }], voice }),
+        // a send that hangs mustn't hold up every word after it
         signal: AbortSignal.timeout(15_000),
       });
       if (res.status === 401) {
@@ -371,17 +428,42 @@ function send(pcm: Float32Array): void {
       } else if (res.status === 429) {
         warn("That's a lot at once. Some of it didn't send.");
       } else if (!res.ok) {
-        warn("Something you said couldn't be sent.");
+        warn("A word couldn't be sent.");
       }
     } catch (err) {
       console.error(err);
-      warn(modelReady ? "Something you said couldn't be heard or sent." : "Couldn't download the speech model. Check your connection and try again.");
-    } finally {
-      behind--;
-      showBehind();
+      warn("A word couldn't be sent. Check your connection.");
     }
   });
 }
+
+// the queue's clock: words go out as they come due
+setInterval(() => {
+  let w: Word | null;
+  let changed = false;
+  while ((w = mine.release(Date.now()))) {
+    post(w);
+    changed = true;
+  }
+  if (changed) showQueue();
+}, 100);
+
+// While you have words waiting, the keyboard is theirs, except in a text box.
+addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target as HTMLElement;
+  if (t.closest("input, textarea, [contenteditable]")) return;
+  // Space and Enter on a focused button press the button, as they should
+  if ((e.key === " " || e.key === "Enter") && t.closest("button")) return;
+  if (mine.key(e.key, Date.now())) {
+    e.preventDefault();
+    showQueue();
+  }
+});
+queueEl?.querySelector(".queue-tools")?.addEventListener("click", (e) => {
+  const key = (e.target as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key;
+  if (key && mine.key(key, Date.now())) showQueue();
+});
 
 // Records the microphone through tap.ts. The browser's automatic gain and
 // noise suppression are turned off: gain control flattens loudness, which is
@@ -486,8 +568,8 @@ async function turnOff(): Promise<void> {
   await stop();
   for (const phrase of phrases.end()) send(phrase); // whatever was said last
   showOn(false);
-  say(behind ? "Sending the last of it…" : "");
-  void sending.then(() => {
+  say(behind ? "Hearing the last of it…" : "");
+  void hearing.then(() => {
     if (!on) say("");
   });
 }
