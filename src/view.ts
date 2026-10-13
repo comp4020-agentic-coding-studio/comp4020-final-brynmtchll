@@ -70,7 +70,7 @@ export function roomPage(messages: Message[], me: Person | undefined, msg: strin
   </div>
   ${speak}
   <section aria-labelledby="room-h">
-    <h2 id="room-h">The room</h2>
+    <div class="room-head"><h2 id="room-h">The room</h2><p id="live" class="live" role="status" hidden></p></div>
     <p id="empty" ${list ? "hidden" : ""}>Nobody has said anything yet.</p>
     <ol id="messages" class="messages" aria-live="polite">${list}</ol>
   </section>

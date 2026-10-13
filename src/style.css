@@ -80,6 +80,10 @@ button.quiet { border-color: transparent; color: var(--muted); }
 .join label { width: 100%; color: var(--muted); }
 .join input { flex: 1; min-width: 0; font: inherit; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); color: var(--ink); min-height: 44px; }
 
+.room-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.live { margin: 0; font-size: 0.875rem; color: var(--muted); }
+.live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
+.live.on::before { background: #16a34a; }
 .messages { list-style: none; padding: 0; margin: 0; }
 .said { padding: 8px 0 4px; border-bottom: 1px solid var(--rule); }
 .who { margin: 0; font-size: 0.875rem; }
@@ -98,7 +102,8 @@ button.quiet { border-color: transparent; color: var(--muted); }
   display: inline-block;
   font-weight: clamp(200, calc(450 + var(--loud) * 40), 900);
   font-size: clamp(0.8em, calc(1em + var(--loud) * 0.025em), 1.5em);
-  opacity: clamp(0.45, calc(1 + var(--loud) * 0.05), 1);
+  /* no fainter than 0.6, which still reads at about 4.5:1 in both themes */
+  opacity: clamp(0.6, calc(1 + var(--loud) * 0.05), 1);
   margin-right: min(calc(var(--gap) * 0.6em), 2em);
   transform: translateY(calc(var(--pitch) * -0.07em)) rotate(clamp(-10deg, calc(var(--rise) * -1.5deg), 10deg));
   transform-origin: left center;

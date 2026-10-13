@@ -12,6 +12,19 @@ const empty = document.getElementById("empty") as HTMLElement;
 // and the server replays whatever was said in between, so a message already
 // on the page is skipped.
 const stream = new EventSource("/events");
+
+// whether this page is hearing the room right now, so "nothing new" and "lost
+// the room" don't look the same
+const live = document.getElementById("live") as HTMLElement;
+const showLive = (on: boolean, text: string): void => {
+  live.hidden = false;
+  live.classList.toggle("on", on);
+  live.textContent = text;
+};
+stream.addEventListener("open", () => showLive(true, "Live"));
+stream.addEventListener("error", () =>
+  showLive(false, stream.readyState === EventSource.CLOSED ? "Disconnected. Reload to get back in." : "Reconnecting…"),
+);
 stream.addEventListener("said", (e) => {
   const { id, html } = JSON.parse((e as MessageEvent<string>).data) as { id: number; html: string };
   if (document.getElementById(`m${id}`)) return;
@@ -227,7 +240,11 @@ async function stop(): Promise<void> {
     chunks = await transcribe(pcm.slice());
   } catch (err) {
     console.error(err);
-    return idle("Something went wrong listening back. Try again.");
+    return idle(
+      modelReady
+        ? "Something went wrong listening back. Try again."
+        : "Couldn't download the speech model. Check your connection and try again.",
+    );
   }
   pending = toWords(pcm, chunks);
   if (pending.length === 0) return idle("Didn't catch any words. Try again.");
