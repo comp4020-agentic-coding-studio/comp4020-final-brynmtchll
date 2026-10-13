@@ -100,13 +100,12 @@ button.quiet { border-color: transparent; color: var(--muted); }
    doesn't also ride up and down and tilt.
 
    How the whole message compared with how its speaker usually sounds
-   (--u-loud, --u-pace, --u-range, --u-pitch, each -1 to 1, unset until
-   they've said a few things) scales the lot: louder than usual is bigger,
-   faster is tighter, more animated spreads the words' weights further apart.
-   Higher than usual has no look of its own; the line under it says so. */
+   (--u-loud, --u-range, --u-pitch, each -1 to 1, unset until they've said a
+   few things) scales the lot: louder than usual is bigger, more animated
+   spreads the words' weights further apart. Higher than usual has no look of
+   its own; the line under it says so. Pace has none either: playback shows it. */
 .words {
   font-size: calc(clamp(1.25rem, 1rem + 1vw, 1.75rem) * (1 + var(--u-loud, 0) * 0.18));
-  letter-spacing: calc(var(--u-pace, 0) * -0.02em);
   line-height: 2.6;
   margin: 0;
   /* room under the last line for its pitch line */

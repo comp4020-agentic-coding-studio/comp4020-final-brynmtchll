@@ -223,7 +223,7 @@ describe.skipIf(!writable)("the room", () => {
     const excited = marker(9);
     await p.say({ words: [word(excited, 0)], voice: { pitch: 25, range: 12, loud: -10, pace: 6 } });
     const page = await (await fetch(new URL("/", baseUrl))).text();
-    expect(page).toMatch(new RegExp(`${excited}[\\s\\S]*?Higher, more animated, louder and faster than ${p.name} usually sounds`));
+    expect(page).toMatch(new RegExp(`${excited}[\\s\\S]*?Higher, more animated and louder than ${p.name} usually sounds`));
   });
 
   it("escapes what people say, so nobody can put markup on anyone else's page", async () => {

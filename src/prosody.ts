@@ -8,8 +8,10 @@ import { LIMITS, letterCount, type Voice, type Word } from "./voice.ts";
 export type Timed = { w: string; start: number; end: number };
 // a word as Whisper hands it over: leading space, and no end on the last one
 export type Heard = { text: string; timestamp: [number, number | null] };
-// active: loud enough to be part of someone speaking rather than a pause
-export type Frame = { db: number; hz: number | null; active: boolean };
+// active: loud enough to be part of someone speaking rather than a pause;
+// clear: voiced outright rather than followed through noise, which is what a
+// held sound has to be
+export type Frame = { db: number; hz: number | null; active: boolean; clear: boolean };
 // a run of speech between two pauses, in frames (to is exclusive)
 export type Phrase = { from: number; to: number };
 
@@ -36,8 +38,22 @@ const UNSPOKEN = 0.5;
 // the least time a word can be given, per letter, at the end of a phrase
 const LEAST_PACE = 0.04;
 
-const PERIODIC = 0.2; // how periodic a frame must be to count as voiced (YIN's threshold)
-const MIN_VOICED = 10; // frames: under a tenth of a second voiced means nobody spoke
+// How periodic a frame must be to count as voiced (YIN's threshold, lower is
+// stricter). A frame under PERIODIC is voiced outright; one under LOOSELY
+// only if its pitch carries on from a voiced neighbour's, within CARRIES
+// semitones. A real voice makes a continuous pitch track and noise doesn't, so
+// this follows a voice through the noise of a quiet, breathy or creaky take
+// (sad speech, in CREMA-D's actors, mostly measured 0.3 to 0.5) without
+// finding voices in noise.
+const PERIODIC = 0.2;
+const LOOSELY = 0.45;
+const CARRIES = 1.5;
+// Somebody spoke if a tenth of a second was voiced, or, for a voice the pitch
+// tracker can barely follow, if MIN_SPOKEN of sound stood clear of the
+// background in phrases. Silence and steady room noise do neither: noise has
+// no pauses to make phrases of, and its level sets the background.
+const MIN_VOICED = 10; // frames
+const MIN_SPOKEN = 30; // frames
 // A held sound is a stretch of voice that doesn't jump in pitch from one frame
 // to the next or dip in loudness; a consonant between syllables does one or
 // the other. It may slide in pitch while it's held ("whyyy?").
@@ -67,8 +83,9 @@ const round = (n: number): number => Math.round(n * 10) / 10;
 
 // The fundamental frequency of one frame, by YIN (de Cheveigné & Kawahara,
 // 2002): find the smallest lag at which the signal most nearly repeats
-// itself. Null when nothing repeats, which is breath, noise or a consonant.
-function pitchAt(pcm: Float32Array, at: number, win: number, rate: number): number | null {
+// itself, and how nearly (0 is exactly). Null when nothing repeats even
+// loosely, which is breath, noise or a consonant.
+function pitchAt(pcm: Float32Array, at: number, win: number, rate: number): { hz: number; dip: number } | null {
   const minLag = Math.floor(rate / MAX_HZ);
   const maxLag = Math.ceil(rate / MIN_HZ);
   const n = win - maxLag;
@@ -83,12 +100,16 @@ function pitchAt(pcm: Float32Array, at: number, win: number, rate: number): numb
     running += sum;
     d[lag] = running > 0 ? (sum * lag) / running : 1;
   }
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    if (d[lag] >= PERIODIC) continue;
+  const at_ = (lag: number): { hz: number; dip: number } => {
     while (lag < maxLag && d[lag + 1] < d[lag]) lag++;
     const [a, b, c] = [d[lag - 1], d[lag], d[lag + 1]];
     const bend = a - 2 * b + c;
-    return rate / (lag + (bend > 0 ? (a - c) / (2 * bend) : 0));
+    return { hz: rate / (lag + (bend > 0 ? (a - c) / (2 * bend) : 0)), dip: b };
+  };
+  // the first lag under each threshold: YIN takes the first, not the deepest,
+  // so a voice isn't read an octave low
+  for (const threshold of [PERIODIC, LOOSELY]) {
+    for (let lag = minLag; lag <= maxLag; lag++) if (d[lag] < threshold) return at_(lag);
   }
   return null;
 }
@@ -102,15 +123,32 @@ export function frames(pcm: Float32Array, rate: number): Frame[] {
   for (let at = 0; at + win < pcm.length; at += hop) {
     let energy = 0;
     for (let i = at; i < at + win; i++) energy += pcm[i] * pcm[i];
-    out.push({ db: 10 * Math.log10(energy / win + 1e-12), hz: null, active: false });
+    out.push({ db: 10 * Math.log10(energy / win + 1e-12), hz: null, active: false, clear: false });
   }
   const loudest = out.reduce((m, f) => Math.max(m, f.db), -Infinity);
   const background = out.length ? percentile(out.map((f) => f.db), 0.1) : loudest;
   const speech = Math.max(loudest - QUIET, Math.min(background + NOISE, loudest - NEAR_LOUDEST));
-  out.forEach((f, k) => {
+  const found = out.map((f, k) => {
     f.active = f.db > speech;
-    if (f.active) f.hz = pitchAt(pcm, k * hop, win, rate);
+    return f.active ? pitchAt(pcm, k * hop, win, rate) : null;
   });
+  // voiced outright, then outward from there while the pitch carries on
+  out.forEach((f, k) => {
+    if (found[k] && found[k]!.dip < PERIODIC) {
+      f.hz = found[k]!.hz;
+      f.clear = true;
+    }
+  });
+  const carries = (k: number, from: number): boolean =>
+    out[from]?.hz != null && Math.abs(12 * Math.log2(found[k]!.hz / out[from].hz!)) < CARRIES;
+  for (let grew = true; grew; ) {
+    grew = false;
+    out.forEach((f, k) => {
+      if (f.hz !== null || !found[k] || !(carries(k, k - 1) || carries(k, k + 1))) return;
+      f.hz = found[k]!.hz;
+      grew = true;
+    });
+  }
   return out;
 }
 
@@ -204,15 +242,18 @@ export function align(timed: Timed[], ps: Phrase[]): Timed[] {
 }
 
 // The sounds the voice held, roughly one per syllable: the vowels, mostly,
-// and the hummed consonants that run into them.
+// and the hummed consonants that run into them. Only clearly voiced frames
+// count: a held vowel is clear, and a pitch followed through noise would make
+// ordinary sounds look held for longer.
 export function holds(fs: Frame[]): Phrase[] {
   const out: Phrase[] = [];
   let from = -1;
   let peak = -Infinity;
+  const clearHz = (f: Frame | undefined): number | null => (f?.clear ? f.hz : null);
   for (let k = 0; k <= fs.length; k++) {
     const f = fs[k] as Frame | undefined;
-    const hz = f?.hz ?? null;
-    const before = fs[k - 1]?.hz ?? null;
+    const hz = clearHz(f);
+    const before = clearHz(fs[k - 1]);
     if (f && hz !== null && from >= 0 && before !== null && Math.abs(12 * Math.log2(hz / before)) < JUMP && f.db > peak - DIP) {
       peak = Math.max(peak, f.db);
       continue;
@@ -286,7 +327,10 @@ function contourOf(span: Frame[], n: number): (number | null)[] {
 // person's other messages.
 export function hear(pcm: Float32Array, rate: number, timed: Timed[]): { words: Word[]; voice: Voice | null } {
   const fs = frames(pcm, rate);
-  if (fs.filter((f) => f.hz !== null).length < MIN_VOICED || timed.length === 0) return { words: [], voice: null };
+  const voicedFrames = fs.filter((f) => f.hz !== null).length;
+  const spoken = phrases(fs).reduce((n, p) => n + p.to - p.from, 0);
+  const anyone = voicedFrames >= MIN_VOICED || (spoken >= MIN_SPOKEN && spoken < fs.length * 0.95);
+  if (!anyone || timed.length === 0) return { words: [], voice: null };
 
   const sounds = holds(fs);
   const lengths = sounds.map((h) => (h.to - h.from) * HOP);
@@ -336,14 +380,27 @@ export function hear(pcm: Float32Array, rate: number, timed: Timed[]): { words: 
   }));
 
   // the whole message's voice: pitch above A1 (55 Hz) so it's never negative,
-  // and pace as held sounds per second of speech, which tracks syllables
+  // and pace as letters per second from the first word's start to the last
+  // one's end as Whisper heard them, less any pause over half a second (a
+  // pause isn't speed). Whisper's own times, not the ones moved onto the
+  // speech: three measures built on the speech frames all read loud as fast
+  // on CREMA-D's actors (a quiet take counts its breath and hiss as speech and
+  // a loud one doesn't), and held sounds per second read every emotion as
+  // faster (an emotional voice holds steadier). Whisper's times don't move
+  // with loudness; they're late before a pause, but a pause isn't counted.
   const voiced = fs.flatMap((f) => (f.active && f.hz !== null ? [12 * Math.log2(f.hz / 55)] : []));
-  const speaking = fs.filter((f) => f.active).length * HOP;
+  const placed = timed.filter((w) => w.end > w.start);
+  let speaking = 0;
+  placed.forEach((w, i) => {
+    speaking += Math.min(w.end - w.start, 1);
+    const gap = i + 1 < placed.length ? placed[i + 1].start - w.end : 0;
+    if (gap > 0) speaking += Math.min(gap, 0.5);
+  });
   const voice: Voice = {
     pitch: voiced.length ? round(median(voiced)) : null,
     range: voiced.length ? round(percentile(voiced, 0.9) - percentile(voiced, 0.1)) : 0,
     loud: louds.length ? round(typicalLoud) : -100,
-    pace: speaking > 0 ? round(sounds.length / speaking) : 0,
+    pace: speaking > 0 ? round(timed.reduce((n, t) => n + letterCount(t.w), 0) / speaking) : 0,
   };
   return { words, voice };
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { measure, words, type Heard } from "../src/prosody.ts";
-import { renderWords, type Word } from "../src/voice.ts";
+import { hear as hearWhole, measure, words, type Heard } from "../src/prosody.ts";
+import { compare, describe as describeVoice, renderWords, type Word } from "../src/voice.ts";
 
 // The hearing, checked on a real voice rather than made-up tones: eleven
 // seconds of John F. Kennedy's inaugural address (20 January 1961; a work of
@@ -75,4 +75,43 @@ describe("hearing a real voice (JFK, 1961)", () => {
     expect(text).toMatch(/^And so{4,}, my fellow Americans,/);
     expect(text.replace(/^And so+,/, "")).not.toMatch(/(\p{L})\1\1/u);
   });
+});
+
+// The voice as a whole, checked on actors saying the same sentence in
+// different emotions (CREMA-D; see fixtures/crema-d/README.md). Across 178 of
+// its takes (11 actors, six emotions, two sentences) angry was louder than
+// the same actor's neutral for every actor and higher for 95%, sad quieter for
+// 80%, and pace disagreed with itself however it was measured, which is why
+// the app never says "faster" or "slower".
+describe("hearing the same sentence said in different moods (CREMA-D)", () => {
+  const take = (actor: string, mood: string) => {
+    const name = `crema-d/${actor}_TIE_${mood}_XX`;
+    const pcm = wav(fixture(`${name}.wav`));
+    return hear2(pcm, `${name}.whisper.json`);
+  };
+  const hear2 = (pcm: Float32Array, whisper: string) =>
+    hearWhole(pcm, RATE, words(JSON.parse(readFileSync(fixture(whisper), "utf8")) as Heard[], pcm.length / RATE));
+
+  for (const actor of ["1038", "1020"]) {
+    const [neutral, angry, sad] = ["NEU", "ANG", "SAD"].map((m) => take(actor, m));
+    const usual = [neutral.voice!, neutral.voice!, neutral.voice!];
+
+    // Whisper's words are Whisper's (it heard 1038's sad "happened" as
+    // "happens"); what's the app's is that none of them goes missing
+    it(`keeps every word of actor ${actor}'s takes, sad included`, () => {
+      for (const t of [neutral, angry, sad]) {
+        expect(t.words.map((w) => w.w.toLowerCase().replace(/\W/g, "")).slice(0, 4)).toEqual(["that", "is", "exactly", "what"]);
+        expect(t.words).toHaveLength(5);
+      }
+    });
+
+    it(`says actor ${actor}'s angry take was higher and louder than usual`, () => {
+      expect(describeVoice(compare(angry.voice!, usual), "them")).toMatch(/^Higher.* and louder than them usually sounds$/);
+    });
+
+    it(`never calls actor ${actor}'s sad take louder, and doesn't draw anything out`, () => {
+      expect(describeVoice(compare(sad.voice!, usual), "them") ?? "").not.toMatch(/louder/);
+      for (const t of [neutral, angry, sad]) expect(seen(t.words)).not.toMatch(/(\p{L})\1\1/u);
+    });
+  }
 });

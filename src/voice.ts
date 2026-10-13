@@ -26,7 +26,7 @@ export type Voice = {
   pitch: number | null; // typical pitch, in semitones above 55 Hz (A1); null if nothing was voiced
   range: number; // how widely the pitch moved: semitones between its 10th and 90th percentiles
   loud: number; // typical loudness of its words, dB against digital full scale
-  pace: number; // held sounds per second of speaking: roughly syllables per second
+  pace: number; // letters per second of speaking: how fast the words came
 };
 
 // How a message compares with how its speaker usually sounds, worked out by
@@ -85,7 +85,7 @@ export function cleanVoice(input: unknown): Voice | null {
     pitch: finite(v.pitch) ? round(clamp(v.pitch, 0, 60)) : null,
     range: round(clamp(v.range, 0, 36)),
     loud: round(clamp(v.loud, -100, 0)),
-    pace: round(clamp(v.pace, 0, 15)),
+    pace: round(clamp(v.pace, 0, 40)),
   };
 }
 
@@ -119,18 +119,24 @@ export function compare(voice: Voice, before: Voice[]): Usual | null {
 // words that say which way. Someone's own voice varies a semitone or two and
 // a few dB from one message to the next, and mic distance moves loudness, so
 // the bars are set past that.
-const NOTICE = { pitch: 2.5, range: 4, loud: 5, pace: 0.3 } as const;
-const SAYS: Record<keyof Usual, [string, string]> = {
+//
+// Pace is measured and kept but never said or drawn. On 178 of CREMA-D's
+// actors' takes (one sentence in six emotions each), four ways of measuring it
+// disagreed about whether angry and happy were faster or slower than neutral,
+// and none agreed with the next; pitch and loudness separated cleanly (angry
+// was louder than the same actor's neutral for all of them, higher for 95%).
+// Playback shows pace as it was, word by word, which needs no measure.
+const NOTICE = { pitch: 2.5, range: 4, loud: 5 } as const;
+const SAYS: Record<keyof typeof NOTICE, [string, string]> = {
   pitch: ["higher", "lower"],
   range: ["more animated", "flatter"],
   loud: ["louder", "quieter"],
-  pace: ["faster", "slower"],
 };
 
 // "higher and faster than sam usually sounds", or null when it's within usual
 export function describe(usual: Usual | null, name: string): string | null {
   if (!usual) return null;
-  const ways = (Object.keys(SAYS) as (keyof Usual)[])
+  const ways = (Object.keys(SAYS) as (keyof typeof NOTICE)[])
     .filter((k) => Math.abs(usual[k]) >= NOTICE[k])
     .map((k) => SAYS[k][usual[k] > 0 ? 0 : 1]);
   if (ways.length === 0) return null;
@@ -139,12 +145,12 @@ export function describe(usual: Usual | null, name: string): string | null {
 }
 
 // The message as a whole, as CSS custom properties, from how it compares with
-// usual: --u-loud and --u-pace and so on, each pulled to -1..1 at about twice
-// the notice bar. Nothing is set without a usual, so a newcomer's messages
-// draw plain.
+// usual: --u-loud, --u-range and --u-pitch, each pulled to -1..1 at about
+// twice the notice bar. Nothing is set without a usual, so a newcomer's
+// messages draw plain.
 export function usualVars(usual: Usual | null): string {
   if (!usual) return "";
-  return (Object.keys(NOTICE) as (keyof Usual)[])
+  return (Object.keys(NOTICE) as (keyof typeof NOTICE)[])
     .map((k) => `--u-${k}:${round(clamp(usual[k] / (NOTICE[k] * 2), -1, 1))}`)
     .join(";");
 }
