@@ -117,6 +117,16 @@ describe.skipIf(!writable)("the room", () => {
     expect(place(fromB, b.name)).not.toEqual(place(fromB, a.name));
   });
 
+  it("gives someone a place on every open page the moment they join", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const e = (await watcher.waitFor(p.name)) as unknown as { name: string; x: number; y: number };
+    expect(e).toMatchObject({ name: p.name });
+    expect(e.x).toBeGreaterThanOrEqual(0);
+    watcher.close();
+  });
+
   it("sends each phrase with what a page needs to play it word by word", async () => {
     const watcher = listen();
     await watcher.ready;

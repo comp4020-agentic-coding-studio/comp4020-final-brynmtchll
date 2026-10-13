@@ -16,7 +16,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "voice.ts", "prosody.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),
@@ -199,6 +199,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const id = randomUUID();
     const result = room.join(id, new URLSearchParams((await body(req, 4096)) ?? "").get("name") ?? "");
     if (!result.ok) return back(res, result.reason);
+    // every open page gives them a place straight away
+    const joined = room.findPerson(id)!;
+    const arrival = `event: joined\ndata: ${JSON.stringify({ name: joined.name, hue: hueOf(joined.name), ...spotAt(room.seatOf(joined.name)) })}\n\n`;
+    for (const listener of listening) listener.write(arrival);
     // behind Fly's proxy the browser is on https, so the cookie can insist on it
     const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
     return back(res, undefined, {
