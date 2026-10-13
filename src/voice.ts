@@ -111,13 +111,13 @@ export function repeats(x: Word): number {
 
 // The words as HTML. Each word carries its numbers as CSS custom properties
 // and style.css decides what they look like, so how loud becomes how heavy is
-// tuned in one place. The pause before a word is the gap since the last one
-// ended. A drawn-out word repeats a letter the way people type it ("sooo");
+// tuned in one place. A pause hangs off the end of the word before it, so a
+// pause that falls at a line break doesn't indent the next line. A drawn-out word repeats a letter the way people type it ("sooo");
 // the repeats are hidden from screen readers, which read the word as said.
 export function renderWords(words: Word[]): string {
   return words
     .map((x, i) => {
-      const gap = i === 0 ? 0 : clamp(x.start - words[i - 1].end, 0, 3);
+      const gap = i + 1 < words.length ? clamp(words[i + 1].start - x.end, 0, 3) : 0;
       const vars = `--loud:${x.loud};--pitch:${x.pitch ?? 0};--rise:${x.rise};--gap:${round(gap)}`;
       const n = repeats(x);
       const at = n > 0 ? holdLetter(x.w, x.held ?? null) : null;

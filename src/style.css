@@ -89,7 +89,7 @@ button.quiet { border-color: transparent; color: var(--muted); }
      --loud     dB above or below their typical word: heavier, bigger, fainter
      --pitch    semitones above or below their typical pitch: sits higher or lower
      --rise     semitones the pitch moved across the word: tilts up or down
-     --gap      seconds of pause before it: more space
+     --gap      seconds of pause after it: more space
    A drawn-out word isn't styled here: voice.ts repeats one of its letters.
    The line height leaves room for words to ride up and down. */
 .words { font-size: 1.375rem; line-height: 2.4; margin: 0; overflow-wrap: anywhere; }
@@ -98,7 +98,7 @@ button.quiet { border-color: transparent; color: var(--muted); }
   font-weight: clamp(200, calc(450 + var(--loud) * 40), 900);
   font-size: clamp(0.8em, calc(1em + var(--loud) * 0.025em), 1.5em);
   opacity: clamp(0.45, calc(1 + var(--loud) * 0.05), 1);
-  margin-left: min(calc(var(--gap) * 0.6em), 2em);
+  margin-right: min(calc(var(--gap) * 0.6em), 2em);
   transform: translateY(calc(var(--pitch) * -0.07em)) rotate(clamp(-10deg, calc(var(--rise) * -1.5deg), 10deg));
   transform-origin: left center;
 }
