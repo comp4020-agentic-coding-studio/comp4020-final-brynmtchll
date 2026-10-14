@@ -280,7 +280,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       uncount(me.id);
       return json(res, 400, { error: "not-a-message" });
     }
-    const m = room.say(me.id, words, cleanVoice((parsed as { voice?: unknown }).voice));
+    const m = room.say(me.id, words, cleanVoice((parsed as { voice?: unknown }).voice), faces.get(me.name) ?? null);
     // stored, so it's sent: one listener that can't take it doesn't fail the rest
     let payload = "";
     try {

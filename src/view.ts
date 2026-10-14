@@ -42,14 +42,14 @@ export function spotHtml(name: string, seat: number, mine = false, face: string 
 }
 
 // One line of the brief record: who, in their colour, what they said, when.
-export const lineHtml = (l: { name: string; seat: number; text: string; until: number }, now = Date.now()): string =>
-  `<li style="--hue:${hueOf(l.seat)}" data-name="${esc(l.name)}" data-until="${l.until}"><strong>${esc(l.name)}</strong> <span class="said-text">${esc(l.text)}</span> <time data-at="${l.until}">${ago(l.until, now)}</time></li>`;
+export const lineHtml = (l: { name: string; seat: number; text: string; until: number; face?: string | null }, now = Date.now()): string =>
+  `<li style="--hue:${hueOf(l.seat)}" data-name="${esc(l.name)}" data-until="${l.until}"><strong>${l.face ? `${esc(l.face)} ` : ""}${esc(l.name)}</strong> <span class="said-text">${esc(l.text)}</span> <time data-at="${l.until}">${ago(l.until, now)}</time></li>`;
 
 export function roomPage(
   people: { name: string; seat: number }[],
   me: (Person & { seat: number }) | undefined,
   msg: string | undefined,
-  lines: { name: string; seat: number; text: string; until: number }[] = [],
+  lines: { name: string; seat: number; text: string; until: number; face?: string | null }[] = [],
   faces: Map<string, string | null> = new Map(),
 ): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
@@ -106,7 +106,7 @@ export function roomPage(
     <ol id="record" class="record">${lines.map((l) => lineHtml(l)).join("")}</ol>
     <p id="record-empty" class="fine" ${lines.length ? "hidden" : ""}>Nothing said yet.</p>
   </section>
-  <p class="fine">Your voice is turned into words in this browser. Only the words, and how loud, high and drawn-out each one was, leave it. No recording is kept anywhere.</p>
+  <p class="fine">Your voice is turned into words in this browser. Only the words, and how loud, high and drawn-out each one was, leave it. If you show your face, it's read in this browser too, and only an emoji leaves it. No recording or picture is kept anywhere.</p>
 </main>`,
     `<script type="module" src="/js/client.ts"></script>`,
   );

@@ -40,6 +40,8 @@ export function openRoom(file: string, now: () => number = Date.now) {
   const columns = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);
   if (!columns.includes("voice")) db.exec("ALTER TABLE messages ADD COLUMN voice TEXT");
   if (!columns.includes("usual")) db.exec("ALTER TABLE messages ADD COLUMN usual TEXT");
+  // the speaker's face (an emoji) when they said it, if they were showing one
+  if (!columns.includes("face")) db.exec("ALTER TABLE messages ADD COLUMN face TEXT");
   // a phrase every second or two per person adds up: who's been speaking
   // lately and someone's last few voices are looked up by person, newest first
   db.exec("CREATE INDEX IF NOT EXISTS messages_by_person ON messages (person_id, id)");
@@ -84,11 +86,11 @@ export function openRoom(file: string, now: () => number = Date.now) {
       .reverse();
 
   // words and voice have already been through clean() and cleanVoice()
-  function say(personId: string, words: Word[], voice: Voice | null = null): Message {
+  function say(personId: string, words: Word[], voice: Voice | null = null, face: string | null = null): Message {
     const usual = voice ? compare(voice, voices(personId)) : null;
     const { lastInsertRowid } = db
-      .prepare("INSERT INTO messages (person_id, text, words, voice, usual, at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(personId, textOf(words), JSON.stringify(words), voice && JSON.stringify(voice), usual && JSON.stringify(usual), now());
+      .prepare("INSERT INTO messages (person_id, text, words, voice, usual, face, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(personId, textOf(words), JSON.stringify(words), voice && JSON.stringify(voice), usual && JSON.stringify(usual), face, now());
     return toMessage(db.prepare(`${SELECT} WHERE m.id = ?`).get(lastInsertRowid) as MessageRow);
   }
 
@@ -127,15 +129,15 @@ export function openRoom(file: string, now: () => number = Date.now) {
   // LINE_BREAK, the newest last, at most `lines`. Words go out one at a time,
   // so this is what makes the room legible to someone who's just arrived.
   const LINE_BREAK = 8_000; // ms
-  type Line = { name: string; seat: number; text: string; at: number; until: number };
+  type Line = { name: string; seat: number; text: string; at: number; until: number; face: string | null };
   function record(lines = 12, scan = 400): Line[] {
     const rows = (
       db
         .prepare(
-          `SELECT p.name, p.rowid AS seat, m.text, m.at FROM messages m JOIN people p ON p.id = m.person_id
+          `SELECT p.name, p.rowid AS seat, m.text, m.at, m.face FROM messages m JOIN people p ON p.id = m.person_id
            ORDER BY m.id DESC LIMIT ?`,
         )
-        .all(scan) as { name: string; seat: number; text: string; at: number }[]
+        .all(scan) as { name: string; seat: number; text: string; at: number; face: string | null }[]
     ).reverse();
     const out: Line[] = [];
     for (const r of rows) {
@@ -143,7 +145,9 @@ export function openRoom(file: string, now: () => number = Date.now) {
       if (last && last.name === r.name && Number(r.at) - last.until < LINE_BREAK) {
         last.text += ` ${r.text}`;
         last.until = Number(r.at);
-      } else out.push({ name: r.name, seat: Number(r.seat), text: r.text, at: Number(r.at), until: Number(r.at) });
+        // a line shows the face its speaker had for most of it: the latest one
+        if (r.face) last.face = r.face;
+      } else out.push({ name: r.name, seat: Number(r.seat), text: r.text, at: Number(r.at), until: Number(r.at), face: r.face });
     }
     return out.slice(-lines);
   }
