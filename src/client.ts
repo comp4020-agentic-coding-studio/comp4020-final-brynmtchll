@@ -660,9 +660,14 @@ let stopFace: (() => void) | undefined;
 let lastSentFace: Face | null | undefined;
 let currentFace: Face | null = null;
 
-async function sendFace(face: Face | null): Promise<void> {
-  if (face === lastSentFace) return;
+// Sent when it changes, and again every few seconds while it's showing: the
+// server clears a face it stops hearing about, so one can't be left behind.
+const FACE_AGAIN = 5000;
+let faceSentAt = 0;
+async function sendFace(face: Face | null, force = false): Promise<void> {
+  if (face === lastSentFace && !(force && face !== null)) return;
   lastSentFace = face;
+  faceSentAt = Date.now();
   try {
     await fetch("/face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ face }) });
   } catch {
@@ -685,12 +690,16 @@ async function faceStart(): Promise<void> {
   try {
     const { FaceLandmarker, FilesetResolver } = await import(`${VISION}/vision_bundle.mjs`);
     const files = await FilesetResolver.forVisionTasks(`${VISION}/wasm`);
-    landmarker = await FaceLandmarker.createFromOptions(files, {
-      baseOptions: { modelAssetPath: FACE_MODEL },
-      runningMode: "VIDEO",
-      outputFaceBlendshapes: true,
-      numFaces: 1,
-    });
+    // a stalled download mustn't leave the button stuck
+    landmarker = await Promise.race([
+      FaceLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: FACE_MODEL },
+        runningMode: "VIDEO",
+        outputFaceBlendshapes: true,
+        numFaces: 1,
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("the face reader took too long to load")), 30_000)),
+    ]);
   } catch (err) {
     console.error(err);
     for (const t of camera.getTracks()) t.stop();
@@ -701,19 +710,44 @@ async function faceStart(): Promise<void> {
   video.muted = true;
   video.playsInline = true;
   video.srcObject = camera;
-  await video.play();
+  try {
+    await video.play();
+  } catch {
+    for (const t of camera.getTracks()) t.stop();
+    landmarker.close();
+    faceButton!.disabled = false;
+    return warn("Couldn't start the camera. Try again.");
+  }
   const read = faceReader();
   const timer = setInterval(() => {
-    if (document.hidden || video.readyState < 2) return;
-    const shapes = landmarker.detectForVideo(video, performance.now()).faceBlendshapes?.[0]?.categories;
-    const face = read(shapes ? Object.fromEntries(shapes.map((c) => [c.categoryName, c.score])) : {});
+    // a hidden page (a phone put away) isn't reading anyone's face
+    if (document.hidden) {
+      if (currentFace !== null) {
+        currentFace = null;
+        void sendFace(null);
+      }
+      return;
+    }
+    if (video.readyState < 2) return;
+    let face: Face | null;
+    try {
+      const shapes = landmarker.detectForVideo(video, performance.now()).faceBlendshapes?.[0]?.categories;
+      face = read(shapes ? Object.fromEntries(shapes.map((c) => [c.categoryName, c.score])) : {});
+    } catch (err) {
+      console.error(err);
+      return faceStop();
+    }
     if (face !== currentFace) {
       currentFace = face;
       const mine = stage.querySelector(".spot.mine .spot-face");
       if (mine) mine.textContent = face ?? "";
       void sendFace(face);
+    } else if (face !== null && Date.now() - faceSentAt > FACE_AGAIN) {
+      void sendFace(face, true);
     }
   }, FACE_EVERY);
+  // the camera itself can stop (unplugged, taken by another app)
+  for (const t of camera.getVideoTracks()) t.addEventListener("ended", () => faceOn && faceStop());
   stopFace = () => {
     clearInterval(timer);
     for (const t of camera.getTracks()) t.stop();

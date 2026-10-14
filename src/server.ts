@@ -10,8 +10,37 @@ import { clean, cleanVoice, hueOf, spotAt, wordHtml } from "./voice.ts";
 import { FACES, type Face } from "./face.ts";
 
 // Everyone's face as they last showed it, in memory: a face is for now, so
-// a restart forgetting it is right.
+// a restart forgetting it is right. A page showing a face sends it again
+// every few seconds; one not heard from for FACE_FOR is taken to have gone
+// (a phone put away, a closed tab whose last word was lost), and cleared for
+// everyone, so nobody's left wearing a face they've stopped making.
+const FACE_FOR = 12_000;
 const faces = new Map<string, Face | null>();
+const faceSeen = new Map<string, number>();
+const showFace = (name: string, face: Face | null): void => {
+  faces.set(name, face);
+  const payload = `event: face\ndata: ${JSON.stringify({ name, face })}\n\n`;
+  for (const listener of listening) listener.write(payload);
+};
+setInterval(() => {
+  const now = Date.now();
+  for (const [name, seen] of faceSeen) {
+    if (now - seen < FACE_FOR) continue;
+    faceSeen.delete(name);
+    if (faces.get(name)) showFace(name, null);
+    faces.delete(name);
+  }
+}, 2000).unref();
+// faces are limited apart from words, so a talker near the word limit can
+// still clear their face
+const facesSent = new Map<string, number[]>();
+function faceTooFast(personId: string): boolean {
+  const now = Date.now();
+  const recent = (facesSent.get(personId) ?? []).filter((t) => now - t < 10_000);
+  recent.push(now);
+  facesSent.set(personId, recent);
+  return recent.length > 40;
+}
 
 const css = readFileSync(new URL("./style.css", import.meta.url));
 const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")));
@@ -251,7 +280,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   // ride along. Limited like words, since a face can change often.
   if (req.method === "POST" && url.pathname === "/face") {
     if (!me) return json(res, 401, { error: "no-person" });
-    if (tooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    if (faceTooFast(me.id)) return json(res, 429, { error: "too-fast" });
     let face: unknown = null;
     try {
       face = (JSON.parse((await body(req, 256)) ?? "{}") as { face?: unknown }).face ?? null;
@@ -259,9 +288,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return json(res, 400, { error: "not-a-face" });
     }
     if (face !== null && !(FACES as readonly unknown[]).includes(face)) return json(res, 400, { error: "not-a-face" });
-    faces.set(me.name, face as Face | null);
-    const payload = `event: face\ndata: ${JSON.stringify({ name: me.name, face })}\n\n`;
-    for (const listener of listening) listener.write(payload);
+    if (face === null) faceSeen.delete(me.name);
+    else faceSeen.set(me.name, Date.now());
+    // only a change goes out; a repeat just says they're still there
+    if ((faces.get(me.name) ?? null) !== face) showFace(me.name, face as Face | null);
     return json(res, 200, { face });
   }
 

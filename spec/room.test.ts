@@ -230,6 +230,17 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   });
 
+  it("clears a face its page stops sending, so nobody's left wearing one", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    await fetch(new URL("/face", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify({ face: "😠" }) });
+    // nothing more from that page: within the 12 s it's taken to have gone
+    const cleared = await watcher.waitFor(`"name":"${p.name}","face":null`, 16_000);
+    expect(cleared).toMatchObject({ type: "face" });
+    watcher.close();
+  }, 20_000);
+
   it("only lets someone who has joined say anything", async () => {
     const res = await fetch(new URL("/say", baseUrl), {
       method: "POST",
