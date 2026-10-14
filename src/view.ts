@@ -92,7 +92,7 @@ export function roomPage(
     `<main class="room">
   <div class="intro">
     <h1>Say it how you mean it</h1>
-    <p class="lede">Turn your microphone on and talk. Your words appear where you are, as you say them, for everyone here: louder is heavier, higher sits higher, drawn-out sounds repeat (sooo).</p>
+    <p class="lede">Pick a name, turn your microphone on and talk. Your words appear where you are, as you say them, for everyone here: louder is heavier, higher sits higher, drawn-out sounds repeat (sooo). Before each word goes out you can type over it, delete it, or press 1, 2 or 3 for Impact, Whisper or Glow. Show your face too, and it's an emoji by your name.</p>
   </div>
   <section class="stage-wrap" aria-labelledby="stage-h">
     <div class="room-head"><h2 id="stage-h">In the room</h2><p id="live" class="live" role="status" hidden></p></div>

@@ -18,7 +18,11 @@ A room where you speak instead of type, and everyone sees how you said it.
 - Everyone sees your words appear one at a time in your place, as you said
   them. Louder words are heavier, higher ones sit higher, and drawn-out sounds
   repeat their letters ("sooo"). Your last word lingers, then fades.
-- There's no log. Words are for the moment they're said.
+- Turn on "Show my face as an emoji" and your expression is read in your
+  browser and shown as one of six emoji by your name (😀 😂 😮 😠 😢 😏). Only
+  the emoji is sent; no picture is.
+- Under the stage, a short record of what's been said lately, each person's
+  words joined into lines in their colour, so someone arriving can catch up.
 
 The first time you join, your browser downloads the speech model (about 80 MB)
 before you can talk; after that it's cached. Chrome is recommended.
@@ -70,9 +74,7 @@ Judged by people:
 
 ## What it doesn't do
 
-- It doesn't keep a transcript, so nothing said earlier is shown to someone
-  who arrives later. *(Bryn: the brief asks that what people do persists;
-  people's places do, and what they said is stored, but it isn't shown.)*
+- It only shows the last few lines of what's been said, not everything.
 - It doesn't name emotions. It shows how something was said and leaves the
   reading to people.
 - It doesn't say "faster" or "slower": tested on 178 acted takes, four ways
