@@ -33,11 +33,11 @@ const MESSAGES: Record<string, string> = {
 // they're said: at the place their seat gives them, in their colour. The live
 // word is hidden from screen readers, which hear each whole phrase from the
 // page's one live region instead.
-export function spotHtml(name: string, seat: number, mine = false): string {
+export function spotHtml(name: string, seat: number, mine = false, face: string | null = null): string {
   const { x, y } = spotAt(seat);
   return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)};--x:${x};--y:${y}">
     <span class="spot-word" aria-hidden="true"></span>
-    <span class="spot-name">${esc(name)}${mine ? " (you)" : ""}</span>
+    <span class="spot-name"><span class="spot-face" role="img" aria-label="${face ? "their face" : ""}">${face ?? ""}</span>${esc(name)}${mine ? " (you)" : ""}</span>
   </li>`;
 }
 
@@ -50,6 +50,7 @@ export function roomPage(
   me: (Person & { seat: number }) | undefined,
   msg: string | undefined,
   lines: { name: string; seat: number; text: string; until: number }[] = [],
+  faces: Map<string, string | null> = new Map(),
 ): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
   // The queue is where your words wait before anyone else sees them, with
@@ -70,6 +71,7 @@ export function roomPage(
       </section>
       <div class="speak">
         <button id="talk" type="button" class="talk" aria-pressed="false" disabled>Turn on microphone</button>
+        <button id="face" type="button" class="face-toggle" aria-pressed="false" hidden>Show my face as an emoji</button>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
       </div>
       </div>`
@@ -84,7 +86,7 @@ export function roomPage(
       </section>`;
 
   const here = me && !people.some((p) => p.name === me.name) ? [{ name: me.name, seat: me.seat }, ...people] : people;
-  const stage = here.map((p) => spotHtml(p.name, p.seat, p.name === me?.name)).join("");
+  const stage = here.map((p) => spotHtml(p.name, p.seat, p.name === me?.name, faces.get(p.name) ?? null)).join("");
   return layout(
     `${APP}: say it how you mean it`,
     `<main class="room">

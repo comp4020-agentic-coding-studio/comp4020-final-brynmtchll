@@ -7,6 +7,11 @@ import { marked } from "marked";
 import { openRoom, type Message } from "./db.ts";
 import { APP, readmePage, roomPage } from "./view.ts";
 import { clean, cleanVoice, hueOf, spotAt, wordHtml } from "./voice.ts";
+import { FACES, type Face } from "./face.ts";
+
+// Everyone's face as they last showed it, in memory: a face is for now, so
+// a restart forgetting it is right.
+const faces = new Map<string, Face | null>();
 
 const css = readFileSync(new URL("./style.css", import.meta.url));
 const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")));
@@ -16,7 +21,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "queue.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "queue.ts", "face.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),
@@ -200,7 +205,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
-    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record()));
+    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), faces));
   }
   if (req.method === "GET" && (url.pathname === "/readme/" || url.pathname === "/readme")) {
     return send(res, 200, "text/html; charset=utf-8", readme);
@@ -239,6 +244,25 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return back(res, undefined, {
       "set-cookie": `${COOKIE}=${id}; Path=/; Max-Age=${YEAR}; HttpOnly; SameSite=Lax${secure}`,
     });
+  }
+
+  // Someone's face, as one of FACES or none: shown by their name on every
+  // open page. Nothing but the emoji is accepted, so no picture or score can
+  // ride along. Limited like words, since a face can change often.
+  if (req.method === "POST" && url.pathname === "/face") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (tooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let face: unknown = null;
+    try {
+      face = (JSON.parse((await body(req, 256)) ?? "{}") as { face?: unknown }).face ?? null;
+    } catch {
+      return json(res, 400, { error: "not-a-face" });
+    }
+    if (face !== null && !(FACES as readonly unknown[]).includes(face)) return json(res, 400, { error: "not-a-face" });
+    faces.set(me.name, face as Face | null);
+    const payload = `event: face\ndata: ${JSON.stringify({ name: me.name, face })}\n\n`;
+    for (const listener of listening) listener.write(payload);
+    return json(res, 200, { face });
   }
 
   if (req.method === "POST" && url.pathname === "/say") {

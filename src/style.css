@@ -163,6 +163,10 @@ body:has(.dock) main { padding-bottom: calc(var(--dock-h, 6rem) + 16px); }
 }
 .spot-name { font-size: 0.875rem; font-weight: 700; color: var(--person); opacity: 0.75; transition: opacity 0.3s; }
 .spot.speaking .spot-name { opacity: 1; }
+.spot-face { margin-right: 4px; font-size: 1.25em; }
+.spot-face:empty { display: none; }
+.face-toggle { border-radius: 999px; padding: 10px 16px; }
+.face-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .spot-word {
   min-height: 1.4em;
   display: flex;

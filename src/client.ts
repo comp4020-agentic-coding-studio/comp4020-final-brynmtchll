@@ -2,6 +2,7 @@
 // reads fine without this; the script keeps it live, plays each phrase in its
 // speaker's spot, and, while someone's microphone is on, hears them a phrase
 // at a time and sends each phrase as it's heard.
+import { faceReader, type Face } from "./face.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, spoke, words, type Heard } from "./prosody.ts";
 import { queue as wordQueue } from "./queue.ts";
@@ -148,7 +149,8 @@ function remember(p: Phrase): void {
     li.dataset.until = String(p.at);
     li.style.setProperty("--hue", String(p.hue));
     const who = document.createElement("strong");
-    who.textContent = p.name;
+    const face = stage.querySelector(`.spot[data-name="${CSS.escape(p.name)}"] .spot-face`)?.textContent;
+    who.textContent = face ? `${face} ${p.name}` : p.name;
     const text = document.createElement("span");
     text.className = "said-text";
     text.textContent = p.text;
@@ -206,6 +208,14 @@ function connect(): void {
   });
   stream.addEventListener("joined", (e) => {
     spotFor(JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue" | "x" | "y">);
+  });
+  stream.addEventListener("face", (e) => {
+    const { name, face } = JSON.parse((e as MessageEvent<string>).data) as { name: string; face: Face | null };
+    const el = stage.querySelector(`.spot[data-name="${CSS.escape(name)}"] .spot-face`);
+    if (el) {
+      el.textContent = face ?? "";
+      el.setAttribute("aria-label", face ? `${name}'s face` : "");
+    }
   });
   stream.addEventListener("said", (e) => {
     const p = JSON.parse((e as MessageEvent<string>).data) as Phrase;
@@ -626,4 +636,113 @@ if (talk) {
     if (document.readyState === "complete") warm();
     else addEventListener("load", warm, { once: true });
   }
+}
+
+// ---- your face, as an emoji: only for someone who has joined, only if they ask ----
+
+// MediaPipe's face landmarker runs in this page on a small, hidden copy of
+// the camera, a few times a second; face.ts turns its expression scores into
+// an emoji. Only the emoji is sent, and only when it changes: no picture and
+// no scores leave the browser. The model (about 4 MB) loads the first time
+// someone turns it on.
+const VISION = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1";
+const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+const FACE_EVERY = 125; // ms between readings
+
+type Landmarker = {
+  detectForVideo(video: HTMLVideoElement, at: number): { faceBlendshapes?: { categories: { categoryName: string; score: number }[] }[] };
+  close(): void;
+};
+
+const faceButton = document.getElementById("face") as HTMLButtonElement | null;
+let faceOn = false;
+let stopFace: (() => void) | undefined;
+let lastSentFace: Face | null | undefined;
+let currentFace: Face | null = null;
+
+async function sendFace(face: Face | null): Promise<void> {
+  if (face === lastSentFace) return;
+  lastSentFace = face;
+  try {
+    await fetch("/face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ face }) });
+  } catch {
+    // a missed face is soon replaced by the next
+  }
+}
+
+async function faceStart(): Promise<void> {
+  faceButton!.disabled = true;
+  let camera: MediaStream;
+  try {
+    camera = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } });
+  } catch (err) {
+    faceButton!.disabled = false;
+    const blocked = err instanceof DOMException && err.name === "NotAllowedError";
+    return warn(blocked ? "The camera is blocked. Allow it for this site to show your face as an emoji." : "Couldn't open a camera in this browser.");
+  }
+  say("Reading your face: only an emoji is sent, never a picture.");
+  let landmarker: Landmarker;
+  try {
+    const { FaceLandmarker, FilesetResolver } = await import(`${VISION}/vision_bundle.mjs`);
+    const files = await FilesetResolver.forVisionTasks(`${VISION}/wasm`);
+    landmarker = await FaceLandmarker.createFromOptions(files, {
+      baseOptions: { modelAssetPath: FACE_MODEL },
+      runningMode: "VIDEO",
+      outputFaceBlendshapes: true,
+      numFaces: 1,
+    });
+  } catch (err) {
+    console.error(err);
+    for (const t of camera.getTracks()) t.stop();
+    faceButton!.disabled = false;
+    return warn("Couldn't load the face reader. Check your connection and try again.");
+  }
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = camera;
+  await video.play();
+  const read = faceReader();
+  const timer = setInterval(() => {
+    if (document.hidden || video.readyState < 2) return;
+    const shapes = landmarker.detectForVideo(video, performance.now()).faceBlendshapes?.[0]?.categories;
+    const face = read(shapes ? Object.fromEntries(shapes.map((c) => [c.categoryName, c.score])) : {});
+    if (face !== currentFace) {
+      currentFace = face;
+      const mine = stage.querySelector(".spot.mine .spot-face");
+      if (mine) mine.textContent = face ?? "";
+      void sendFace(face);
+    }
+  }, FACE_EVERY);
+  stopFace = () => {
+    clearInterval(timer);
+    for (const t of camera.getTracks()) t.stop();
+    landmarker.close();
+    video.srcObject = null;
+  };
+  faceOn = true;
+  faceButton!.disabled = false;
+  faceButton!.setAttribute("aria-pressed", "true");
+  faceButton!.textContent = "Stop showing my face";
+}
+
+function faceStop(): void {
+  stopFace?.();
+  stopFace = undefined;
+  faceOn = false;
+  currentFace = null;
+  const mine = stage.querySelector(".spot.mine .spot-face");
+  if (mine) mine.textContent = "";
+  void sendFace(null);
+  faceButton!.setAttribute("aria-pressed", "false");
+  faceButton!.textContent = "Show my face as an emoji";
+}
+
+if (faceButton && "mediaDevices" in navigator) {
+  faceButton.hidden = false;
+  faceButton.addEventListener("click", () => void (faceOn ? faceStop() : faceStart()));
+  // a face showing when you've left the page would be a lie
+  addEventListener("pagehide", () => {
+    if (faceOn) navigator.sendBeacon("/face", new Blob([JSON.stringify({ face: null })], { type: "application/json" }));
+  });
 }

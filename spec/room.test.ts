@@ -211,6 +211,25 @@ describe.skipIf(!writable)("the room", () => {
     expect(line).toBe(`hello${stamp} there friend`);
   });
 
+  it("shows someone's face as an emoji on every open page, and nothing but an emoji", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const face = (body: unknown) =>
+      fetch(new URL("/face", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect((await face({ face: "😂" })).status).toBe(200);
+    const e = (await watcher.waitFor("😂")) as unknown as { type: string; name: string };
+    expect(e).toMatchObject({ type: "face", name: p.name });
+    // a picture, a score or any other text is refused
+    for (const bad of [{ face: "data:image/png;base64,AAAA" }, { face: 0.9 }, { face: "<b>hi</b>" }]) {
+      expect((await face(bad)).status).toBe(400);
+    }
+    // and whoever arrives later sees it by their name
+    expect(await (await fetch(new URL("/", baseUrl))).text()).toMatch(new RegExp(`data-name="${p.name}"[\\s\\S]*?spot-face[^>]*>😂<`));
+    expect((await face({ face: null })).status).toBe(200);
+    watcher.close();
+  });
+
   it("only lets someone who has joined say anything", async () => {
     const res = await fetch(new URL("/say", baseUrl), {
       method: "POST",
