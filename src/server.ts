@@ -27,7 +27,10 @@ setInterval(() => {
   for (const [name, seen] of faceSeen) {
     if (now - seen < FACE_FOR) continue;
     faceSeen.delete(name);
-    if (faces.get(name)) showFace(name, null);
+    if (faces.get(name)) {
+      console.log(`${name.padEnd(18)} face      face="none" why="stopped sending"`);
+      showFace(name, null);
+    }
     faces.delete(name);
   }
 }, 2000).unref();
@@ -61,6 +64,21 @@ const scripts = new Map(
 const dir = process.env.DATA_DIR ?? "data";
 mkdirSync(dir, { recursive: true });
 const room = openRoom(joinPath(dir, "room.db"));
+
+// Who did what, one line each, to stdout, where `flyctl logs` reads it: the
+// person by name and a short tag of their id (enough to tell two people apart
+// without printing the id itself, which is their login), the action, and what
+// it was. Refusals say why. What someone said is logged as words only; there's
+// never any audio or picture to log.
+type Who = { id: string; name: string } | undefined;
+const tag = (id: string): string => id.slice(0, 4);
+function log(who: Who, action: string, detail: Record<string, unknown> = {}): void {
+  const person = who ? `${who.name}#${tag(who.id)}` : "-";
+  const rest = Object.entries(detail)
+    .map(([k, v]) => `${k}=${typeof v === "string" ? JSON.stringify(v) : v}`)
+    .join(" ");
+  console.log(`${person.padEnd(18)} ${action.padEnd(9)} ${rest}`.trimEnd());
+}
 
 const COOKIE = "said_id";
 const YEAR = 60 * 60 * 24 * 365;
@@ -220,7 +238,12 @@ function listen(req: IncomingMessage, res: ServerResponse, after: string | null)
   // on what it missed rather than starting from "now" again
   res.write(`id: ${Number.isSafeInteger(last) ? Math.max(last, 0) : room.newest()}\n: listening\n\n`);
   listening.add(res);
-  req.on("close", () => listening.delete(res));
+  const who = room.findPerson(cookieId(req));
+  log(who, "watching", { pages: listening.size });
+  req.on("close", () => {
+    listening.delete(res);
+    log(who, "left", { pages: listening.size });
+  });
 }
 
 // a comment line now and then, so Fly's proxy doesn't close a quiet stream
@@ -254,17 +277,25 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
 
   if (req.method === "POST" && !sameSite(req)) {
+    log(me, "refused", { why: "cross-site", path: url.pathname, from: String(req.headers.origin ?? req.headers["sec-fetch-site"]) });
     return send(res, 403, "text/plain; charset=utf-8", "Changes can only come from this site's own pages");
   }
 
   if (req.method === "POST" && url.pathname === "/join") {
     if (me) return back(res);
-    if (joiningTooFast(req)) return back(res, "too-many-joins");
+    if (joiningTooFast(req)) {
+      log(undefined, "refused", { why: "too-many-joins" });
+      return back(res, "too-many-joins");
+    }
     const id = randomUUID();
     const result = room.join(id, new URLSearchParams((await body(req, 4096)) ?? "").get("name") ?? "");
-    if (!result.ok) return back(res, result.reason);
+    if (!result.ok) {
+      log(undefined, "refused", { why: result.reason });
+      return back(res, result.reason);
+    }
     // every open page gives them a place straight away
     const joined = room.findPerson(id)!;
+    log(joined, "joined", { seat: room.seatOf(joined.name) });
     const seat = room.seatOf(joined.name);
     const arrival = `event: joined\ndata: ${JSON.stringify({ name: joined.name, hue: hueOf(seat), ...spotAt(seat) })}\n\n`;
     for (const listener of listening) listener.write(arrival);
@@ -279,25 +310,43 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   // open page. Nothing but the emoji is accepted, so no picture or score can
   // ride along. Limited like words, since a face can change often.
   if (req.method === "POST" && url.pathname === "/face") {
-    if (!me) return json(res, 401, { error: "no-person" });
-    if (faceTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    if (!me) {
+      log(undefined, "refused", { why: "not-joined", path: "/face" });
+      return json(res, 401, { error: "no-person" });
+    }
+    if (faceTooFast(me.id)) {
+      log(me, "refused", { why: "too-fast", path: "/face" });
+      return json(res, 429, { error: "too-fast" });
+    }
     let face: unknown = null;
     try {
       face = (JSON.parse((await body(req, 256)) ?? "{}") as { face?: unknown }).face ?? null;
     } catch {
       return json(res, 400, { error: "not-a-face" });
     }
-    if (face !== null && !(FACES as readonly unknown[]).includes(face)) return json(res, 400, { error: "not-a-face" });
+    if (face !== null && !(FACES as readonly unknown[]).includes(face)) {
+      log(me, "refused", { why: "not-a-face" });
+      return json(res, 400, { error: "not-a-face" });
+    }
     if (face === null) faceSeen.delete(me.name);
     else faceSeen.set(me.name, Date.now());
     // only a change goes out; a repeat just says they're still there
-    if ((faces.get(me.name) ?? null) !== face) showFace(me.name, face as Face | null);
+    if ((faces.get(me.name) ?? null) !== face) {
+      log(me, "face", { face: face ?? "none" });
+      showFace(me.name, face as Face | null);
+    }
     return json(res, 200, { face });
   }
 
   if (req.method === "POST" && url.pathname === "/say") {
-    if (!me) return json(res, 401, { error: "no-person" });
-    if (tooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    if (!me) {
+      log(undefined, "refused", { why: "not-joined", path: "/say" });
+      return json(res, 401, { error: "no-person" });
+    }
+    if (tooFast(me.id)) {
+      log(me, "refused", { why: "too-fast", path: "/say" });
+      return json(res, 429, { error: "too-fast" });
+    }
     const raw = await body(req, 64 * 1024);
     let parsed: unknown;
     try {
@@ -308,9 +357,17 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const words = clean((parsed as { words?: unknown } | null)?.words);
     if (!words) {
       uncount(me.id);
+      log(me, "refused", { why: "not-a-message" });
       return json(res, 400, { error: "not-a-message" });
     }
     const m = room.say(me.id, words, cleanVoice((parsed as { voice?: unknown }).voice), faces.get(me.name) ?? null);
+    const w = words[0];
+    log(me, "said", {
+      text: m.text,
+      ...(w.effect ? { effect: w.effect } : {}),
+      ...(Math.abs(w.loud) >= 6 ? { loud: w.loud } : {}),
+      ...(w.stretch >= 1 ? { drawn: "out" } : {}),
+    });
     // stored, so it's sent: one listener that can't take it doesn't fail the rest
     let payload = "";
     try {
