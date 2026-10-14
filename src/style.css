@@ -289,6 +289,13 @@ body:has(.dock) main { padding-bottom: calc(var(--dock-h, 6rem) + 16px); }
   .w.fx-impact, .w.fx-glow { animation: none; }
 }
 
+/* The brief record under the stage: each person's lines in their colour,
+   small, newest last, so someone arriving can catch up at a glance. */
+.record { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.9375rem; }
+.record li { --person: oklch(var(--person-l) var(--person-c) var(--hue)); }
+.record strong { color: var(--person); margin-right: 4px; }
+.record time { color: var(--muted); font-size: 0.8125rem; margin-left: 4px; }
+
 .prose { max-width: 70ch; }
 .prose img { max-width: 100%; }
 

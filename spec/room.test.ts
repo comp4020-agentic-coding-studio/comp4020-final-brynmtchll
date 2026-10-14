@@ -202,6 +202,15 @@ describe.skipIf(!writable)("the room", () => {
     for (const w of watchers) w.close();
   });
 
+  it("keeps a brief record of what's been said, joined into lines, for whoever comes along later", async () => {
+    const p = await person();
+    const stamp = Date.now().toString(36);
+    for (const w of [`hello${stamp}`, "there", "friend"]) await p.say({ words: [word(w, 0)] });
+    const page = await (await fetch(new URL("/", baseUrl))).text();
+    const line = page.match(new RegExp(`<li[^>]*data-name="${p.name}"[^>]*><strong>[^<]*</strong> <span class="said-text">([^<]*)</span>`))?.[1];
+    expect(line).toBe(`hello${stamp} there friend`);
+  });
+
   it("only lets someone who has joined say anything", async () => {
     const res = await fetch(new URL("/say", baseUrl), {
       method: "POST",

@@ -5,7 +5,7 @@
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, spoke, words, type Heard } from "./prosody.ts";
 import { queue as wordQueue } from "./queue.ts";
-import { wordHtml, type Voice, type Word } from "./voice.ts";
+import { ago, wordHtml, type Voice, type Word } from "./voice.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
 
 const stage = document.getElementById("stage") as HTMLUListElement;
@@ -130,7 +130,43 @@ function play(spot: Spot): void {
 
 // A screen reader hears each phrase whole, with who said it, rather than a
 // word at a time from the stage.
+// The brief record: a word joins its speaker's last line if they were the
+// last to speak and haven't paused long; otherwise it starts a new line.
+// Only the last RECORD_LINES are kept.
+const lately = document.getElementById("record") as HTMLOListElement;
+const recordEmpty = document.getElementById("record-empty") as HTMLElement;
+const RECORD_LINES = 12;
+const LINE_BREAK = 8_000;
+function remember(p: Phrase): void {
+  const last = lately.lastElementChild as HTMLElement | null;
+  if (last && last.dataset.name === p.name && p.at - Number(last.dataset.until) < LINE_BREAK) {
+    last.querySelector(".said-text")!.append(` ${p.text}`);
+    last.dataset.until = String(p.at);
+  } else {
+    const li = document.createElement("li");
+    li.dataset.name = p.name;
+    li.dataset.until = String(p.at);
+    li.style.setProperty("--hue", String(p.hue));
+    const who = document.createElement("strong");
+    who.textContent = p.name;
+    const text = document.createElement("span");
+    text.className = "said-text";
+    text.textContent = p.text;
+    const when = document.createElement("time");
+    when.dataset.at = String(p.at);
+    when.textContent = "just now";
+    li.append(who, " ", text, " ", when);
+    lately.append(li);
+    while (lately.children.length > RECORD_LINES) lately.firstElementChild!.remove();
+  }
+  recordEmpty.hidden = true;
+}
+setInterval(() => {
+  for (const t of lately.querySelectorAll<HTMLTimeElement>("time[data-at]")) t.textContent = ago(Number(t.dataset.at));
+}, 15_000);
+
 function arrive(p: Phrase): void {
+  remember(p);
   heardAloud.textContent = `${p.name}: ${p.text}`;
   const spot = spotFor(p);
   spot.queue.push({ ...p, arrived: Date.now() });

@@ -1,5 +1,5 @@
 import type { Message, Person } from "./db.ts";
-import { esc, hueOf, spotAt } from "./voice.ts";
+import { ago, esc, hueOf, spotAt } from "./voice.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
@@ -41,7 +41,16 @@ export function spotHtml(name: string, seat: number, mine = false): string {
   </li>`;
 }
 
-export function roomPage(people: { name: string; seat: number }[], me: (Person & { seat: number }) | undefined, msg: string | undefined): string {
+// One line of the brief record: who, in their colour, what they said, when.
+export const lineHtml = (l: { name: string; seat: number; text: string; until: number }, now = Date.now()): string =>
+  `<li style="--hue:${hueOf(l.seat)}" data-name="${esc(l.name)}" data-until="${l.until}"><strong>${esc(l.name)}</strong> <span class="said-text">${esc(l.text)}</span> <time data-at="${l.until}">${ago(l.until, now)}</time></li>`;
+
+export function roomPage(
+  people: { name: string; seat: number }[],
+  me: (Person & { seat: number }) | undefined,
+  msg: string | undefined,
+  lines: { name: string; seat: number; text: string; until: number }[] = [],
+): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
   // The queue is where your words wait before anyone else sees them, with
   // what you can do to the top one. Only you see it.
@@ -89,6 +98,11 @@ export function roomPage(people: { name: string; seat: number }[], me: (Person &
     <ul id="stage" class="stage">${stage}</ul>
     <p id="nobody" class="fine" ${stage ? "hidden" : ""}>Nobody's here yet.</p>
     <p id="heard" class="visually-hidden" aria-live="polite"></p>
+  </section>
+  <section class="record-wrap" aria-labelledby="record-h">
+    <h2 id="record-h">Lately</h2>
+    <ol id="record" class="record">${lines.map((l) => lineHtml(l)).join("")}</ol>
+    <p id="record-empty" class="fine" ${lines.length ? "hidden" : ""}>Nothing said yet.</p>
   </section>
   <p class="fine">Your voice is turned into words in this browser. Only the words, and how loud, high and drawn-out each one was, leave it. No recording is kept anywhere.</p>
 </main>`,

@@ -122,7 +122,33 @@ export function openRoom(file: string, now: () => number = Date.now) {
 
   const newest = (): number => Number((db.prepare("SELECT COALESCE(MAX(id), 0) AS n FROM messages").get() as { n: number }).n);
 
-  return { findPerson, join, say, recent, since, people, seatOf, newest, close: () => db.close() };
+  // A brief record of what's been said lately: each person's words joined
+  // into lines, a line ending when someone else speaks or after a pause of
+  // LINE_BREAK, the newest last, at most `lines`. Words go out one at a time,
+  // so this is what makes the room legible to someone who's just arrived.
+  const LINE_BREAK = 8_000; // ms
+  type Line = { name: string; seat: number; text: string; at: number; until: number };
+  function record(lines = 12, scan = 400): Line[] {
+    const rows = (
+      db
+        .prepare(
+          `SELECT p.name, p.rowid AS seat, m.text, m.at FROM messages m JOIN people p ON p.id = m.person_id
+           ORDER BY m.id DESC LIMIT ?`,
+        )
+        .all(scan) as { name: string; seat: number; text: string; at: number }[]
+    ).reverse();
+    const out: Line[] = [];
+    for (const r of rows) {
+      const last = out.at(-1);
+      if (last && last.name === r.name && Number(r.at) - last.until < LINE_BREAK) {
+        last.text += ` ${r.text}`;
+        last.until = Number(r.at);
+      } else out.push({ name: r.name, seat: Number(r.seat), text: r.text, at: Number(r.at), until: Number(r.at) });
+    }
+    return out.slice(-lines);
+  }
+
+  return { findPerson, join, say, recent, since, people, seatOf, newest, record, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;
