@@ -45,6 +45,78 @@ Repo: https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchl
    [`5d51566`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/5d51566),
    [`e9e6e80`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e9e6e80)
 
+## Since crit 9 (14 to 21 October): your directions, in your words
+
+Each is a message you sent, quoted (spelling as typed), and the commit it
+led to. Claude chose how to build each; what to build was yours.
+
+1. **Bring back a record, and try emotion from the face.** "reintroduce a
+   brief record of whats been said for legibility, look into emotion
+   capturing (emojis) via facial recognition". [`5d099dd`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/5d099dd), [`200bce1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/200bce1)
+2. **The facelift, modelled on texting.** "the design is ugly i dont like
+   the background colour, also lets try to model texting a little bit, i
+   want you're own texts to sit on the left and everyone elses to be
+   stacked on the right ... text appears when nothing is spoken (thankyou
+   appears alot) ... the whole design needs a feacelift". [`b34ab75`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b34ab75),
+   [`dd82631`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/dd82631)
+3. **Avatars instead of emoji, customisable.** "i dont want it to just show
+   face i want there to be emojis/avatars mimicking your facial
+   expressions, and for them to be customiseable". You also reported "it
+   started bugging out", which found the Whisper loop. [`836339c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/836339c),
+   [`32e17b4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/32e17b4)
+4. **Live, not buffered; a scrollable thread like texts.** "get rid of the
+   loading zone and have the text be transmitted directly, with options to
+   modify text be done live without a buffer", the thread "scrolleable and
+   to appear like texts with appendage to the right hand side and line
+   breaks indicating gaps in speech", and an assessment of "more detailed
+   / animated / even 3d options". [`0102513`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0102513)
+5. **Top down, fixed boxes, less delay, then 3D.** "i want the text bubble
+   column to go top down, and for the bottom of the scroll view to fade
+   out ... i don't want the user box height to be dynamic ... is there a
+   way to have less delay ... we need to think big ... lets do 3d heads".
+   [`13a4e40`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/13a4e40), [`42c293b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/42c293b), [`90dd4fe`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/90dd4fe)
+6. **More responsive.** "i need the head to be more respsonive work and
+   iterate on everything". Measured first: a head turn took 0.38 s to get
+   halfway to another screen, 0.22 s after. [`70b2085`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/70b2085)
+7. **Your live test found two real problems.** "its picking up noise and
+   not able to find my face". The logs from your session showed Whisper
+   inventing "Thanks for watching!" and "I'm going to go. I'm going to go."
+   from your room; the face reader turned out to be 12 times slower on the
+   graphics card on your machine. [`7793481`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/7793481)
+8. **Expressiveness and extensibility.** "i want to go really deep on the
+   extensibility and customiseability too and really maximise
+   expressiveness". You chose all four directions offered (avatar builder,
+   word styling, emotes and reactions, extensible packs) and to build on
+   main overnight. [`c04f4e4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/c04f4e4), [`6590dbd`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/6590dbd), [`2a52afe`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/2a52afe)
+
+### Who can see and change what (facts for the crit-10 decision record)
+
+- A person is a name and a random id in an HttpOnly cookie ([`e0386ef`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e0386ef)
+  logs them as `name#tag`, never the id). The id is never shown to anyone.
+- Anyone with the URL can watch. Anything else (speaking, editing, face,
+  voice, avatar, emotes, reactions) needs a cookie of someone who joined;
+  otherwise 401.
+- Identity comes only from the cookie: a name in the request is ignored
+  ([`f08fca8`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/f08fca8), checked in `spec/room.test.ts`).
+- Your own words, face, voice, avatar and emotes are yours alone. Editing
+  someone else's words is refused (403) and logged `refused why="not-theirs"`.
+- New on 20 October: anyone who's joined may react to anyone's word. The
+  reaction is the reactor's (one each per word), and the word itself is
+  unchanged. [`2a52afe`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/2a52afe)
+- Everything sent is checked against what's on offer (`src/packs.ts`) on
+  the server, and each kind is rate-limited separately.
+
+### Open questions for your reflection and README
+
+- The face emoji ([`200bce1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/200bce1)) went in, then became avatars that copy the
+  face without naming an emotion: does that answer your 13 October position
+  that emotion should be "inferrable", not labelled? The emotes now let
+  people label it themselves, on purpose.
+- Reactions let anyone put something on your words. You said what's yours
+  is yours; is a reaction "on" your word, or beside it?
+- What would you cut if a user found it too much? The brief rewards
+  defending choices, including what you said no to.
+
 ## What Claude did (so you can say so accurately)
 
 - Built everything above, and made the implementation calls inside it:
