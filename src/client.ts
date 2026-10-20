@@ -4,7 +4,7 @@
 // at a time and sends each phrase as it's heard.
 import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
-import { randomLook } from "./packs.ts";
+import { EFFECTS, randomLook, STYLES, type Look as PackLook } from "./packs.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
 import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
@@ -113,10 +113,18 @@ function spotFor(p: Pick<Phrase, "name" | "hue">, look?: Look): Spot {
 // expressions itself; the flat one the server drew stays until that's ready,
 // and for good where it can't be.
 const expressionOf = new Map<string, Expression>();
+// how someone's words are drawn follows their look (view.ts styleVars)
+function styleWords(card: HTMLElement, look: PackLook): void {
+  const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
+  card.dataset.words = st.id;
+  card.dataset.font = st.font;
+  card.toggleAttribute("data-glow", "glow" in st);
+}
 function drawAvatar(name: string, e: Expression, pose: Pose | null = null): void {
   expressionOf.set(name, e);
   const card = cardOf(name);
   const look = card?.dataset.look ? (JSON.parse(card.dataset.look) as Look) : null;
+  if (card && look) styleWords(card, look as unknown as PackLook);
   const slot = card?.querySelector<HTMLElement>(".spot-avatar");
   if (!look || !slot) return;
   if (!slot.querySelector(".head3d")) slot.innerHTML = avatarSvg(look, e, `${name}'s avatar`);
@@ -800,7 +808,7 @@ function key(k: string): boolean {
     markChosen();
     return true;
   }
-  const fx = { "1": "impact", "2": "whisper", "3": "glow" }[k];
+  const fx = EFFECTS.find((x) => x.key === k)?.id;
   if (fx) {
     const on = myThread()?.querySelector(`.phrase[data-id="${chosen.id}"] .tw[data-i="${chosen.index}"] .w`)?.classList.contains(`fx-${fx}`);
     void change({ effect: on ? null : fx });

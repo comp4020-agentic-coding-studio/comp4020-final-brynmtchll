@@ -1,7 +1,7 @@
 import type { Message, Person } from "./db.ts";
 import { ago, esc, hueOf, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
-import { COLOURS, lookFor, PARTS, type ColourPart, type Look, type Part } from "./packs.ts";
+import { COLOURS, EFFECTS, lookFor, PARTS, STYLES, type ColourPart, type Look, type Part } from "./packs.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
@@ -80,7 +80,10 @@ export function threadHtml(messages: { id: number; words: Word[]; at: number }[]
 // from screen readers, which hear each whole phrase from the page's one live
 // region instead.
 export function spotHtml(name: string, seat: number, look: Look, mine = false, e: Expression = REST, thread: { id: number; words: Word[]; at: number }[] = []): string {
-  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)}" data-look="${esc(JSON.stringify(look))}">
+  const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
+  // how their words are drawn: their word style (packs.ts), which the CSS
+  // the server makes from it reads off data-words, and its lettering
+  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)}" data-words="${st.id}" data-font="${st.font}"${"glow" in st ? " data-glow" : ""} data-look="${esc(JSON.stringify(look))}">
     <div class="spot-head"><span class="spot-avatar">${avatarSvg(look, e, `${esc(name)}'s avatar`)}</span><p class="spot-name"><span class="who">${esc(name)}</span>${mine ? '<span class="you">you</span>' : ""}</p></div>
     <p class="spot-word" aria-hidden="true"></p>
     <ol class="thread" aria-label="What ${esc(name)} said lately">${threadHtml(thread)}</ol>
@@ -92,13 +95,14 @@ export function spotHtml(name: string, seat: number, look: Look, mine = false, e
 // swatches and a picker for any colour at all. Plain radio buttons, so it
 // works and reads the same to a screen reader without the page's script.
 const SECTIONS: { label: string; parts: (Part | ColourPart)[] }[] = [
+  { label: "Words", parts: ["words"] },
   { label: "Face", parts: ["face", "skin", "ears", "nose"] },
   { label: "Hair", parts: ["hair", "hairColour", "brows", "beard"] },
   { label: "Eyes", parts: ["eyes", "eyeColour"] },
   { label: "Mouth", parts: ["mouth"] },
   { label: "Extras", parts: ["extra", "extraColour"] },
 ];
-const PART_LABELS: Record<Part, string> = { face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing" };
+const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing" };
 function lookPicker(look: Look): string {
   const isColour = (k: string): k is ColourPart => k in COLOURS;
   const row = (k: Part | ColourPart): string => {
@@ -157,9 +161,7 @@ export function roomPage(
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
         <div class="edit-tools" role="toolbar" aria-label="Change the chosen word">
           <p class="edit-hint">Your latest word is chosen; tap any of yours to choose it instead. Type to change it, live, for everyone.</p>
-          <button type="button" data-key="1" title="Impact"><kbd>1</kbd><span>Impact</span></button>
-          <button type="button" data-key="2" title="Whisper"><kbd>2</kbd><span>Whisper</span></button>
-          <button type="button" data-key="3" title="Glow"><kbd>3</kbd><span>Glow</span></button>
+          ${EFFECTS.map((fx) => `<button type="button" data-key="${fx.key}" title="${fx.label}" class="fx-button"><kbd>${fx.key}</kbd><span class="w fx-${fx.id}">${fx.label}</span></button>`).join("")}
           <button type="button" data-key="Backspace" title="Delete"><kbd>⌫</kbd><span>Delete</span></button>
         </div>
         ${lookPicker(myLook!)}

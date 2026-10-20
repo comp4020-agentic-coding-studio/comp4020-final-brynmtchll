@@ -10,6 +10,46 @@
 
 export type Choice = { id: string; label: string };
 
+// ---- words ----
+
+// Effects someone can put on one of their words, after they've said it, by
+// the key shown. style.css draws each as .w.fx-<id>; each builds on how the
+// word was said rather than replacing it.
+export const EFFECTS = [
+  { id: "impact", label: "Impact", key: "1" },
+  { id: "whisper", label: "Whisper", key: "2" },
+  { id: "glow", label: "Glow", key: "3" },
+  { id: "shake", label: "Shake", key: "4" },
+  { id: "wave", label: "Wave", key: "5" },
+  { id: "rainbow", label: "Rainbow", key: "6" },
+  { id: "spooky", label: "Spooky", key: "7" },
+  { id: "sparkle", label: "Sparkle", key: "8" },
+] as const satisfies readonly (Choice & { key: string })[];
+export type Effect = (typeof EFFECTS)[number]["id"];
+export const isEffect = (v: unknown): v is Effect => EFFECTS.some((e) => e.id === v);
+
+// How someone's words are drawn, chosen once for all of them: the lettering,
+// and how strongly being loud, high or drawn out shows (style.css reads
+// these as custom properties on their card, so every word they say, on
+// every page, is drawn their way). `loud`, `pitch` and `motion` scale the
+// effect of each: 1 as it always was, 0 not at all, 2 twice as much.
+export const STYLES = [
+  { id: "plain", label: "Plain", font: "system", loud: 1, pitch: 1, motion: 0 },
+  { id: "loud", label: "Big feelings", font: "system", loud: 2, pitch: 1.6, motion: 1 },
+  { id: "comic", label: "Comic", font: "comic", loud: 1.6, pitch: 1.4, motion: 1 },
+  { id: "neon", label: "Neon", font: "rounded", loud: 1.2, pitch: 1, motion: 0.5, glow: true },
+  { id: "hand", label: "Handwritten", font: "hand", loud: 1, pitch: 1.2, motion: 0.3 },
+  { id: "type", label: "Typewriter", font: "mono", loud: 0.8, pitch: 0.6, motion: 0 },
+  { id: "serif", label: "Storybook", font: "serif", loud: 1, pitch: 1, motion: 0.2 },
+  { id: "calm", label: "Calm", font: "rounded", loud: 0.4, pitch: 0.4, motion: 0 },
+] as const satisfies readonly (Choice & { font: string; loud: number; pitch: number; motion: number; glow?: boolean })[];
+export type Style = (typeof STYLES)[number];
+
+// Each word style as CSS, for the server to put after style.css: a card
+// marked data-words="<id>" draws its words that way.
+export const stylesCss = (): string =>
+  STYLES.map((st) => `.spot[data-words="${st.id}"]{--style-loud:${st.loud};--style-pitch:${st.pitch};--style-motion:${st.motion}}`).join("\n");
+
 // ---- the avatar ----
 
 // Parts that are one of a set of shapes. head3d.ts draws each by its id
@@ -80,6 +120,7 @@ export const PARTS = {
     { id: "goatee", label: "Goatee" },
     { id: "full", label: "Full" },
   ],
+  words: STYLES.map(({ id, label }) => ({ id, label })),
   extra: [
     { id: "none", label: "None" },
     { id: "glasses", label: "Glasses" },
@@ -124,6 +165,7 @@ export const DEFAULT_LOOK: Look = {
   ears: "round",
   beard: "none",
   extra: "none",
+  words: "plain",
   skin: COLOURS.skin.swatches[0],
   hairColour: COLOURS.hairColour.swatches[1],
   eyeColour: COLOURS.eyeColour.swatches[0],

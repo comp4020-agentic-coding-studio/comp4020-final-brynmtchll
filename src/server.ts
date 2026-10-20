@@ -6,10 +6,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { marked } from "marked";
 import { openRoom, type Message } from "./db.ts";
 import { APP, readmePage, roomPage } from "./view.ts";
-import { clean, cleanVoice, EFFECTS, hueOf, wordHtml } from "./voice.ts";
+import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
 import { readExpression, type Face } from "./face.ts";
 import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./avatar.ts";
-import { cleanLook, type Look } from "./packs.ts";
+import { cleanLook, isEffect, stylesCss, type Look } from "./packs.ts";
 
 // Everyone's expression as they last showed it, in memory: a face is for now,
 // so a restart forgetting it is right. A page showing a face sends it several
@@ -57,7 +57,8 @@ const faceTooFast = limiter(300);
 const voiceTooFast = limiter(150);
 const earlyTooFast = limiter(120);
 
-const css = readFileSync(new URL("./style.css", import.meta.url));
+// style.css, and after it how each word style in packs.ts is drawn
+const css = Buffer.concat([readFileSync(new URL("./style.css", import.meta.url)), Buffer.from(`\n/* word styles, from packs.ts */\n${stylesCss()}\n`)]);
 const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")));
 
 // The page's own scripts are TypeScript in src/ like the server, so the
@@ -385,7 +386,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       if (text.length < 1 || text.length > 40) return json(res, 400, { error: "not-an-edit" });
       change.text = text;
     }
-    if (raw.effect === null || (EFFECTS as readonly unknown[]).includes(raw.effect)) change.effect = raw.effect as string | null;
+    if (raw.effect === null || isEffect(raw.effect)) change.effect = raw.effect as string | null;
     if (!Number.isSafeInteger(raw.id) || !Number.isSafeInteger(raw.index) || Object.keys(change).length === 0) {
       return json(res, 400, { error: "not-an-edit" });
     }

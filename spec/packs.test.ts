@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { COLOURS, cleanLook, DEFAULT_LOOK, fullLook, lookFor, PARTS, randomLook } from "../src/packs.ts";
+import { readFileSync } from "node:fs";
+import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECTS, fullLook, isEffect, lookFor, PARTS, randomLook, STYLES, stylesCss } from "../src/packs.ts";
 
 // What someone can choose about how they look, checked as data: every
 // choice is somewhere the checks on what's sent will accept, and nothing
@@ -45,5 +46,27 @@ describe("the parts of an avatar someone can choose", () => {
     let seed = 1;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let i = 0; i < 50; i++) expect(cleanLook(randomLook(rnd))).not.toBeNull();
+  });
+});
+
+describe("how someone's words are drawn, and what they can put on one", () => {
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+
+  it("has a drawing in style.css for every effect, and a key of its own for each", () => {
+    for (const fx of EFFECTS) expect(css, fx.id).toContain(`.w.fx-${fx.id}`);
+    expect(new Set(EFFECTS.map((fx) => fx.key)).size).toBe(EFFECTS.length);
+    expect(isEffect("shake")).toBe(true);
+    expect(isEffect("<script>")).toBe(false);
+  });
+
+  it("draws every word style from its numbers, and every style's lettering is one style.css knows", () => {
+    const made = stylesCss();
+    for (const st of STYLES) {
+      expect(made).toContain(`.spot[data-words="${st.id}"]{--style-loud:${st.loud};`);
+      expect(css, st.font).toContain(`[data-font="${st.font}"]`);
+    }
+    // and a word style is part of a look, checked like the rest
+    expect(cleanLook({ words: "comic" })!.words).toBe("comic");
+    expect(cleanLook({ words: "wingdings" })).toBeNull();
   });
 });

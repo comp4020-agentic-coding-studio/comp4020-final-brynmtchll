@@ -168,7 +168,6 @@ main.room {
   overflow-wrap: anywhere;
   transition: opacity 1.2s;
 }
-.spot-word.arrive .w { animation: arrive 0.18s ease-out; }
 @keyframes arrive { from { opacity: 0; translate: 0 6px; } }
 /* the last word, once someone stops, lingers and then goes */
 .spot-word.fading { opacity: 0; }
@@ -367,14 +366,29 @@ main.room {
 .words { font-size: calc(clamp(1.25rem, 1rem + 1vw, 1.75rem) * (1 + var(--u-loud, 0) * 0.18)); line-height: 2.4; margin: 0; overflow-wrap: anywhere; }
 .w {
   --spread: calc(1 + var(--u-range, 0) * 0.5);
+  /* how strongly loud and high show, from the speaker's word style (packs.ts
+     STYLES, set on their card): 1 as standard */
+  --L: calc(var(--loud) * var(--style-loud, 1));
+  --P: calc(var(--pitch) * var(--style-pitch, 1));
   display: inline-block;
-  font-weight: clamp(250, calc(500 + var(--loud) * 40 * var(--spread)), 900);
-  font-size: clamp(0.8em, calc(1em + var(--loud) * 0.025em), 1.5em);
+  font-weight: clamp(250, calc(500 + var(--L) * 40 * var(--spread)), 900);
+  font-size: clamp(0.8em, calc(1em + var(--L) * 0.025em), 1.7em);
   /* no fainter than 0.6, which still reads at about 4.5:1 in both themes */
-  opacity: clamp(0.6, calc(1 + var(--loud) * 0.05), 1);
+  opacity: clamp(0.6, calc(1 + var(--L) * 0.05), 1);
   margin-right: min(calc(var(--gap) * 0.6em), 2em);
-  transform: translateY(calc(var(--pitch) * -0.07em));
+  transform: translateY(calc(var(--P) * -0.07em)) rotate(calc(var(--P) * var(--style-motion, 0) * -0.6deg));
 }
+/* the lettering of each word style */
+[data-font="system"] .w { font-family: inherit; }
+[data-font="comic"] .w { font-family: "Comic Sans MS", "Chalkboard SE", "Comic Neue", "Marker Felt", cursive; letter-spacing: 0.01em; }
+[data-font="rounded"] .w { font-family: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Arial Rounded MT Bold", system-ui, sans-serif; }
+[data-font="hand"] .w { font-family: "Bradley Hand", "Segoe Print", "Noteworthy", "Patrick Hand", cursive; }
+[data-font="mono"] .w { font-family: ui-monospace, "SF Mono", "Courier New", monospace; letter-spacing: -0.02em; }
+[data-font="serif"] .w { font-family: "Iowan Old Style", "Palatino", "Georgia", ui-serif, serif; }
+/* neon: every word glows a little, louder ones more */
+.spot[data-glow] .w { text-shadow: 0 0 calc(0.12em + max(0em, var(--L) * 0.03em)) var(--person); }
+/* the word being said, for a style with motion, springs in; a loud one bigger */
+.spot-word.arrive .w { animation: arrive calc(0.18s + var(--style-motion, 0) * 0.2s) cubic-bezier(0.2, calc(1 + var(--style-motion, 0) * 0.8), 0.4, 1); }
 .spot-word .w { margin: 0; }
 
 /* Effects a speaker puts on one of their words (voice.ts EFFECTS). Each
@@ -393,8 +407,27 @@ main.room {
   from { text-shadow: 0 0 0.15em var(--person, currentColor), 0 0 0.4em var(--person, currentColor); }
   to { text-shadow: 0 0 0.3em var(--person, currentColor), 0 0 0.9em var(--person, currentColor); }
 }
+.w.fx-shake { animation: shake 0.35s linear infinite; font-weight: 800; }
+@keyframes shake {
+  0%, 100% { translate: 0 0; rotate: 0deg; }
+  25% { translate: -0.04em 0.02em; rotate: -2deg; }
+  50% { translate: 0.03em -0.03em; rotate: 1.5deg; }
+  75% { translate: -0.02em 0.03em; rotate: -1deg; }
+}
+.w.fx-wave { animation: wave 1.6s ease-in-out infinite; font-style: italic; }
+@keyframes wave { 0%, 100% { translate: 0 0; } 25% { translate: 0 -0.15em; } 75% { translate: 0 0.1em; } }
+.w.fx-rainbow { background: linear-gradient(90deg, #ff5e5e, #ffb84d, #f7e463, #5ee08a, #4db8ff, #a77bff, #ff5e5e); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: rainbow 2.5s linear infinite; font-weight: 800; }
+@keyframes rainbow { to { background-position: -200% 0; } }
+.w.fx-spooky { font-family: "Chiller", "Papyrus", "Herculanum", fantasy; color: #9cff9c; text-shadow: 0 0.06em 0.12em #0a3d0a, 0 0 0.4em #3cff3c88; animation: spooky 2.2s ease-in-out infinite; letter-spacing: 0.06em; }
+@keyframes spooky { 50% { opacity: 0.55; translate: 0 0.06em; filter: blur(0.4px); } }
+.w.fx-sparkle { position: relative; color: #fff3b0; text-shadow: 0 0 0.25em #ffd84d; font-weight: 700; }
+/* a glint at its corner, twinkling */
+.w.fx-sparkle::after { content: "✦"; position: absolute; top: -0.45em; right: -0.5em; font-size: 0.55em; color: #fff; text-shadow: 0 0 0.4em #ffd84d; animation: sparkle 1.2s ease-in-out infinite; }
+@keyframes sparkle { 0%, 100% { opacity: 0.2; scale: 0.6; rotate: 0deg; } 50% { opacity: 1; scale: 1.1; rotate: 45deg; } }
+/* the effect buttons show what they do */
+.fx-button .w { font-size: inherit; transform: none; opacity: 1; margin: 0; display: inline; }
 @media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow, .spot-word.arrive .w, .talk.recording .dot, .caret, .bubble.draft { animation: none; }
+  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .talk.recording .dot, .caret, .bubble.draft { animation: none; }
 }
 
 /* ---- the README page ---- */

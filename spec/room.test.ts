@@ -353,7 +353,9 @@ describe.skipIf(!writable)("the room", () => {
     expect(changed.type).toBe("edited");
     expect(changed.words[1].html).toContain("--loud:9");
     expect((await messages()).find((m) => m.id === id)?.text).toBe("over their");
-    // an effect on, then the word gone
+    // an effect on (any from packs.ts), then the word gone
+    expect((await editAs(p.cookie, { id, index: 0, effect: "rainbow" })).status).toBe(200);
+    expect(((await watcher.waitFor("fx-rainbow")) as unknown as { words: { html: string }[] }).words[0].html).toContain("fx-rainbow");
     expect((await editAs(p.cookie, { id, index: 0, effect: "impact" })).status).toBe(200);
     expect((await editAs(p.cookie, { id, index: 0, remove: true })).status).toBe(200);
     expect((await messages()).find((m) => m.id === id)?.text).toBe("their");

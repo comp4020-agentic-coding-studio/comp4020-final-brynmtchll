@@ -25,8 +25,9 @@ export type Word = {
 
 // What a speaker can do to a word while it waits in their queue, each on a
 // number key. style.css says what each looks like.
-export const EFFECTS = ["impact", "whisper", "glow"] as const;
-export type Effect = (typeof EFFECTS)[number];
+// what effects there are lives in packs.ts
+import { isEffect, type Effect } from "./packs.ts";
+export type { Effect };
 
 // the whole message's voice, on absolute scales so messages can be compared
 export type Voice = {
@@ -77,7 +78,7 @@ export function clean(input: unknown): Word[] | null {
       contour: Array.isArray(raw.contour)
         ? (raw.contour as unknown[]).slice(0, LIMITS.contour).map((p) => (finite(p) ? round(clamp(p, -RANGE.pitch, RANGE.pitch)) : null))
         : [],
-      ...((EFFECTS as readonly unknown[]).includes(raw.effect) ? { effect: raw.effect as Effect } : {}),
+      ...(isEffect(raw.effect) ? { effect: raw.effect } : {}),
     });
   }
   return words;
