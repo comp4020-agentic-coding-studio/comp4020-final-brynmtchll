@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { faceReader, readFace } from "../src/face.ts";
+import { fromShapes } from "../src/avatar.ts";
 
 // Reading an emoji off a face's expression scores, checked on made-up scores.
 // Whether those rules match real faces is judged by people trying it.
@@ -32,5 +33,24 @@ describe("reading an emoji off a face", () => {
     // a held rest does
     for (let i = 0; i < 5; i++) read({});
     expect(read({})).toBeNull();
+  });
+});
+
+describe("an avatar following a face", () => {
+  it("reads a broad real smile as a smile, not a scowl", () => {
+    // MediaPipe's scores for its own sample portrait, a big grin: a real
+    // smile lowers the brows, which once drew the avatar glaring
+    const grin = fromShapes({ mouthSmileLeft: 0.96, mouthSmileRight: 0.934, browDownLeft: 0.839, browDownRight: 0.818, eyeSquintLeft: 0.74, jawOpen: 0.12 });
+    expect(grin.smile).toBe(1);
+    expect(grin.browDown).toBe(0);
+  });
+
+  it("still reads brows down without a smile as a glare", () => {
+    expect(fromShapes({ browDownLeft: 0.7, browDownRight: 0.7, mouthFrownLeft: 0.3, mouthFrownRight: 0.3 }).browDown).toBeGreaterThan(0.9);
+  });
+
+  it("rests at rest", () => {
+    const rest = fromShapes({ mouthSmileLeft: 0.05, mouthSmileRight: 0.05, jawOpen: 0.03, browInnerUp: 0.08, eyeBlinkLeft: 0.1 });
+    for (const v of Object.values(rest)) expect(v).toBe(0);
   });
 });

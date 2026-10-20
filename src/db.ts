@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { compare, textOf, USUAL_OVER, type Usual, type Voice, type Word } from "./voice.ts";
+import { lookFor, type Look } from "./avatar.ts";
 
 export type Person = { id: string; name: string; joined_at: number };
 
@@ -45,6 +46,16 @@ export function openRoom(file: string, now: () => number = Date.now) {
   // a phrase every second or two per person adds up: who's been speaking
   // lately and someone's last few voices are looked up by person, newest first
   db.exec("CREATE INDEX IF NOT EXISTS messages_by_person ON messages (person_id, id)");
+
+  // how each person's avatar looks (avatar.ts Look, as JSON), once they've chosen
+  const peopleColumns = (db.prepare("PRAGMA table_info(people)").all() as { name: string }[]).map((c) => c.name);
+  if (!peopleColumns.includes("look")) db.exec("ALTER TABLE people ADD COLUMN look TEXT");
+  const setLook = (id: string, look: Look): void => void db.prepare("UPDATE people SET look = ? WHERE id = ?").run(JSON.stringify(look), id);
+  // someone who hasn't chosen has one from their seat
+  const lookOf = (name: string): Look => {
+    const r = db.prepare("SELECT look, rowid AS seat FROM people WHERE name = ?").get(name) as { look: string | null; seat: number } | undefined;
+    return r?.look ? (JSON.parse(r.look) as Look) : lookFor(Number(r?.seat ?? 0));
+  };
 
   const findPerson = (id: string | undefined): Person | undefined =>
     id ? (db.prepare("SELECT * FROM people WHERE id = ?").get(id) as Person | undefined) : undefined;
@@ -152,7 +163,7 @@ export function openRoom(file: string, now: () => number = Date.now) {
     return out.slice(-lines);
   }
 
-  return { findPerson, join, say, recent, since, people, seatOf, newest, record, close: () => db.close() };
+  return { findPerson, join, say, recent, since, people, seatOf, newest, record, setLook, lookOf, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;

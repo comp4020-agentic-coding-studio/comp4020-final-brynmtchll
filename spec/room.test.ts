@@ -209,35 +209,55 @@ describe.skipIf(!writable)("the room", () => {
     expect(line).toBe(`hello${stamp} there friend`);
   });
 
-  it("shows someone's face as an emoji on every open page, and nothing but an emoji", async () => {
+  // a face as the page sends it: seven numbers, 0 to 1
+  const grin = { smile: 0.9, frown: 0, open: 0.6, pucker: 0, browUp: 0.2, browDown: 0, blink: 0 };
+  const scowl = { smile: 0, frown: 0.7, open: 0, pucker: 0, browUp: 0, browDown: 0.9, blink: 0 };
+  const sendFace = (cookie: string, body: unknown) =>
+    fetch(new URL("/face", baseUrl), { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  it("puts someone's expression on their avatar on every open page, and takes nothing but the seven numbers", async () => {
     const watcher = listen();
     await watcher.ready;
     const p = await person();
-    const face = (body: unknown) =>
-      fetch(new URL("/face", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
-    expect((await face({ face: "😂" })).status).toBe(200);
-    const e = (await watcher.waitFor("😂")) as unknown as { type: string; name: string };
-    expect(e).toMatchObject({ type: "face", name: p.name });
-    // a picture, a score or any other text is refused
-    for (const bad of [{ face: "data:image/png;base64,AAAA" }, { face: 0.9 }, { face: "<b>hi</b>" }]) {
-      expect((await face(bad)).status).toBe(400);
-    }
-    // and whoever arrives later sees it by their name
-    expect(await (await fetch(new URL("/", baseUrl))).text()).toMatch(new RegExp(`data-name="${p.name}"[\\s\\S]*?spot-face[^>]*>😂<`));
-    expect((await face({ face: null })).status).toBe(200);
+    expect((await sendFace(p.cookie, { e: { ...grin, picture: "data:image/png;base64,AAAA" } })).status).toBe(200);
+    const e = (await watcher.waitFor(`"name":"${p.name}","e":{"smile":0.9`)) as unknown as { type: string; e: Record<string, number> };
+    expect(e.type).toBe("face");
+    // only the seven, each pulled into 0 to 1
+    expect(Object.keys(e.e).sort()).toEqual(["blink", "browDown", "browUp", "frown", "open", "pucker", "smile"]);
+    expect((await sendFace(p.cookie, { e: { ...grin, smile: 7 } })).status).toBe(200);
+    await watcher.waitFor(`"name":"${p.name}","e":{"smile":1`);
+    // and whoever arrives later sees their avatar mid-grin
+    expect(await (await fetch(new URL("/", baseUrl))).text()).toMatch(new RegExp(`data-name="${p.name}"[\\s\\S]*?<svg class="avatar"`));
+    expect((await sendFace(p.cookie, { e: "a picture" })).status).toBe(400);
+    expect((await sendFace(p.cookie, { e: null })).status).toBe(200);
     watcher.close();
   });
 
-  it("clears a face its page stops sending, so nobody's left wearing one", async () => {
+  it("puts an avatar back to rest when its page stops sending, so nobody's left frozen mid-face", async () => {
     const watcher = listen();
     await watcher.ready;
     const p = await person();
-    await fetch(new URL("/face", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify({ face: "😠" }) });
-    // nothing more from that page: within the 12 s it's taken to have gone
-    const cleared = await watcher.waitFor(`"name":"${p.name}","face":null`, 16_000);
-    expect(cleared).toMatchObject({ type: "face" });
+    await sendFace(p.cookie, { e: scowl });
+    const rested = await watcher.waitFor(`"name":"${p.name}","e":{"smile":0,"frown":0,`, 12_000);
+    expect(rested).toMatchObject({ type: "face" });
     watcher.close();
-  }, 20_000);
+  }, 16_000);
+
+  it("keeps how someone's avatar looks, from the choices on offer, and shows it to everyone", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const look = { skin: "#9ad0ec", eyes: "sparkle", mouth: "cat", extra: "headphones" };
+    const post = (body: unknown) =>
+      fetch(new URL("/look", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect((await post({ look })).status).toBe(200);
+    expect((await watcher.waitFor(`"name":"${p.name}","look"`)) as unknown as { look: unknown }).toMatchObject({ look });
+    // anything not on offer is refused
+    for (const bad of [{ ...look, skin: "url(evil)" }, { ...look, extra: "<script>" }, {}]) expect((await post({ look: bad })).status).toBe(400);
+    // and it's kept: a page drawn later has it
+    expect(await (await fetch(new URL("/", baseUrl))).text()).toContain(`data-look="${JSON.stringify(look).replace(/"/g, "&quot;")}"`);
+    watcher.close();
+  });
 
   // What each person may change is decided on the server, from the cookie
   // alone: nothing a page sends can make a word or a face someone else's.
@@ -249,18 +269,16 @@ describe.skipIf(!writable)("the room", () => {
     expect(found.name).toBe(a.name);
   });
 
-  it("only lets a person change their own face", async () => {
+  it("only lets a person change their own face and their own avatar", async () => {
     const watcher = listen();
     await watcher.ready;
     const [a, b] = [await person(), await person()];
-    await fetch(new URL("/face", baseUrl), {
-      method: "POST",
-      headers: { cookie: a.cookie, "content-type": "application/json" },
-      body: JSON.stringify({ face: "😠", name: b.name }),
-    });
-    const e = (await watcher.waitFor("😠")) as unknown as { name: string };
+    await sendFace(a.cookie, { e: scowl, name: b.name });
+    const e = (await watcher.waitFor(`"frown":0.7`)) as unknown as { name: string };
     expect(e.name).toBe(a.name);
-    expect(await b.page()).not.toMatch(new RegExp(`data-name="${b.name}"[\\s\\S]{0,200}?spot-face[^>]*>😠<`));
+    const look = { skin: "#e3b6ff", eyes: "round", mouth: "wide", extra: "hat" };
+    await fetch(new URL("/look", baseUrl), { method: "POST", headers: { cookie: a.cookie, "content-type": "application/json" }, body: JSON.stringify({ look, name: b.name }) });
+    expect((await watcher.waitFor(`"look":{"skin":"#e3b6ff"`)) as unknown as { name: string }).toMatchObject({ name: a.name });
     watcher.close();
   });
 

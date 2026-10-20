@@ -7,19 +7,28 @@ import { marked } from "marked";
 import { openRoom, type Message } from "./db.ts";
 import { APP, readmePage, roomPage } from "./view.ts";
 import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
-import { FACES, type Face } from "./face.ts";
+import { readExpression, type Face } from "./face.ts";
+import { cleanExpression, cleanLook, REST, type Expression, type Look } from "./avatar.ts";
 
-// Everyone's face as they last showed it, in memory: a face is for now, so
-// a restart forgetting it is right. A page showing a face sends it again
-// every few seconds; one not heard from for FACE_FOR is taken to have gone
-// (a phone put away, a closed tab whose last word was lost), and cleared for
-// everyone, so nobody's left wearing a face they've stopped making.
-const FACE_FOR = 12_000;
-const faces = new Map<string, Face | null>();
+// Everyone's expression as they last showed it, in memory: a face is for now,
+// so a restart forgetting it is right. A page showing a face sends it several
+// times a second; one not heard from for FACE_FOR is taken to have gone (a
+// phone put away, a closed tab), and put back to rest for everyone, so
+// nobody's avatar is left frozen mid-grin. The emoji kept with each word in
+// the record is read off the same numbers.
+const FACE_FOR = 6_000;
+const expressions = new Map<string, Expression>();
+const faces = new Map<string, Face | null>(); // the emoji each expression reads as, for the record
 const faceSeen = new Map<string, number>();
-const showFace = (name: string, face: Face | null): void => {
-  faces.set(name, face);
-  const payload = `event: face\ndata: ${JSON.stringify({ name, face })}\n\n`;
+const showExpression = (name: string, e: Expression | null): void => {
+  if (e) expressions.set(name, e);
+  else expressions.delete(name);
+  const face = e ? readExpression(e) : null;
+  if ((faces.get(name) ?? null) !== face) {
+    console.log(`${name.padEnd(18)} face      face="${face ?? "none"}"`);
+    faces.set(name, face);
+  }
+  const payload = `event: face\ndata: ${JSON.stringify({ name, e: e ?? REST })}\n\n`;
   for (const listener of listening) listener.write(payload);
 };
 setInterval(() => {
@@ -27,11 +36,7 @@ setInterval(() => {
   for (const [name, seen] of faceSeen) {
     if (now - seen < FACE_FOR) continue;
     faceSeen.delete(name);
-    if (faces.get(name)) {
-      console.log(`${name.padEnd(18)} face      face="none" why="stopped sending"`);
-      showFace(name, null);
-    }
-    faces.delete(name);
+    showExpression(name, null);
   }
 }, 2000).unref();
 // faces are limited apart from words, so a talker near the word limit can
@@ -42,7 +47,7 @@ function faceTooFast(personId: string): boolean {
   const recent = (facesSent.get(personId) ?? []).filter((t) => now - t < 10_000);
   recent.push(now);
   facesSent.set(personId, recent);
-  return recent.length > 40;
+  return recent.length > 120;
 }
 
 const css = readFileSync(new URL("./style.css", import.meta.url));
@@ -53,7 +58,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "queue.ts", "face.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "queue.ts", "face.ts", "avatar.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),
@@ -256,7 +261,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
-    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), faces));
+    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf));
   }
   if (req.method === "GET" && (url.pathname === "/readme/" || url.pathname === "/readme")) {
     return send(res, 200, "text/html; charset=utf-8", readme);
@@ -296,7 +301,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const joined = room.findPerson(id)!;
     log(joined, "joined", { seat: room.seatOf(joined.name) });
     const seat = room.seatOf(joined.name);
-    const arrival = `event: joined\ndata: ${JSON.stringify({ name: joined.name, hue: hueOf(seat) })}\n\n`;
+    const arrival = `event: joined\ndata: ${JSON.stringify({ name: joined.name, hue: hueOf(seat), look: room.lookOf(joined.name) })}\n\n`;
     for (const listener of listening) listener.write(arrival);
     // behind Fly's proxy the browser is on https, so the cookie can insist on it
     const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
@@ -305,36 +310,51 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     });
   }
 
-  // Someone's face, as one of FACES or none: shown by their name on every
-  // open page. Nothing but the emoji is accepted, so no picture or score can
-  // ride along. Limited like words, since a face can change often.
+  // Someone's expression, as seven numbers (avatar.ts says which) or none:
+  // their avatar pulls it on every open page. Nothing else is accepted, so
+  // no picture can ride along. Limited apart from words.
   if (req.method === "POST" && url.pathname === "/face") {
     if (!me) {
       log(undefined, "refused", { why: "not-joined", path: "/face" });
       return json(res, 401, { error: "no-person" });
     }
-    if (faceTooFast(me.id)) {
-      log(me, "refused", { why: "too-fast", path: "/face" });
-      return json(res, 429, { error: "too-fast" });
-    }
-    let face: unknown = null;
+    if (faceTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let raw: unknown;
     try {
-      face = (JSON.parse((await body(req, 256)) ?? "{}") as { face?: unknown }).face ?? null;
+      raw = (JSON.parse((await body(req, 512)) ?? "{}") as { e?: unknown }).e ?? null;
     } catch {
       return json(res, 400, { error: "not-a-face" });
     }
-    if (face !== null && !(FACES as readonly unknown[]).includes(face)) {
+    const e = raw === null ? null : cleanExpression(raw);
+    if (raw !== null && !e) {
       log(me, "refused", { why: "not-a-face" });
       return json(res, 400, { error: "not-a-face" });
     }
-    if (face === null) faceSeen.delete(me.name);
-    else faceSeen.set(me.name, Date.now());
-    // only a change goes out; a repeat just says they're still there
-    if ((faces.get(me.name) ?? null) !== face) {
-      log(me, "face", { face: face ?? "none" });
-      showFace(me.name, face as Face | null);
+    if (e) faceSeen.set(me.name, Date.now());
+    else faceSeen.delete(me.name);
+    showExpression(me.name, e);
+    return json(res, 200, {});
+  }
+
+  // How someone's avatar looks, from the choices avatar.ts offers: kept with
+  // them, and shown on every open page.
+  if (req.method === "POST" && url.pathname === "/look") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    let look: Look | null = null;
+    try {
+      look = cleanLook((JSON.parse((await body(req, 512)) ?? "{}") as { look?: unknown }).look);
+    } catch {
+      look = null;
     }
-    return json(res, 200, { face });
+    if (!look) {
+      log(me, "refused", { why: "not-a-look" });
+      return json(res, 400, { error: "not-a-look" });
+    }
+    room.setLook(me.id, look);
+    log(me, "look", look);
+    const payload = `event: look\ndata: ${JSON.stringify({ name: me.name, look })}\n\n`;
+    for (const listener of listening) listener.write(payload);
+    return json(res, 200, { look });
   }
 
   if (req.method === "POST" && url.pathname === "/say") {

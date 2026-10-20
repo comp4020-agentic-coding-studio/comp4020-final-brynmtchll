@@ -53,3 +53,14 @@ export function faceReader(): (s: Shapes) => Face | null {
     return shown;
   };
 }
+
+// The same, read off an avatar's expression (avatar.ts), which is what the
+// server has: the emoji kept with each word in the record.
+export function readExpression(e: { smile: number; frown: number; open: number; browUp: number; browDown: number }): Face | null {
+  if (e.smile > 0.6 && e.open > 0.45) return "😂";
+  if (e.browUp > 0.6 && e.open > 0.5 && e.smile < 0.3) return "😮";
+  if (e.browDown > 0.6 && e.smile < 0.25) return "😠";
+  if (e.smile > 0.55) return "😀";
+  if (e.frown > 0.55 && e.smile < 0.2) return "😢";
+  return null;
+}

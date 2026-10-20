@@ -2,7 +2,7 @@
 // reads fine without this; the script keeps it live, plays each phrase in its
 // speaker's spot, and, while someone's microphone is on, hears them a phrase
 // at a time and sends each phrase as it's heard.
-import { faceReader, type Face } from "./face.ts";
+import { avatarSvg, fromShapes, REST, type Expression, type Look } from "./avatar.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, spoke, words, type Heard } from "./prosody.ts";
 import { queue as wordQueue } from "./queue.ts";
@@ -55,7 +55,7 @@ const spots = new Map<string, Spot>();
 const MOST_SPOTS = 24;
 const cardOf = (name: string): HTMLElement | null =>
   document.querySelector<HTMLElement>(`.spot[data-name="${CSS.escape(name)}"]`);
-function spotFor(p: Pick<Phrase, "name" | "hue">): Spot {
+function spotFor(p: Pick<Phrase, "name" | "hue">, look?: Look): Spot {
   const known = spots.get(p.name);
   if (known) {
     // most recently heard from last, so the quietest is first to go
@@ -75,15 +75,18 @@ function spotFor(p: Pick<Phrase, "name" | "hue">): Spot {
     el.className = "spot";
     el.dataset.name = p.name;
     el.style.setProperty("--hue", String(p.hue));
-    const head = document.createElement("p");
-    head.className = "spot-name";
-    const face = document.createElement("span");
-    face.className = "spot-face";
-    face.setAttribute("role", "img");
+    if (look) el.dataset.look = JSON.stringify(look);
+    const head = document.createElement("div");
+    head.className = "spot-head";
+    const avatar = document.createElement("span");
+    avatar.className = "spot-avatar";
+    const label = document.createElement("p");
+    label.className = "spot-name";
     const who = document.createElement("span");
     who.className = "who";
     who.textContent = p.name;
-    head.append(face, who);
+    label.append(who);
+    head.append(avatar, label);
     const word = document.createElement("p");
     word.className = "spot-word";
     word.setAttribute("aria-hidden", "true");
@@ -96,7 +99,20 @@ function spotFor(p: Pick<Phrase, "name" | "hue">): Spot {
   }
   const spot: Spot = { el, word: el.querySelector(".spot-word")!, trail: el.querySelector(".spot-trail")!, queue: [], state: "idle", timers: [] };
   spots.set(p.name, spot);
+  if (look) drawAvatar(p.name, REST);
   return spot;
+}
+
+// Each avatar is redrawn from its person's look (kept on their card) and
+// latest expression; between expressions it eases rather than jumps, and an
+// expression that stops coming eases back to rest.
+const expressionOf = new Map<string, Expression>();
+function drawAvatar(name: string, e: Expression): void {
+  expressionOf.set(name, e);
+  const card = cardOf(name);
+  const look = card?.dataset.look ? (JSON.parse(card.dataset.look) as Look) : null;
+  const slot = card?.querySelector(".spot-avatar");
+  if (look && slot) slot.innerHTML = avatarSvg(look, e, `${name}'s avatar`);
 }
 for (const el of document.querySelectorAll<HTMLElement>(".spot")) spotFor({ name: el.dataset.name!, hue: 0 });
 
@@ -181,8 +197,7 @@ function remember(p: Phrase): void {
     li.dataset.until = String(p.at);
     li.style.setProperty("--hue", String(p.hue));
     const who = document.createElement("strong");
-    const face = cardOf(p.name)?.querySelector(".spot-face")?.textContent;
-    who.textContent = face ? `${face} ${p.name}` : p.name;
+    who.textContent = p.name;
     const text = document.createElement("span");
     text.className = "said-text";
     text.textContent = p.text;
@@ -246,15 +261,21 @@ function connect(): void {
     wait = Math.min(wait * 2, 30_000);
   });
   stream.addEventListener("joined", (e) => {
-    spotFor(JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue">);
+    const p = JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue"> & { look: Look };
+    spotFor(p, p.look);
   });
   stream.addEventListener("face", (e) => {
-    const { name, face } = JSON.parse((e as MessageEvent<string>).data) as { name: string; face: Face | null };
-    const el = cardOf(name)?.querySelector(".spot-face");
-    if (el) {
-      el.textContent = face ?? "";
-      el.setAttribute("aria-label", face ? `${name}'s face` : "");
-    }
+    const { name, e: expression } = JSON.parse((e as MessageEvent<string>).data) as { name: string; e: Expression };
+    // your own avatar follows your face here, not the server's echo of it
+    if (cardOf(name)?.classList.contains("mine") && faceOn) return;
+    drawAvatar(name, expression);
+  });
+  stream.addEventListener("look", (e) => {
+    const { name, look } = JSON.parse((e as MessageEvent<string>).data) as { name: string; look: Look };
+    const card = cardOf(name);
+    if (!card) return;
+    card.dataset.look = JSON.stringify(look);
+    drawAvatar(name, expressionOf.get(name) ?? REST);
   });
   stream.addEventListener("said", (e) => {
     const p = JSON.parse((e as MessageEvent<string>).data) as Phrase;
@@ -476,9 +497,8 @@ const voiceFor = new WeakMap<Word, Voice | null>();
 let hearing: Promise<void> = Promise.resolve(); // so phrases queue in order
 let posting: Promise<void> = Promise.resolve(); // so words go out in order
 
-// the page keeps room at its foot for the dock, however tall it is now
-const dock = document.querySelector<HTMLElement>(".dock");
-if (dock) new ResizeObserver(() => document.body.style.setProperty("--dock-h", `${dock.offsetHeight}px`)).observe(dock);
+// the page keeps room at its foot for the queue bar, however tall it is now
+if (queueEl) new ResizeObserver(() => document.body.style.setProperty("--queue-h", `${queueEl.offsetHeight}px`)).observe(queueEl);
 
 // What's waiting, top first: the top word as it'll look (or as it's being
 // typed over), and a countdown to when it goes.
@@ -681,13 +701,13 @@ if (talk) {
   }
 }
 
-// ---- your face, as an emoji: only for someone who has joined, only if they ask ----
+// ---- your face, on your avatar: only for someone who has joined, only if they ask ----
 
-// MediaPipe's face landmarker runs in this page on a small, hidden copy of
-// the camera, a few times a second; face.ts turns its expression scores into
-// an emoji. Only the emoji is sent, and only when it changes: no picture and
-// no scores leave the browser. The model (about 4 MB) loads the first time
-// someone turns it on.
+// MediaPipe's face landmarker runs in this page on a small copy of the camera,
+// eight times a second; avatar.ts turns its expression scores into seven
+// numbers, which draw your avatar here and go to everyone else's. Only those
+// numbers leave the browser: no picture. The model (about 4 MB) loads the
+// first time someone turns it on.
 const VISION = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1";
 const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 const FACE_EVERY = 125; // ms between readings
@@ -700,23 +720,31 @@ type Landmarker = {
 const faceButton = document.getElementById("face") as HTMLButtonElement | null;
 let faceOn = false;
 let stopFace: (() => void) | undefined;
-let lastSentFace: Face | null | undefined;
-let currentFace: Face | null = null;
+let myName = document.querySelector<HTMLElement>(".spot.mine")?.dataset.name ?? "";
 
-// Sent when it changes, and again every few seconds while it's showing: the
-// server clears a face it stops hearing about, so one can't be left behind.
-const FACE_AGAIN = 5000;
-let faceSentAt = 0;
-async function sendFace(face: Face | null, force = false): Promise<void> {
-  if (face === lastSentFace && !(force && face !== null)) return;
-  lastSentFace = face;
-  faceSentAt = Date.now();
+// Sent as it changes, at most every FACE_EVERY, one at a time (a slow
+// connection drops readings rather than queueing them), and again now and
+// then while still: the server puts back to rest a face it stops hearing of.
+let sendingFace = false;
+let lastSent = "";
+let lastSentAt = 0;
+async function sendFace(e: Expression | null): Promise<void> {
+  const key = JSON.stringify(e);
+  if (sendingFace || (key === lastSent && Date.now() - lastSentAt < 2000)) return;
+  sendingFace = true;
+  lastSent = key;
+  lastSentAt = Date.now();
   try {
-    await fetch("/face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ face }) });
+    await fetch("/face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ e }) });
   } catch {
-    // a missed face is soon replaced by the next
+    // a missed reading is soon replaced by the next
+  } finally {
+    sendingFace = false;
   }
 }
+// readings move in small steps; smoothing them stops the avatar jittering
+const ease = (from: Expression, to: Expression, k = 0.55): Expression =>
+  Object.fromEntries(Object.keys(to).map((key) => [key, Math.round((from[key as keyof Expression] * (1 - k) + to[key as keyof Expression] * k) * 100) / 100])) as Expression;
 
 async function faceStart(): Promise<void> {
   faceButton!.disabled = true;
@@ -728,7 +756,7 @@ async function faceStart(): Promise<void> {
     const blocked = err instanceof DOMException && err.name === "NotAllowedError";
     return warn(blocked ? "The camera is blocked. Allow it for this site to show your face as an emoji." : "Couldn't open a camera in this browser.");
   }
-  say("Reading your face: only an emoji is sent, never a picture.");
+  say("Looking for your face…");
   let landmarker: Landmarker;
   try {
     const { FaceLandmarker, FilesetResolver } = await import(`${VISION}/vision_bundle.mjs`);
@@ -763,42 +791,32 @@ async function faceStart(): Promise<void> {
     faceButton!.disabled = false;
     return warn("Couldn't start the camera. Try again.");
   }
-  const read = faceReader();
   const started = Date.now();
   let seenFace = false;
+  let shown: Expression = REST;
   const timer = setInterval(() => {
     // a hidden page (a phone put away) isn't reading anyone's face
-    if (document.hidden) {
-      if (currentFace !== null) {
-        currentFace = null;
-        void sendFace(null);
-      }
-      return;
-    }
+    if (document.hidden) return void sendFace(null);
     if (video.readyState < 2) return;
-    let face: Face | null;
-    let shapesSeen = false;
+    let shapes: { categoryName: string; score: number }[] | undefined;
     try {
-      const shapes = landmarker.detectForVideo(video, performance.now()).faceBlendshapes?.[0]?.categories;
-      shapesSeen = !!shapes;
-      if (!shapes && Date.now() - started > 4000 && !seenFace) say("Can't see a face. Face the camera, in some light.");
-      face = read(shapes ? Object.fromEntries(shapes.map((c) => [c.categoryName, c.score])) : {});
+      shapes = landmarker.detectForVideo(video, performance.now()).faceBlendshapes?.[0]?.categories;
     } catch (err) {
       console.error(err);
       return faceStop();
     }
-    if (!seenFace && shapesSeen) {
-      seenFace = true;
-      say("Face found. Smile, laugh, frown or look surprised; a neutral face shows nothing.");
+    if (!shapes) {
+      if (Date.now() - started > 4000 && !seenFace) say("Can't see a face. Face the camera, in some light.");
+      shown = ease(shown, REST, 0.25);
+    } else {
+      if (!seenFace) {
+        seenFace = true;
+        say("Your avatar's following your face. Only its expression is sent, never a picture.");
+      }
+      shown = ease(shown, fromShapes(Object.fromEntries(shapes.map((c) => [c.categoryName, c.score]))));
     }
-    if (face !== currentFace) {
-      currentFace = face;
-      const mine = document.querySelector(".spot.mine .spot-face");
-      if (mine) mine.textContent = face ?? "";
-      void sendFace(face);
-    } else if (face !== null && Date.now() - faceSentAt > FACE_AGAIN) {
-      void sendFace(face, true);
-    }
+    drawAvatar(myName, shown);
+    void sendFace(shown);
   }, FACE_EVERY);
   // the camera itself can stop (unplugged, taken by another app)
   for (const t of camera.getVideoTracks()) t.addEventListener("ended", () => faceOn && faceStop());
@@ -812,16 +830,15 @@ async function faceStart(): Promise<void> {
   faceOn = true;
   faceButton!.disabled = false;
   faceButton!.setAttribute("aria-pressed", "true");
-  faceButton!.querySelector(".label")!.textContent = "Face on";
+  faceButton!.querySelector(".label")!.textContent = "Following your face";
 }
 
 function faceStop(): void {
   stopFace?.();
   stopFace = undefined;
   faceOn = false;
-  currentFace = null;
-  const mine = document.querySelector(".spot.mine .spot-face");
-  if (mine) mine.textContent = "";
+  drawAvatar(myName, REST);
+  lastSent = "";
   void sendFace(null);
   faceButton!.setAttribute("aria-pressed", "false");
   faceButton!.querySelector(".label")!.textContent = "Show my face";
@@ -832,6 +849,26 @@ if (faceButton && "mediaDevices" in navigator) {
   faceButton.addEventListener("click", () => void (faceOn ? faceStop() : faceStart()));
   // a face showing when you've left the page would be a lie
   addEventListener("pagehide", () => {
-    if (faceOn) navigator.sendBeacon("/face", new Blob([JSON.stringify({ face: null })], { type: "application/json" }));
+    if (faceOn) navigator.sendBeacon("/face", new Blob([JSON.stringify({ e: null })], { type: "application/json" }));
   });
 }
+
+// ---- your avatar's look ----
+
+// Each change is saved as it's made, and shows on every open page.
+const lookForm = document.getElementById("look") as HTMLFormElement | null;
+lookForm?.addEventListener("change", async () => {
+  const data = new FormData(lookForm);
+  const look = { skin: data.get("skin"), eyes: data.get("eyes"), mouth: data.get("mouth"), extra: data.get("extra") };
+  const card = cardOf(myName);
+  if (card) {
+    card.dataset.look = JSON.stringify(look);
+    drawAvatar(myName, expressionOf.get(myName) ?? REST);
+  }
+  try {
+    const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look }) });
+    if (!res.ok) warn("Couldn't save your avatar. Try again.");
+  } catch {
+    warn("Couldn't save your avatar. Check your connection.");
+  }
+});
