@@ -241,6 +241,39 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   }, 20_000);
 
+  // What each person may change is decided on the server, from the cookie
+  // alone: nothing a page sends can make a word or a face someone else's.
+  it("credits what's said to whoever's cookie sent it, whatever name the request claims", async () => {
+    const [a, b] = [await person(), await person()];
+    const stamp = `claim${Date.now()}`;
+    await a.say({ name: b.name, person: b.name, words: [word(stamp, 0, { name: b.name })] });
+    const found = (await messages()).find((m) => m.text === stamp)!;
+    expect(found.name).toBe(a.name);
+  });
+
+  it("only lets a person change their own face", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const [a, b] = [await person(), await person()];
+    await fetch(new URL("/face", baseUrl), {
+      method: "POST",
+      headers: { cookie: a.cookie, "content-type": "application/json" },
+      body: JSON.stringify({ face: "😠", name: b.name }),
+    });
+    const e = (await watcher.waitFor("😠")) as unknown as { name: string };
+    expect(e.name).toBe(a.name);
+    expect(await b.page()).not.toMatch(new RegExp(`data-name="${b.name}"[\\s\\S]{0,200}?spot-face[^>]*>😠<`));
+    watcher.close();
+  });
+
+  it("offers no way to change or take back anyone's words once said", async () => {
+    const p = await person();
+    for (const [method, path] of [["PUT", "/say"], ["DELETE", "/say"], ["PATCH", "/say"], ["POST", "/unsay"], ["POST", "/edit"], ["DELETE", "/api/messages"]]) {
+      const res = await fetch(new URL(path, baseUrl), { method, headers: { cookie: p.cookie, "content-type": "application/json" }, body: "{}" });
+      expect([403, 404], `${method} ${path}`).toContain(res.status);
+    }
+  });
+
   it("only lets someone who has joined say anything", async () => {
     const res = await fetch(new URL("/say", baseUrl), {
       method: "POST",
