@@ -494,7 +494,13 @@ function build(THREE: T, look: Look): Head {
 }
 
 // set a head's face, turn, place and gaze (-1 to 1 across and up)
-function pose(h: Head, e: Expression, p: Pose, gaze: { x: number; y: number }): void {
+function pose(h: Head, given: Expression, at: Pose, look: { x: number; y: number }): void {
+  // a number that isn't one, anywhere, would put the whole head nowhere
+  // (three.js draws nothing, and says nothing), so it's taken as 0
+  const fin = <O extends Record<string, number>>(o: O): O => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Number.isFinite(v) ? v : 0])) as O;
+  const e = fin(given);
+  const p = fin(at);
+  const gaze = fin(look);
   h.root.rotation.set(p.pitch, p.yaw, p.roll);
   // moving about and leaning in: only so far, so it stays in its frame
   h.root.position.set(p.x * 0.16, p.y * 0.1, p.z * 0.45);
