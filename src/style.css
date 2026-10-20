@@ -206,6 +206,10 @@ main.room {
   clip-path: polygon(0 0, 0 100%, 100% 100%);
   border-bottom-right-radius: 4px;
 }
+/* words heard early, while the phrase is still being said: faded, and
+   breathing, until the real phrase replaces them */
+.bubble.draft { opacity: 0.6; border-style: dashed; animation: drafting 1.4s ease-in-out infinite; }
+@keyframes drafting { 50% { opacity: 0.4; } }
 .bubble .w { font-size: 1em; transform: none; margin: 0; }
 .bubble .w.fx-impact { font-size: 1.15em; }
 .bubble .w.fx-whisper { font-size: 0.85em; }
@@ -347,7 +351,7 @@ main.room {
   to { text-shadow: 0 0 0.3em var(--person, currentColor), 0 0 0.9em var(--person, currentColor); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow, .spot-word.arrive .w, .talk.recording .dot, .caret { animation: none; }
+  .w.fx-impact, .w.fx-glow, .spot-word.arrive .w, .talk.recording .dot, .caret, .bubble.draft { animation: none; }
 }
 
 /* ---- the README page ---- */

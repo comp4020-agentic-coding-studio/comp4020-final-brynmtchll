@@ -217,8 +217,9 @@ const phraseOf = (m: Message) => ({
     gap: tenths((m.words[i + 1]?.start ?? w.end) - w.end),
   })),
 });
-const event = (m: Message): string =>
+const event = (m: Message, draft?: number): string =>
   `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({
+    ...(draft !== undefined ? { draft } : {}),
     id: m.id,
     name: m.name,
     hue: hueOf(room.seatOf(m.name)),
@@ -407,6 +408,31 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return json(res, 200, { look });
   }
 
+  // Words heard early, while a phrase is still being said: shown to everyone
+  // at once, faded, until the phrase ends and the real one (POST /say)
+  // replaces them. Never stored or logged; each page keeps only the latest
+  // for each speaker, keyed by a number the speaker's page chose.
+  if (req.method === "POST" && url.pathname === "/early") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (faceTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let parsed: { words?: unknown; draft?: unknown } = {};
+    try {
+      parsed = JSON.parse((await body(req, 32 * 1024)) ?? "{}");
+    } catch {
+      return json(res, 400, { error: "not-a-message" });
+    }
+    const words = clean(parsed.words);
+    if (!words || !Number.isSafeInteger(parsed.draft)) return json(res, 400, { error: "not-a-message" });
+    const payload = `event: early\ndata: ${JSON.stringify({
+      name: me.name,
+      hue: hueOf(room.seatOf(me.name)),
+      draft: parsed.draft,
+      words: words.map((w, i) => ({ html: wordHtml(w), t: w.start, d: tenths(w.end - w.start), gap: tenths((words[i + 1]?.start ?? w.end) - w.end) })),
+    })}\n\n`;
+    for (const listener of listening) listener.write(payload);
+    return json(res, 200, {});
+  }
+
   if (req.method === "POST" && url.pathname === "/say") {
     if (!me) {
       log(undefined, "refused", { why: "not-joined", path: "/say" });
@@ -430,6 +456,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return json(res, 400, { error: "not-a-message" });
     }
     const m = room.say(me.id, words, cleanVoice((parsed as { voice?: unknown }).voice), faces.get(me.name) ?? null);
+    const draft = (parsed as { draft?: unknown }).draft;
     const w = words[0];
     log(me, "said", {
       text: m.text,
@@ -440,7 +467,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     // stored, so it's sent: one listener that can't take it doesn't fail the rest
     let payload = "";
     try {
-      payload = event(m);
+      payload = event(m, Number.isSafeInteger(draft) ? (draft as number) : undefined);
     } catch (err) {
       console.error(`message ${m.id} couldn't be drawn`, err);
     }

@@ -339,6 +339,26 @@ describe.skipIf(!writable)("the room", () => {
     }
   });
 
+  it("shows words heard early to everyone, without keeping them, until the real phrase replaces them", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const stamp = `early${Date.now()}`;
+    const early = (body: unknown) =>
+      fetch(new URL("/early", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect((await early({ words: [word(stamp, 0)], draft: 7 })).status).toBe(200);
+    expect((await watcher.waitFor(stamp)) as unknown as { type: string; draft: number }).toMatchObject({ type: "early", draft: 7 });
+    // never stored
+    expect((await messages()).some((m) => m.text === stamp)).toBe(false);
+    // the real phrase says which draft it replaces
+    const real = `real${Date.now()}`;
+    await p.say({ words: [word(real, 0)], draft: 7 });
+    expect((await watcher.waitFor(real)) as unknown as { type: string; draft: number }).toMatchObject({ type: "said", draft: 7 });
+    // and nothing but words gets through
+    expect((await early({ words: "a picture", draft: 1 })).status).toBe(400);
+    watcher.close();
+  });
+
   it("only lets someone who has joined say anything", async () => {
     const res = await fetch(new URL("/say", baseUrl), {
       method: "POST",

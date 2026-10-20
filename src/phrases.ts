@@ -46,6 +46,10 @@ export type Phraser = {
   end(): Float32Array[];
   // how loud the last batch was above the room, 0 to 1, for a level meter
   level(): number;
+  // the phrase still being said, as it stands (empty if nothing's being said),
+  // and how much sound is in it, in seconds: for hearing it early, before it
+  // ends
+  sofar(): { pcm: Float32Array; sound: number };
 };
 
 export function phraser(): Phraser {
@@ -145,5 +149,14 @@ export function phraser(): Phraser {
       return [phrase];
     },
     level: () => lastLevel,
+    sofar() {
+      const pcm = new Float32Array(length);
+      let at = 0;
+      for (const b of batches) {
+        pcm.set(b.samples, at);
+        at += b.samples.length;
+      }
+      return { pcm, sound: sound / RATE };
+    },
   };
 }

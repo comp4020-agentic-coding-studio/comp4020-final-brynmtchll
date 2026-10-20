@@ -208,7 +208,9 @@ setInterval(() => {
   for (const t of lately.querySelectorAll<HTMLTimeElement>("time[data-at]")) t.textContent = ago(Number(t.dataset.at));
 }, 15_000);
 
-function arrive(p: Phrase): void {
+function arrive(p: Phrase & { draft?: number }): void {
+  // the real phrase replaces its draft
+  dropDraft(p.name, p.draft);
   remember(p);
   heardAloud.textContent = `${p.name}: ${p.text}`;
   const spot = spotFor(p);
@@ -250,6 +252,37 @@ function addToThread(spot: Spot, p: Phrase): void {
   }
   (thread.firstElementChild as HTMLElement).dataset.at = String(p.at);
   if (atTop) thread.scrollTop = 0;
+}
+
+// A draft: the words of a phrase still being said, faded, at the top of its
+// speaker's thread, each new draft of the same phrase in place of the last.
+// The real phrase, when it comes, takes its place; one that never comes is
+// taken down after DRAFT_FOR.
+const DRAFT_FOR = 8000;
+type Draft = { name: string; hue: number; draft: number; words: StageWord[] };
+const draftTimers = new Map<string, number>();
+function showDraft(d: Draft): void {
+  const spot = spotFor(d);
+  const thread = spot.el.querySelector<HTMLOListElement>(".thread");
+  if (!thread) return;
+  let el = thread.querySelector<HTMLElement>(".draft");
+  if (!el || Number(el.dataset.draft) !== d.draft) {
+    el?.remove();
+    el = document.createElement("li");
+    el.className = "bubble draft";
+    el.dataset.draft = String(d.draft);
+    thread.prepend(el);
+  }
+  el.innerHTML = d.words.map((w, i) => `${w.html}${w.gap > NEW_LINE && i + 1 < d.words.length ? "<br>" : " "}`).join("");
+  if (thread.scrollTop < 40) thread.scrollTop = 0;
+  // the big word shows the newest heard word straight away
+  if (spot.state !== "playing") showWord(spot, d.words.at(-1)?.html ?? "");
+  clearTimeout(draftTimers.get(d.name));
+  draftTimers.set(d.name, window.setTimeout(() => dropDraft(d.name), DRAFT_FOR));
+}
+function dropDraft(name: string, n?: number): void {
+  const el = cardOf(name)?.querySelector<HTMLElement>(".thread .draft");
+  if (el && (n === undefined || Number(el.dataset.draft) <= n)) el.remove();
 }
 
 // a phrase changed by its speaker, drawn again in place, everywhere it is
@@ -351,6 +384,7 @@ function connect(): void {
     arrive(p);
   });
   stream.addEventListener("edited", (e) => edited(JSON.parse((e as MessageEvent<string>).data)));
+  stream.addEventListener("early", (e) => showDraft(JSON.parse((e as MessageEvent<string>).data) as Draft));
 }
 connect();
 
@@ -520,25 +554,72 @@ const showBehind = (): void => {
 function onAudio(samples: Float32Array): void {
   for (const phrase of phrases.push(samples)) send(phrase);
   talk!.style.setProperty("--level", phrases.level().toFixed(2));
+  maybeEarly();
+}
+
+// ---- hearing a phrase early, while it's still being said ----
+
+// a draft whose phrase came to nothing (silence, or one of Whisper's
+// inventions) is taken down here; other pages take theirs down when the
+// speaker's next phrase arrives, or after DRAFT_FOR
+function clearDraft(n: number): void {
+  const mineName = document.querySelector<HTMLElement>(".spot.mine")?.dataset.name;
+  if (mineName) dropDraft(mineName, n);
+}
+
+// Whisper only hears whole phrases well, and a phrase only ends at a pause,
+// so the first words of one used to reach everyone a second after it ended.
+// Now, while a phrase is under way, what there is of it so far is heard
+// every EARLY_EVERY once it has EARLY_AFTER of sound, and goes out at once
+// as a draft: drawn faded, then replaced by the real phrase when it ends.
+// A draft is only heard when Whisper has nothing else to do, so it never
+// delays a real phrase: a phone too slow to keep up simply sends fewer.
+const EARLY_AFTER = 0.9; // seconds of sound in the phrase
+const EARLY_EVERY = 900; // ms
+let draft = 1; // the number of the phrase now being said
+let earlyAt = 0;
+let earlyBusy = false;
+function maybeEarly(): void {
+  if (!modelReady || earlyBusy || behind > 0 || Date.now() - earlyAt < EARLY_EVERY) return;
+  const { pcm, sound } = phrases.sofar();
+  if (sound < EARLY_AFTER || !spoke(pcm, RATE)) return;
+  earlyBusy = true;
+  earlyAt = Date.now();
+  const forDraft = draft;
+  transcribe(pcm.slice())
+    .then(async (chunks) => {
+      // the phrase may have ended (and been sent for real) while this was heard
+      if (forDraft !== draft) return;
+      const ws = hear(pcm, RATE, words(chunks, pcm.length / RATE)).words;
+      if (ws.length === 0 || invented(ws.map((w) => w.w).join(" "), true)) return;
+      await fetch("/early", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ words: ws, draft: forDraft }) });
+    })
+    .catch(() => {
+      // a missed draft is no loss: the real phrase follows
+    })
+    .finally(() => {
+      earlyBusy = false;
+    });
 }
 
 // A phrase that's mostly a breath, a click or the room is never sent to
 // Whisper, which would hear a sentence in it (spoke() says why). What's heard
 // goes into the speaker's queue, in the order it was said.
 function send(pcm: Float32Array): void {
-  if (!spoke(pcm, RATE)) return;
+  const forDraft = draft++;
+  earlyAt = Date.now();
+  if (!spoke(pcm, RATE)) return void clearDraft(forDraft);
   behind++;
   showBehind();
   const heard = transcribe(pcm.slice());
   hearing = hearing.then(async () => {
     try {
       const result = hear(pcm, RATE, words(await heard, pcm.length / RATE));
-      if (result.words.length === 0) return;
       // Whisper's inventions for a breath or the room ("Thank you."): a
       // phrase that's only that, with no voice under it, is dropped
       const voiced = result.voice?.pitch != null && result.words.some((w) => w.pitch !== null);
-      if (invented(result.words.map((w) => w.w).join(" "), voiced)) return;
-      await post(result.words, result.voice);
+      if (result.words.length === 0 || invented(result.words.map((w) => w.w).join(" "), voiced)) return void clearDraft(forDraft);
+      await post(result.words, result.voice, forDraft);
     } catch (err) {
       console.error(err);
       warn(modelReady ? "Something you said couldn't be heard." : "Couldn't download the speech model. Check your connection and try again.");
@@ -555,12 +636,12 @@ let hearing: Promise<void> = Promise.resolve(); // so phrases go out in the orde
 
 // A phrase goes out the moment it's heard, whole: it plays in your place and
 // joins your thread for everyone.
-async function post(words: Word[], voice: Voice | null): Promise<void> {
+async function post(words: Word[], voice: Voice | null, forDraft?: number): Promise<void> {
   try {
     const res = await fetch("/say", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ words, voice }),
+      body: JSON.stringify({ words, voice, draft: forDraft }),
       // a send that hangs mustn't hold up every phrase after it
       signal: AbortSignal.timeout(15_000),
     });
