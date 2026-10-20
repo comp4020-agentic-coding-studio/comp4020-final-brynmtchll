@@ -101,14 +101,11 @@ main.room {
 @media (min-width: 900px) {
   main.room { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: "me others" "record record"; align-items: start; }
 }
-/* joined: the queue is a bar fixed along the bottom of the screen, so it's
-   always in reach and never pushes the room around; the page leaves room
-   for it */
-main.room.joined { padding-bottom: calc(var(--queue-h, 150px) + 24px); }
+
 .me { grid-area: me; }
 .others { grid-area: others; }
 .record-wrap { grid-area: record; }
-.queue, .join-card, .record-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.join-card, .record-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 
 /* ---- a person's card: name, latest word large, the last few under it ---- */
 
@@ -149,26 +146,77 @@ main.room.joined { padding-bottom: calc(var(--queue-h, 150px) + 24px); }
 @keyframes arrive { from { opacity: 0; translate: 0 6px; } }
 /* the last word, once someone stops, lingers and then goes */
 .spot-word.fading { opacity: 0; }
+/* the word being said takes room only while there's one to show; between
+   phrases the thread moves up to fill it */
+.spot-word:empty, .spot-word.fading { min-height: 0; margin: 0; }
+.spot-word { transition: opacity 1.2s, min-height 0.4s; }
 /* someone who hasn't said anything yet */
-.spot-word:empty::before { content: "…"; color: var(--faint); font-weight: 300; }
-.spot-trail:empty { display: none; }
-/* the last few words before it, in a column under it, newest first, fading
-   as they go down */
-.spot-trail { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 1px; font-size: 1.0625rem; line-height: 1.35; color: var(--muted); }
-.spot-trail li:nth-child(1) { opacity: 1; }
-.spot-trail li:nth-child(2) { opacity: 0.85; }
-.spot-trail li:nth-child(3) { opacity: 0.7; }
-.spot-trail li:nth-child(4) { opacity: 0.55; }
-.spot-trail li:nth-child(n+5) { opacity: 0.4; }
-.spot-trail .w { font-size: 1em; transform: none; animation: none; text-shadow: none; }
+.spot:not(:has(.bubble)) .spot-word:empty::before { content: "…"; color: var(--faint); font-weight: 300; }
+.spot:not(:has(.bubble)) .spot-word:empty { min-height: 1.3em; margin-top: 6px; }
+
+/* What they've said lately, as text messages: a column of bubbles in their
+   colour, each with a tail on its right, newest at the bottom; a new line in
+   a bubble for each pause. It scrolls, and keeps to the latest. */
+.thread {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 2px 10px 6px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.thread:empty { display: none; }
+.bubble {
+  position: relative;
+  max-width: 92%;
+  padding: 7px 12px;
+  border-radius: 16px 16px 4px 16px;
+  background: color-mix(in srgb, var(--person) 16%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--person) 28%, transparent);
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+/* the tail, bottom right */
+.bubble::after {
+  content: "";
+  position: absolute;
+  right: -7px;
+  bottom: -1px;
+  width: 12px;
+  height: 14px;
+  background: inherit;
+  border-right: 1px solid color-mix(in srgb, var(--person) 28%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--person) 28%, transparent);
+  clip-path: polygon(0 0, 0 100%, 100% 100%);
+  border-bottom-right-radius: 4px;
+}
+.bubble .w { font-size: 1em; transform: none; margin: 0; }
+.bubble .w.fx-impact { font-size: 1.15em; }
+.bubble .w.fx-whisper { font-size: 0.85em; }
+/* your own words can be chosen and changed */
+.spot.mine .tw { cursor: pointer; border-radius: 4px; }
+.spot.mine .tw:hover { background: color-mix(in srgb, var(--person) 18%, transparent); }
+.tw.chosen { background: color-mix(in srgb, var(--person) 30%, transparent); box-shadow: 0 0 0 1.5px var(--person); }
+.tw.typing .w { font-style: normal; }
+.caret { display: inline-block; width: 2px; height: 0.95em; margin-left: 1px; background: currentColor; vertical-align: -0.1em; animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
 
 /* yours, on the left: bigger, with the controls under it */
 .me { display: grid; gap: 14px; align-content: start; }
-.mine-card .spot { padding: 22px 26px 24px 28px; min-height: 300px; }
+.mine-card .spot { padding: 22px 26px 24px 28px; }
 .mine-card .spot-avatar { width: 88px; height: 88px; }
 .mine-card .spot-name { font-size: 1.0625rem; }
 .mine-card .spot-word { margin-top: 14px; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
-.mine-card .spot-trail { font-size: 1.25rem; }
+.mine-card .thread { max-height: 300px; }
+.mine-card .bubble { font-size: 1.0625rem; }
 /* everyone else's are side by side where there's room */
 @media (min-width: 1300px) {
   .stage { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -202,62 +250,11 @@ main.room.joined { padding-bottom: calc(var(--queue-h, 150px) + 24px); }
 .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 .live.on::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
 
-/* ---- your queue: what you've said that hasn't gone out, first first, in a
-   bar along the bottom of the screen ---- */
+/* ---- changing your words, live ---- */
 
-.queue {
-  --person: oklch(var(--person-l) var(--person-c) var(--hue, 250));
-  position: fixed;
-  left: 50%;
-  bottom: 12px;
-  translate: -50% 0;
-  z-index: 10;
-  width: min(1400px, calc(100vw - 24px));
-  padding: 12px 16px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas: "label words tools";
-  align-items: center;
-  gap: 8px 16px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(12px);
-  border-radius: 20px;
-}
-.queue h2 { grid-area: label; }
-.queue-words, .queue-empty { grid-area: words; }
-.queue-tools { grid-area: tools; }
-@media (max-width: 899px) {
-  .queue { grid-template-columns: minmax(0, 1fr); grid-template-areas: "label" "words" "tools"; bottom: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
-}
-.queue-words { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 6px 14px; overflow-x: auto; scrollbar-width: none; font-size: 1.125rem; color: var(--muted); white-space: nowrap; min-height: 48px; }
-.queue-words li { padding: 2px 2px; }
-.queue-words li.next {
-  position: relative;
-  flex: none;
-  padding: 6px 14px 9px;
-  font-size: 1.75rem;
-  line-height: 1.15;
-  color: var(--person);
-  background: color-mix(in srgb, var(--person) 12%, var(--surface-2));
-  border: 1px solid color-mix(in srgb, var(--person) 35%, var(--line));
-  border-radius: 12px;
-  overflow: hidden;
-}
-/* a bar along its foot runs down to when it goes; it stops while you type */
-.queue-words li.next::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--person); transform-origin: left; animation: queue-wait var(--wait) linear forwards; }
-.queue-words li.next.held::after { animation: none; transform: scaleX(1); opacity: 0.4; }
-@keyframes queue-wait { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-.queue .typing { font-style: normal; }
-.queue .caret { display: inline-block; width: 2px; height: 0.9em; margin-left: 2px; background: currentColor; vertical-align: -0.1em; animation: caret 1s steps(1) infinite; }
-@keyframes caret { 50% { opacity: 0; } }
-.queue-empty { margin: 0; color: var(--muted); font-size: 0.875rem; }
-.queue-empty[hidden] { display: none; }
-.queue-tools { display: flex; gap: 6px; }
-.queue-tools button { display: flex; align-items: center; gap: 6px; padding: 8px 10px; min-height: 40px; font-size: 0.8125rem; white-space: nowrap; }
-@media (max-width: 899px) {
-  .queue-tools { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .queue-tools button { flex-direction: column; gap: 2px; padding: 6px 2px; min-height: 48px; font-size: 0.6875rem; }
-}
+.edit-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.edit-hint { flex-basis: 100%; margin: 0 0 2px; color: var(--muted); font-size: 0.8125rem; }
+.edit-tools button { display: flex; align-items: center; gap: 6px; padding: 6px 10px; min-height: 38px; font-size: 0.8125rem; }
 
 /* ---- your avatar's look ---- */
 
@@ -325,7 +322,7 @@ main.room.joined { padding-bottom: calc(var(--queue-h, 150px) + 24px); }
 }
 .spot-word .w { margin: 0; }
 
-/* Effects a speaker puts on a word in their queue (voice.ts EFFECTS). Each
+/* Effects a speaker puts on one of their words (voice.ts EFFECTS). Each
    builds on how the word was said rather than replacing it. */
 .w.fx-impact { font-weight: 900; font-size: 1.5em; letter-spacing: -0.01em; animation: impact 0.45s cubic-bezier(0.2, 1.6, 0.4, 1); }
 @keyframes impact {
@@ -342,7 +339,7 @@ main.room.joined { padding-bottom: calc(var(--queue-h, 150px) + 24px); }
   to { text-shadow: 0 0 0.3em var(--person, currentColor), 0 0 0.9em var(--person, currentColor); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow, .spot-word.arrive .w, .talk.recording .dot, .queue-words li.next::after, .queue .caret { animation: none; }
+  .w.fx-impact, .w.fx-glow, .spot-word.arrive .w, .talk.recording .dot, .caret { animation: none; }
 }
 
 /* ---- the README page ---- */

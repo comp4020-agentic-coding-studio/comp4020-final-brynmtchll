@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { marked } from "marked";
 import { openRoom, type Message } from "./db.ts";
 import { APP, readmePage, roomPage } from "./view.ts";
-import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
+import { clean, cleanVoice, EFFECTS, hueOf, wordHtml } from "./voice.ts";
 import { readExpression, type Face } from "./face.ts";
 import { cleanExpression, cleanLook, REST, type Expression, type Look } from "./avatar.ts";
 
@@ -58,7 +58,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "queue.ts", "face.ts", "avatar.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),
@@ -148,7 +148,7 @@ const MOST_LISTENING = 500;
 // SAY_WINDOW. Each word goes out on its own as it leaves its speaker's queue,
 // and someone talking without a break says two or three a second, so the
 // limit is past that. Kept in memory; a restart forgets.
-const SAY_LIMIT = 150;
+const SAY_LIMIT = 150; // a phrase at every pause, and every live edit, count
 const SAY_WINDOW = 30_000;
 // A send counts from when it arrives, before its body is read, so a burst of
 // sends at once can't all slip in under the limit; one that turns out not to
@@ -204,6 +204,19 @@ const tenths = (n: number): number => Math.round(n * 10) / 10;
 // A phrase goes out as what the stage needs to play it: who, where they
 // stand and in what colour, each word as HTML with when it was said, and the
 // plain text for screen readers.
+const phraseOf = (m: Message) => ({
+  id: m.id,
+  name: m.name,
+  hue: hueOf(room.seatOf(m.name)),
+  text: m.text,
+  at: m.at,
+  words: m.words.map((w, i) => ({
+    html: wordHtml(w),
+    t: w.start,
+    d: tenths(w.end - w.start),
+    gap: tenths((m.words[i + 1]?.start ?? w.end) - w.end),
+  })),
+});
 const event = (m: Message): string =>
   `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({
     id: m.id,
@@ -261,7 +274,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
-    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf));
+    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads()));
   }
   if (req.method === "GET" && (url.pathname === "/readme/" || url.pathname === "/readme")) {
     return send(res, 200, "text/html; charset=utf-8", readme);
@@ -333,6 +346,43 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (e) faceSeen.set(me.name, Date.now());
     else faceSeen.delete(me.name);
     showExpression(me.name, e);
+    return json(res, 200, {});
+  }
+
+  // A change to a word someone's already said, live, for everyone: new text,
+  // an effect, or gone. Only their own words (db.ts edit checks the message
+  // is theirs); what's typed is cleaned like any word.
+  if (req.method === "POST" && url.pathname === "/edit") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (tooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let raw: { id?: unknown; index?: unknown; text?: unknown; effect?: unknown; remove?: unknown } = {};
+    try {
+      raw = JSON.parse((await body(req, 1024)) ?? "{}");
+    } catch {
+      return json(res, 400, { error: "not-an-edit" });
+    }
+    const change: { text?: string; effect?: string | null; remove?: boolean } = {};
+    if (raw.remove === true) change.remove = true;
+    if (typeof raw.text === "string") {
+      const text = raw.text.replace(/\s+/g, " ").trim();
+      if (text.length < 1 || text.length > 40) return json(res, 400, { error: "not-an-edit" });
+      change.text = text;
+    }
+    if (raw.effect === null || (EFFECTS as readonly unknown[]).includes(raw.effect)) change.effect = raw.effect as string | null;
+    if (!Number.isSafeInteger(raw.id) || !Number.isSafeInteger(raw.index) || Object.keys(change).length === 0) {
+      return json(res, 400, { error: "not-an-edit" });
+    }
+    const result = room.edit(me.id, raw.id as number, raw.index as number, change);
+    if (!result) {
+      log(me, "refused", { why: "not-theirs", message: raw.id as number });
+      return json(res, 403, { error: "not-yours" });
+    }
+    log(me, "edited", { message: raw.id as number, word: raw.index as number, ...(change.text ? { text: change.text } : {}), ...(change.effect !== undefined ? { effect: change.effect ?? "none" } : {}), ...(change.remove ? { removed: "yes" } : {}) });
+    const payload =
+      result === "removed"
+        ? `event: edited\ndata: ${JSON.stringify({ id: raw.id, removed: true })}\n\n`
+        : `event: edited\ndata: ${JSON.stringify(phraseOf(result))}\n\n`;
+    for (const listener of listening) listener.write(payload);
     return json(res, 200, {});
   }
 

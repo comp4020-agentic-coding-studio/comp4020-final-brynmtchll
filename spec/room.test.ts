@@ -282,9 +282,58 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   });
 
-  it("offers no way to change or take back anyone's words once said", async () => {
+  // You can change your own words after you've said them, live; nobody else's.
+  const editAs = (cookie: string, body: unknown) =>
+    fetch(new URL("/edit", baseUrl), { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  it("lets you change a word you've said, live for everyone, keeping how you said it", async () => {
+    const watcher = listen();
+    await watcher.ready;
     const p = await person();
-    for (const [method, path] of [["PUT", "/say"], ["DELETE", "/say"], ["PATCH", "/say"], ["POST", "/unsay"], ["POST", "/edit"], ["DELETE", "/api/messages"]]) {
+    const stamp = `there${Date.now()}`;
+    const { id } = (await (await p.say({ words: [word("over", 0), word(stamp, 0.4, { loud: 9 })] })).json()) as { id: number };
+    expect((await editAs(p.cookie, { id, index: 1, text: "their" })).status).toBe(200);
+    const e = (await watcher.waitFor(`"id":${id},"name"`)) as unknown as { type: string; text: string };
+    // the edit event comes after the said one: wait for the one that says "their"
+    const changed = (await watcher.waitFor(`"text":"over their"`)) as unknown as { type: string; words: { html: string }[] };
+    expect(e).toBeDefined();
+    expect(changed.type).toBe("edited");
+    expect(changed.words[1].html).toContain("--loud:9");
+    expect((await messages()).find((m) => m.id === id)?.text).toBe("over their");
+    // an effect on, then the word gone
+    expect((await editAs(p.cookie, { id, index: 0, effect: "impact" })).status).toBe(200);
+    expect((await editAs(p.cookie, { id, index: 0, remove: true })).status).toBe(200);
+    expect((await messages()).find((m) => m.id === id)?.text).toBe("their");
+    watcher.close();
+  });
+
+  it("refuses a change to anyone else's words, whatever the request says", async () => {
+    const [a, b] = [await person(), await person()];
+    const stamp = `mine${Date.now()}`;
+    const { id } = (await (await a.say({ words: [word(stamp, 0)] })).json()) as { id: number };
+    expect((await editAs(b.cookie, { id, index: 0, text: "hacked", name: a.name })).status).toBe(403);
+    expect((await editAs(b.cookie, { id, index: 0, remove: true })).status).toBe(403);
+    expect((await messages()).find((m) => m.id === id)?.text).toBe(stamp);
+    // and nonsense is refused
+    for (const bad of [{ id, index: 9, text: "x" }, { id, index: 0 }, { id, index: 0, effect: "explode" }, { id: "1", index: 0, text: "x" }]) {
+      expect([400, 403]).toContain((await editAs(a.cookie, bad)).status);
+    }
+  });
+
+  it("shows each person's recent words as a thread, a new line at each pause", async () => {
+    const p = await person();
+    const stamp = `first${Date.now()}`;
+    // a pause of a second between the two words
+    await p.say({ words: [word(stamp, 0), word("second", 1.3)] });
+    const page = await p.page();
+    const thread = page.slice(page.indexOf(`data-name="${p.name}"`)).match(/<ol class="thread"[^>]*>([\s\S]*?)<\/ol>/)?.[1] ?? "";
+    expect(thread).toContain(stamp);
+    expect(thread).toMatch(new RegExp(`${stamp}</span></span><br><span class="tw"`));
+  });
+
+  it("offers no way to take back or rewrite anyone's words wholesale", async () => {
+    const p = await person();
+    for (const [method, path] of [["PUT", "/say"], ["DELETE", "/say"], ["PATCH", "/say"], ["POST", "/unsay"], ["DELETE", "/api/messages"]]) {
       const res = await fetch(new URL(path, baseUrl), { method, headers: { cookie: p.cookie, "content-type": "application/json" }, body: "{}" });
       expect([403, 404], `${method} ${path}`).toContain(res.status);
     }

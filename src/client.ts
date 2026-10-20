@@ -5,7 +5,6 @@
 import { avatarSvg, fromShapes, REST, type Expression, type Look } from "./avatar.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, spoke, words, type Heard } from "./prosody.ts";
-import { queue as wordQueue } from "./queue.ts";
 import { ago, wordHtml, type Voice, type Word } from "./voice.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
 
@@ -40,13 +39,11 @@ const still = matchMedia("(prefers-reduced-motion: reduce)");
 type Spot = {
   el: HTMLElement;
   word: HTMLElement;
-  trail: HTMLOListElement;
   queue: (Phrase & { arrived: number })[];
   state: "idle" | "playing" | "lingering";
   timers: number[];
 };
-// how many words before the latest each card keeps underneath it
-const TRAIL = 6;
+
 const spots = new Map<string, Spot>();
 
 // Someone who joined after the page loaded gets a card when they join.
@@ -90,14 +87,14 @@ function spotFor(p: Pick<Phrase, "name" | "hue">, look?: Look): Spot {
     const word = document.createElement("p");
     word.className = "spot-word";
     word.setAttribute("aria-hidden", "true");
-    const trail = document.createElement("ol");
-    trail.className = "spot-trail";
-    trail.setAttribute("aria-hidden", "true");
-    el.append(head, word, trail);
+    const thread = document.createElement("ol");
+    thread.className = "thread";
+    thread.setAttribute("aria-label", `What ${p.name} said lately`);
+    el.append(head, word, thread);
     stage.append(el);
     nobody.hidden = true;
   }
-  const spot: Spot = { el, word: el.querySelector(".spot-word")!, trail: el.querySelector(".spot-trail")!, queue: [], state: "idle", timers: [] };
+  const spot: Spot = { el, word: el.querySelector(".spot-word")!, queue: [], state: "idle", timers: [] };
   spots.set(p.name, spot);
   if (look) drawAvatar(p.name, REST);
   return spot;
@@ -116,16 +113,8 @@ function drawAvatar(name: string, e: Expression): void {
 }
 for (const el of document.querySelectorAll<HTMLElement>(".spot")) spotFor({ name: el.dataset.name!, hue: 0 });
 
-// The latest word goes up large; the one it replaces moves to the front of
-// the trail underneath, and the oldest falls off the end.
+// The word being said goes up large (the thread underneath has the rest).
 function showWord(spot: Spot, html: string): void {
-  const before = spot.word.innerHTML.trim();
-  if (before && !spot.word.classList.contains("fading")) {
-    const li = document.createElement("li");
-    li.innerHTML = before;
-    spot.trail.prepend(li);
-    while (spot.trail.children.length > TRAIL) spot.trail.lastElementChild!.remove();
-  }
   spot.word.classList.remove("fading");
   spot.word.innerHTML = html;
   // restart the arrival animation on the new word
@@ -209,9 +198,7 @@ function remember(p: Phrase): void {
     while (lately.children.length > RECORD_LINES) lately.firstElementChild!.remove();
   }
   recordEmpty.hidden = true;
-  // a record that started empty (and so closed) opens once there's something in it
-  const wrap = lately.closest("details");
-  if (wrap && !wrap.dataset.touched) wrap.open = true;
+
 }
 // once someone opens or closes it themselves, it stays how they left it
 lately.closest("details")?.addEventListener("toggle", (e) => {
@@ -225,9 +212,86 @@ function arrive(p: Phrase): void {
   remember(p);
   heardAloud.textContent = `${p.name}: ${p.text}`;
   const spot = spotFor(p);
+  addToThread(spot, p);
   spot.queue.push({ ...p, arrived: Date.now() });
   if (spot.state !== "playing") play(spot);
+  // your latest word is the one chosen, unless you've chosen another
+  if (spot.el.classList.contains("mine") && (followLatest || !chosen) && typing === null) choose(p.id, p.words.length - 1, true);
 }
+
+// ---- each person's thread: what they've said lately, as text messages ----
+
+// A phrase joins its speaker's last bubble if it came soon after it, or
+// starts a new one; a pause inside it breaks the line, as in the server's
+// drawing (view.ts threadHtml). The thread keeps to the bottom as it grows,
+// unless someone has scrolled back to read.
+const NEW_BUBBLE = 4000;
+const NEW_LINE = 0.7;
+const THREAD_BUBBLES = 40;
+const phraseHtml = (p: Phrase): string =>
+  `<span class="phrase" data-id="${p.id}">${p.words.map((w, i) => `<span class="tw" data-i="${i}">${w.html}</span>${w.gap > NEW_LINE && i + 1 < p.words.length ? "<br>" : " "}`).join("")}</span>`;
+const said = new Map<number, Phrase>(); // each phrase on the page, by id, for redrawing
+
+function addToThread(spot: Spot, p: Phrase): void {
+  const thread = spot.el.querySelector<HTMLOListElement>(".thread");
+  if (!thread || thread.querySelector(`.phrase[data-id="${p.id}"]`)) return;
+  said.set(p.id, p);
+  const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
+  const last = thread.lastElementChild as HTMLElement | null;
+  if (last && p.at - Number(last.dataset.at) < NEW_BUBBLE) {
+    last.insertAdjacentHTML("beforeend", `<br>${phraseHtml(p)}`);
+  } else {
+    const li = document.createElement("li");
+    li.className = "bubble";
+    li.innerHTML = phraseHtml(p);
+    thread.append(li);
+    while (thread.children.length > THREAD_BUBBLES) thread.firstElementChild!.remove();
+  }
+  (thread.lastElementChild as HTMLElement).dataset.at = String(p.at);
+  if (atBottom) thread.scrollTop = thread.scrollHeight;
+}
+
+// a phrase changed by its speaker, drawn again in place, everywhere it is
+function redrawPhrase(id: number): void {
+  const p = said.get(id);
+  const el = document.querySelector(`.phrase[data-id="${id}"]`);
+  if (!el) return;
+  if (p) el.outerHTML = phraseHtml(p);
+  markChosen();
+}
+function edited(p: Phrase | { id: number; removed: true }): void {
+  if ("removed" in p) {
+    const el = document.querySelector(`.phrase[data-id="${p.id}"]`);
+    const prev = el?.previousSibling;
+    if (prev?.nodeName === "BR") prev.remove();
+    const bubble = el?.closest(".bubble");
+    el?.remove();
+    if (bubble && !bubble.querySelector(".phrase")) bubble.remove();
+    said.delete(p.id);
+    if (chosen?.id === p.id) chosen = null;
+  } else {
+    said.set(p.id, p);
+    // the chosen word stays chosen if it's still there, or moves back one
+    if (chosen?.id === p.id && chosen.index >= p.words.length) chosen.index = p.words.length - 1;
+    redrawPhrase(p.id);
+  }
+}
+// the threads the server drew: each phrase known by its id (from the words
+// as drawn, with their pauses), so a change to it can be drawn again; and
+// each thread scrolled to the latest
+for (const el of document.querySelectorAll<HTMLElement>(".thread .phrase")) {
+  const tws = [...el.querySelectorAll<HTMLElement>(".tw")];
+  said.set(Number(el.dataset.id), {
+    id: Number(el.dataset.id),
+    name: el.closest<HTMLElement>(".spot")?.dataset.name ?? "",
+    hue: 0,
+    text: tws.map((t) => t.textContent).join(" "),
+    at: 0,
+    words: tws.map((t) => ({ html: t.innerHTML, t: 0, d: 0, gap: t.nextElementSibling?.nodeName === "BR" ? 1 : 0 })),
+  });
+}
+for (const thread of document.querySelectorAll<HTMLOListElement>(".thread")) thread.scrollTop = thread.scrollHeight;
+
 
 // ---- live: every phrase, as it's said ----
 
@@ -283,6 +347,7 @@ function connect(): void {
     lastSeen = p.id;
     arrive(p);
   });
+  stream.addEventListener("edited", (e) => edited(JSON.parse((e as MessageEvent<string>).data)));
 }
 connect();
 
@@ -470,11 +535,7 @@ function send(pcm: Float32Array): void {
       // phrase that's only that, with no voice under it, is dropped
       const voiced = result.voice?.pitch != null && result.words.some((w) => w.pitch !== null);
       if (invented(result.words.map((w) => w.w).join(" "), voiced)) return;
-      // the phrase's voice goes with its first word, for the usual-voice
-      // comparison; the words keep their own timing within it
-      voiceFor.set(result.words[0], result.voice);
-      mine.add(result.words, Date.now());
-      showQueue();
+      await post(result.words, result.voice);
     } catch (err) {
       console.error(err);
       warn(modelReady ? "Something you said couldn't be heard." : "Couldn't download the speech model. Check your connection and try again.");
@@ -485,93 +546,149 @@ function send(pcm: Float32Array): void {
   });
 }
 
-// ---- the queue: your words, before anyone else sees them ----
+// ---- sending what you said, and changing it live ----
 
-const queueEl = document.getElementById("queue") as HTMLElement | null;
-const queueWords = document.getElementById("queue-words") as HTMLOListElement | null;
-const mine = wordQueue();
-// the queue is in your colour, as your place is
-const myHue = document.querySelector<HTMLElement>(".spot.mine")?.style.getPropertyValue("--hue");
-if (queueEl && myHue) queueEl.style.setProperty("--hue", myHue);
-const voiceFor = new WeakMap<Word, Voice | null>();
-let hearing: Promise<void> = Promise.resolve(); // so phrases queue in order
-let posting: Promise<void> = Promise.resolve(); // so words go out in order
+let hearing: Promise<void> = Promise.resolve(); // so phrases go out in the order they were said
 
-// the page keeps room at its foot for the queue bar, however tall it is now
-if (queueEl) new ResizeObserver(() => document.body.style.setProperty("--queue-h", `${queueEl.offsetHeight}px`)).observe(queueEl);
-
-// What's waiting, top first: the top word as it'll look (or as it's being
-// typed over), and a countdown to when it goes.
-function showQueue(): void {
-  if (!queueEl || !queueWords) return;
-  const ws = mine.words();
-  document.getElementById("queue-empty")!.hidden = ws.length > 0;
-  const typing = mine.typing();
-  queueWords.innerHTML = ws
-    .map((w, i) => {
-      const html = i === 0 && typing !== null ? `<span class="w typing">${typing.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}<span class="caret"></span></span>` : wordHtml(w);
-      return `<li${i === 0 ? ` class="next"` : ""}>${html}</li>`;
-    })
-    .join("");
-  const due = mine.due();
-  queueWords.style.setProperty("--wait", due === null ? "0" : `${Math.max(0, due - Date.now())}ms`);
-  queueWords.firstElementChild?.classList.toggle("held", typing !== null);
-}
-
-// Each word goes out on its own as it leaves the queue, in order: it plays in
-// your place for everyone the moment it does.
-function post(w: Word): void {
-  const voice = voiceFor.get(w) ?? null;
-  posting = posting.then(async () => {
-    try {
-      const res = await fetch("/say", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ words: [{ ...w, start: 0, end: w.end - w.start }], voice }),
-        // a send that hangs mustn't hold up every word after it
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (res.status === 401) {
-        void turnOff();
-        warn("You've been signed out. Reload the page and join again.");
-      } else if (res.status === 429) {
-        warn("That's a lot at once. Some of it didn't send.");
-      } else if (!res.ok) {
-        warn("A word couldn't be sent.");
-      }
-    } catch (err) {
-      console.error(err);
-      warn("A word couldn't be sent. Check your connection.");
+// A phrase goes out the moment it's heard, whole: it plays in your place and
+// joins your thread for everyone.
+async function post(words: Word[], voice: Voice | null): Promise<void> {
+  try {
+    const res = await fetch("/say", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ words, voice }),
+      // a send that hangs mustn't hold up every phrase after it
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 401) {
+      void turnOff();
+      warn("You've been signed out. Reload the page and join again.");
+    } else if (res.status === 429) {
+      warn("That's a lot at once. Some of it didn't send.");
+    } else if (!res.ok) {
+      warn("Something you said couldn't be sent.");
     }
-  });
+  } catch (err) {
+    console.error(err);
+    warn("Something you said couldn't be sent. Check your connection.");
+  }
 }
 
-// the queue's clock: words go out as they come due
-setInterval(() => {
-  let w: Word | null;
-  let changed = false;
-  while ((w = mine.release(Date.now()))) {
-    post(w);
-    changed = true;
-  }
-  if (changed) showQueue();
-}, 100);
+// One of your words is chosen at a time: your latest, unless you've tapped
+// another of yours in your thread. Whatever you do goes to the server at once
+// and comes back to everyone (yourself included) as the changed phrase; a
+// change to a word that isn't yours is refused there, not just here.
+let chosen: { id: number; index: number } | null = null;
+let followLatest = true;
+let typing: string | null = null;
+const myThread = (): HTMLOListElement | null => document.querySelector(".spot.mine .thread");
 
-// While you have words waiting, the keyboard is theirs, except in a text box.
+function choose(id: number, index: number, follow = false): void {
+  chosen = { id, index };
+  followLatest = follow;
+  typing = null;
+  markChosen();
+}
+function markChosen(): void {
+  for (const el of document.querySelectorAll(".tw.chosen")) el.classList.remove("chosen", "typing");
+  if (!chosen) return;
+  const el = myThread()?.querySelector(`.phrase[data-id="${chosen.id}"] .tw[data-i="${chosen.index}"]`);
+  if (!el) return;
+  el.classList.add("chosen");
+  if (typing !== null) {
+    el.classList.add("typing");
+    el.innerHTML = `<span class="w">${typing.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}<span class="caret"></span></span>`;
+  }
+}
+
+async function change(edit: { text?: string; effect?: string | null; remove?: boolean }): Promise<void> {
+  if (!chosen) return;
+  const target = chosen;
+  try {
+    const res = await fetch("/edit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: target.id, index: target.index, ...edit }),
+    });
+    if (!res.ok) warn("That change didn't go through.");
+  } catch {
+    warn("That change didn't go through. Check your connection.");
+  }
+}
+
+// What a key does to the chosen word: a letter starts (or carries on) typing
+// over it, and Enter or Space puts what's typed in its place; Escape gives
+// up; 1, 2, 3 put on or take off Impact, Whisper, Glow; Backspace mends
+// what's being typed, or with nothing typed, takes the word away.
+function key(k: string): boolean {
+  if (!chosen) return false;
+  if (typing !== null) {
+    if (k === "Enter" || k === " ") {
+      const text = typing.trim();
+      typing = null;
+      if (text) void change({ text });
+      markChosen();
+    } else if (k === "Escape") {
+      typing = null;
+      // put the word back as it was
+      const ph = myThread()?.querySelector<HTMLElement>(`.phrase[data-id="${chosen.id}"]`);
+      if (ph) redrawPhrase(Number(ph.dataset.id));
+    } else if (k === "Backspace") typing = typing.slice(0, -1);
+    else if (k.length === 1 && typing.length < 40) typing += k;
+    else return false;
+    markChosen();
+    return true;
+  }
+  const fx = { "1": "impact", "2": "whisper", "3": "glow" }[k];
+  if (fx) {
+    const on = myThread()?.querySelector(`.phrase[data-id="${chosen.id}"] .tw[data-i="${chosen.index}"] .w`)?.classList.contains(`fx-${fx}`);
+    void change({ effect: on ? null : fx });
+    return true;
+  }
+  if (k === "Backspace" || k === "Delete") {
+    void change({ remove: true });
+    return true;
+  }
+  if (k.length === 1 && k !== " " && /\S/u.test(k)) {
+    typing = k;
+    markChosen();
+    return true;
+  }
+  return false;
+}
+
+// While you've something chosen, the keyboard is for it, except in a text box.
 addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const t = e.target as HTMLElement;
   if (t.closest("input, textarea, [contenteditable]")) return;
   // Space and Enter on a focused button press the button, as they should
   if ((e.key === " " || e.key === "Enter") && t.closest("button")) return;
-  if (mine.key(e.key, Date.now())) {
-    e.preventDefault();
-    showQueue();
-  }
+  if (key(e.key)) e.preventDefault();
 });
-queueEl?.querySelector(".queue-tools")?.addEventListener("click", (e) => {
-  const key = (e.target as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key;
-  if (key && mine.key(key, Date.now())) showQueue();
+document.querySelector(".edit-tools")?.addEventListener("click", (e) => {
+  const k = (e.target as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key;
+  if (k) key(k);
+});
+// your latest word starts out chosen
+{
+  const last = myThread()?.querySelector<HTMLElement>(".bubble:last-child .phrase:last-of-type");
+  const n = last?.querySelectorAll(".tw").length ?? 0;
+  if (last && n) choose(Number(last.dataset.id), n - 1, true);
+}
+
+// tap one of your own words to choose it; tap it again to go back to following your latest
+myThread()?.addEventListener("click", (e) => {
+  const w = (e.target as HTMLElement).closest<HTMLElement>(".tw");
+  const ph = w?.closest<HTMLElement>(".phrase");
+  if (!w || !ph) return;
+  const [id, index] = [Number(ph.dataset.id), Number(w.dataset.i)];
+  if (chosen?.id === id && chosen.index === index && !followLatest) {
+    const last = myThread()?.querySelector<HTMLElement>(".phrase:last-of-type");
+    const lastIndex = last ? last.querySelectorAll(".tw").length - 1 : -1;
+    if (last && lastIndex >= 0) choose(Number(last.dataset.id), lastIndex, true);
+  } else choose(id, index);
 });
 
 // Records the microphone through tap.ts. The browser's automatic gain and

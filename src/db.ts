@@ -105,6 +105,49 @@ export function openRoom(file: string, now: () => number = Date.now) {
     return toMessage(db.prepare(`${SELECT} WHERE m.id = ?`).get(lastInsertRowid) as MessageRow);
   }
 
+  // A change someone makes to a word they've already said: new text (keeping
+  // how it was said), an effect on or off, or the word gone. Only their own:
+  // the message must be theirs, or nothing changes and null comes back. A
+  // message left with no words is removed.
+  type Edit = { text?: string; effect?: string | null; remove?: boolean };
+  function edit(personId: string, messageId: number, index: number, change: Edit): Message | "removed" | null {
+    const row = db.prepare("SELECT person_id, words FROM messages WHERE id = ?").get(messageId) as { person_id: string; words: string } | undefined;
+    if (!row || row.person_id !== personId) return null;
+    const words = JSON.parse(row.words) as Word[];
+    if (!Number.isInteger(index) || index < 0 || index >= words.length) return null;
+    if (change.remove) words.splice(index, 1);
+    else {
+      const w = { ...words[index] };
+      if (change.text !== undefined) {
+        w.w = change.text;
+        // which letter was held belonged to the old spelling
+        w.held = null;
+      }
+      if (change.effect !== undefined) {
+        if (change.effect) w.effect = change.effect as Word["effect"];
+        else delete w.effect;
+      }
+      words[index] = w;
+    }
+    if (words.length === 0) {
+      db.prepare("DELETE FROM messages WHERE id = ?").run(messageId);
+      return "removed";
+    }
+    db.prepare("UPDATE messages SET words = ?, text = ? WHERE id = ?").run(JSON.stringify(words), textOf(words), messageId);
+    return toMessage(db.prepare(`${SELECT} WHERE m.id = ?`).get(messageId) as MessageRow);
+  }
+
+  // each person's last few messages, oldest first: what their thread shows
+  const threads = (perPerson = 30): Map<string, Message[]> => {
+    const out = new Map<string, Message[]>();
+    for (const m of (db.prepare(`${SELECT} ORDER BY m.id DESC LIMIT 600`).all() as MessageRow[]).map(toMessage)) {
+      const list = out.get(m.name) ?? [];
+      if (list.length < perPerson) list.unshift(m);
+      out.set(m.name, list);
+    }
+    return out;
+  };
+
   // the latest messages, newest first
   const recent = (limit = 50): Message[] =>
     (db.prepare(`${SELECT} ORDER BY m.id DESC LIMIT ?`).all(limit) as MessageRow[]).map(toMessage);
@@ -163,7 +206,7 @@ export function openRoom(file: string, now: () => number = Date.now) {
     return out.slice(-lines);
   }
 
-  return { findPerson, join, say, recent, since, people, seatOf, newest, record, setLook, lookOf, close: () => db.close() };
+  return { findPerson, join, say, edit, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;
