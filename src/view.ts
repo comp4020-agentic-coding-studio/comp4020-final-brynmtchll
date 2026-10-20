@@ -1,6 +1,7 @@
 import type { Message, Person } from "./db.ts";
 import { ago, esc, hueOf, wordHtml, type Word } from "./voice.ts";
-import { avatarSvg, LOOKS, lookFor, REST, type Expression, type Look } from "./avatar.ts";
+import { avatarSvg, REST, type Expression } from "./avatar.ts";
+import { COLOURS, lookFor, PARTS, type ColourPart, type Look, type Part } from "./packs.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
@@ -86,19 +87,37 @@ export function spotHtml(name: string, seat: number, look: Look, mine = false, e
   </li>`;
 }
 
-// What someone can choose about their avatar, as a row of options each.
+// What someone can choose about their avatar, from packs.ts: a row of
+// choices for each part, grouped into tabs, and for each colour a row of
+// swatches and a picker for any colour at all. Plain radio buttons, so it
+// works and reads the same to a screen reader without the page's script.
+const SECTIONS: { label: string; parts: (Part | ColourPart)[] }[] = [
+  { label: "Face", parts: ["face", "skin", "ears", "nose"] },
+  { label: "Hair", parts: ["hair", "hairColour", "brows", "beard"] },
+  { label: "Eyes", parts: ["eyes", "eyeColour"] },
+  { label: "Mouth", parts: ["mouth"] },
+  { label: "Extras", parts: ["extra", "extraColour"] },
+];
+const PART_LABELS: Record<Part, string> = { face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing" };
 function lookPicker(look: Look): string {
-  const row = (part: keyof typeof LOOKS, label: string, show: (v: string) => string): string =>
-    `<fieldset class="pick"><legend>${label}</legend>${LOOKS[part]
-      .map((v) => `<label><input type="radio" name="${part}" value="${esc(v)}"${look[part] === v ? " checked" : ""}><span>${show(v)}</span></label>`)
+  const isColour = (k: string): k is ColourPart => k in COLOURS;
+  const row = (k: Part | ColourPart): string => {
+    if (isColour(k)) {
+      const c = COLOURS[k];
+      const custom = !(c.swatches as readonly string[]).includes(look[k]);
+      return `<fieldset class="pick"><legend>${c.label}</legend>${c.swatches
+        .map((v) => `<label><input type="radio" name="${k}" value="${v}"${look[k] === v ? " checked" : ""}><span><span class="swatch" style="background:${v}"></span><span class="visually-hidden">${v}</span></span></label>`)
+        .join("")}<label class="any-colour" title="Any colour"><input type="radio" name="${k}" value="${esc(look[k])}"${custom ? " checked" : ""} data-custom><span><input type="color" value="${esc(look[k])}" data-for="${k}" aria-label="Any ${c.label.toLowerCase()} colour"></span></label></fieldset>`;
+    }
+    return `<fieldset class="pick"><legend>${PART_LABELS[k]}</legend>${(PARTS[k] as readonly { id: string; label: string }[])
+      .map((c) => `<label><input type="radio" name="${k}" value="${c.id}"${look[k] === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
       .join("")}</fieldset>`;
+  };
   return `<details class="customise">
     <summary>Customise your avatar</summary>
     <form id="look" class="look-form">
-      ${row("skin", "Colour", (v) => `<span class="swatch" style="background:${v}"></span><span class="visually-hidden">${v}</span>`)}
-      ${row("eyes", "Eyes", (v) => v)}
-      ${row("mouth", "Mouth", (v) => v)}
-      ${row("extra", "Extra", (v) => v)}
+      <div class="look-tabs" role="tablist">${SECTIONS.map((sec, i) => `<label class="look-tab"><input type="radio" name="look-tab" value="${i}"${i === 0 ? " checked" : ""}><span>${sec.label}</span></label>`).join("")}<button type="button" class="surprise" id="surprise">Surprise me</button></div>
+      ${SECTIONS.map((sec, i) => `<div class="look-section" data-section="${i}">${sec.parts.map(row).join("")}</div>`).join("")}
     </form>
   </details>`;
 }

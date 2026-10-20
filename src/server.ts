@@ -8,7 +8,8 @@ import { openRoom, type Message } from "./db.ts";
 import { APP, readmePage, roomPage } from "./view.ts";
 import { clean, cleanVoice, EFFECTS, hueOf, wordHtml } from "./voice.ts";
 import { readExpression, type Face } from "./face.ts";
-import { cleanExpression, cleanLook, cleanPose, REST, type Expression, type Look, type Pose } from "./avatar.ts";
+import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./avatar.ts";
+import { cleanLook, type Look } from "./packs.ts";
 
 // Everyone's expression as they last showed it, in memory: a face is for now,
 // so a restart forgetting it is right. A page showing a face sends it several
@@ -64,7 +65,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "head3d.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "packs.ts", "head3d.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),
@@ -408,7 +409,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (!me) return json(res, 401, { error: "no-person" });
     let look: Look | null = null;
     try {
-      look = cleanLook((JSON.parse((await body(req, 512)) ?? "{}") as { look?: unknown }).look);
+      // parts it doesn't mention stay as they were
+      look = cleanLook((JSON.parse((await body(req, 2048)) ?? "{}") as { look?: unknown }).look, room.lookOf(me.name));
     } catch {
       look = null;
     }

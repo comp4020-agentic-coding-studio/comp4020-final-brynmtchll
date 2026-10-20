@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { compare, textOf, USUAL_OVER, type Usual, type Voice, type Word } from "./voice.ts";
-import { lookFor, type Look } from "./avatar.ts";
+import { fullLook, lookFor, type Look } from "./packs.ts";
 
 export type Person = { id: string; name: string; joined_at: number };
 
@@ -54,7 +54,8 @@ export function openRoom(file: string, now: () => number = Date.now) {
   // someone who hasn't chosen has one from their seat
   const lookOf = (name: string): Look => {
     const r = db.prepare("SELECT look, rowid AS seat FROM people WHERE name = ?").get(name) as { look: string | null; seat: number } | undefined;
-    return r?.look ? (JSON.parse(r.look) as Look) : lookFor(Number(r?.seat ?? 0));
+    // (a look saved before some part existed gets that part's default)
+    return r?.look ? fullLook(JSON.parse(r.look)) : lookFor(Number(r?.seat ?? 0));
   };
 
   const findPerson = (id: string | undefined): Person | undefined =>

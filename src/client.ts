@@ -4,6 +4,7 @@
 // at a time and sends each phrase as it's heard.
 import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
+import { randomLook } from "./packs.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
 import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
@@ -1207,20 +1208,54 @@ if (faceButton && "mediaDevices" in navigator) {
 
 // ---- your avatar's look ----
 
-// Each change is saved as it's made, and shows on every open page.
+// Each change is saved as it's made, and shows on every open page: drawn
+// here at once, sent at most every LOOK_EVERY (a colour picker sends a
+// change for every step of a drag).
+const LOOK_EVERY = 250; // ms
 const lookForm = document.getElementById("look") as HTMLFormElement | null;
-lookForm?.addEventListener("change", async () => {
-  const data = new FormData(lookForm);
-  const look = { skin: data.get("skin"), eyes: data.get("eyes"), mouth: data.get("mouth"), extra: data.get("extra") };
+let lookTimer: number | undefined;
+function lookNow(): Record<string, string> {
+  const data = new FormData(lookForm!);
+  const look: Record<string, string> = {};
+  for (const [k, v] of data) if (k !== "look-tab" && typeof v === "string") look[k] = v;
+  return look;
+}
+function changeLook(): void {
+  const look = lookNow();
   const card = cardOf(myName);
   if (card) {
-    card.dataset.look = JSON.stringify(look);
+    card.dataset.look = JSON.stringify({ ...(card.dataset.look ? JSON.parse(card.dataset.look) : {}), ...look });
     drawAvatar(myName, expressionOf.get(myName) ?? REST);
   }
-  try {
-    const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look }) });
-    if (!res.ok) warn("Couldn't save your avatar. Try again.");
-  } catch {
-    warn("Couldn't save your avatar. Check your connection.");
+  clearTimeout(lookTimer);
+  lookTimer = window.setTimeout(async () => {
+    try {
+      const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look }) });
+      if (!res.ok) warn("Couldn't save your avatar. Try again.");
+    } catch {
+      warn("Couldn't save your avatar. Check your connection.");
+    }
+  }, LOOK_EVERY);
+}
+lookForm?.addEventListener("change", (e) => {
+  if ((e.target as HTMLInputElement).name === "look-tab") return;
+  changeLook();
+});
+// a colour from the picker becomes its row's choice
+lookForm?.addEventListener("input", (e) => {
+  const picker = e.target as HTMLInputElement;
+  if (picker.type !== "color") return;
+  const radio = picker.closest("label")?.querySelector<HTMLInputElement>("input[type=radio]");
+  if (!radio) return;
+  radio.value = picker.value;
+  radio.checked = true;
+  changeLook();
+});
+document.getElementById("surprise")?.addEventListener("click", () => {
+  const look = randomLook();
+  for (const [k, v] of Object.entries(look)) {
+    const radio = lookForm?.querySelector<HTMLInputElement>(`input[name="${k}"][value="${v}"]`);
+    if (radio) radio.checked = true;
   }
+  changeLook();
 });

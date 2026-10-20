@@ -33,23 +33,10 @@ export const REST: Expression = { smile: 0, frown: 0, open: 0, pucker: 0, browUp
 const KEYS = Object.keys(REST) as (keyof Expression)[];
 const EITHER_WAY = new Set<keyof Expression>(["wink", "smirk", "brow", "lookX", "lookY"]);
 
-// What someone can choose about how their avatar looks.
-export const LOOKS = {
-  skin: ["#ffd8b5", "#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#5c3a21", "#9ad0ec", "#b9f2a1", "#e3b6ff", "#ffb3c1"],
-  eyes: ["dots", "round", "sleepy", "sparkle"],
-  mouth: ["line", "wide", "cat"],
-  extra: ["none", "glasses", "shades", "hat", "headphones", "blush"],
-} as const;
-export type Look = { skin: string; eyes: (typeof LOOKS.eyes)[number]; mouth: (typeof LOOKS.mouth)[number]; extra: (typeof LOOKS.extra)[number] };
-
-// someone who hasn't chosen yet gets a look from their seat, so a room of
-// newcomers isn't a room of identical faces
-export const lookFor = (seat: number): Look => ({
-  skin: LOOKS.skin[seat % 6],
-  eyes: LOOKS.eyes[seat % LOOKS.eyes.length],
-  mouth: LOOKS.mouth[(seat >> 1) % LOOKS.mouth.length],
-  extra: "none",
-});
+// What someone can choose about how their avatar looks lives in packs.ts.
+export { cleanLook, lookFor } from "./packs.ts";
+import type { Look } from "./packs.ts";
+export type { Look };
 
 const clamp01 = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -60,16 +47,6 @@ export function cleanExpression(input: unknown): Expression | null {
   if (typeof input !== "object" || input === null) return null;
   const e = input as Record<string, unknown>;
   return Object.fromEntries(KEYS.map((k) => [k, round2(EITHER_WAY.has(k) ? within(e[k], 1) : clamp01(e[k]))])) as Expression;
-}
-
-// a look as sent, each part one of the choices on offer, or null if any isn't
-export function cleanLook(input: unknown): Look | null {
-  if (typeof input !== "object" || input === null) return null;
-  const l = input as Record<string, unknown>;
-  for (const k of Object.keys(LOOKS) as (keyof typeof LOOKS)[]) {
-    if (!(LOOKS[k] as readonly unknown[]).includes(l[k])) return null;
-  }
-  return { skin: l.skin, eyes: l.eyes, mouth: l.mouth, extra: l.extra } as Look;
 }
 
 // Which way someone's head is turned, in radians, as drawn: nodding (pitch,
@@ -290,13 +267,16 @@ export function avatarSvg(look: Look, e: Expression = REST, label = ""): string 
   const blush = look.extra === "blush" || e.smile > 0.6
     ? `<ellipse cx="29" cy="58" rx="6" ry="3.5" fill="#ff7a8a" opacity="${n(look.extra === "blush" ? 0.55 : (e.smile - 0.6) * 1.2)}"/><ellipse cx="71" cy="58" rx="6" ry="3.5" fill="#ff7a8a" opacity="${n(look.extra === "blush" ? 0.55 : (e.smile - 0.6) * 1.2)}"/>`
     : "";
-  const extra = {
+  const extra = ({
     none: "",
     blush: "",
     glasses: `<g fill="none" stroke="${ink}" stroke-width="2.5"><circle cx="36" cy="${eyeY}" r="9"/><circle cx="64" cy="${eyeY}" r="9"/><path d="M45 ${eyeY} h10 M27 ${eyeY - 2} l-7 -3 M73 ${eyeY - 2} l7 -3"/></g>`,
     shades: `<g fill="${ink}"><path d="M24 ${eyeY - 7} h24 v7 q-1 7 -12 7 q-11 0 -12 -7 Z M52 ${eyeY - 7} h24 v7 q-1 7 -12 7 q-11 0 -12 -7 Z"/><path d="M48 ${eyeY - 5} h4" stroke="${ink}" stroke-width="2.5"/></g>`,
     hat: `<path d="M10 25 Q50 10 90 25 L86 31 Q50 19 14 31 Z" fill="#2f3a56"/><path d="M24 24 Q26 -2 50 -2 Q74 -2 76 24 Z" fill="#3d4a6e"/><path d="M24.5 17 Q50 11 75.5 17 L75.8 22 Q50 16 24.2 22 Z" fill="#e0506a"/>`,
-    headphones: `<path d="M16 52 Q14 14 50 12 Q86 14 84 52" fill="none" stroke="${ink}" stroke-width="5"/><rect x="9" y="46" width="12" height="20" rx="5" fill="#e0506a"/><rect x="79" y="46" width="12" height="20" rx="5" fill="#e0506a"/>`,
-  }[look.extra];
-  return `<svg class="avatar" viewBox="0 -4 100 104" role="img" aria-label="${label}"><circle cx="50" cy="52" r="38" fill="${look.skin}" stroke="${ink}" stroke-width="2.5"/>${blush}${brow(36, 1)}${brow(64, -1)}${eye(36)}${eye(64)}${mouth}${extra}</svg>`;
+    headphones: `<path d="M16 52 Q14 14 50 12 Q86 14 84 52" fill="none" stroke="${ink}" stroke-width="5"/><rect x="9" y="46" width="12" height="20" rx="5" fill="${look.extraColour}"/><rect x="79" y="46" width="12" height="20" rx="5" fill="${look.extraColour}"/>`,
+  } as Record<string, string>)[look.extra] ?? "";
+  // hair, as a cap of its colour over the top of the head (the 3D head has
+  // the shapes; this is the fallback)
+  const hair = look.hair === "none" ? "" : `<path d="M14 46 Q14 12 50 12 Q86 12 86 46 Q72 26 50 26 Q28 26 14 46 Z" fill="${look.hairColour}"/>`;
+  return `<svg class="avatar" viewBox="0 -4 100 104" role="img" aria-label="${label}"><circle cx="50" cy="52" r="38" fill="${look.skin}" stroke="${ink}" stroke-width="2.5"/>${hair}${blush}${look.brows === "none" ? "" : brow(36, 1) + brow(64, -1)}${eye(36)}${eye(64)}${mouth}${extra}</svg>`;
 }

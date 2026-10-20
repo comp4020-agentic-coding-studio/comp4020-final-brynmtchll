@@ -15,7 +15,8 @@
 // owner's voice as they talk (and with each word as it goes up, if there's
 // no voice to go on), it reacts to how each word was said, turns its eyes
 // and head to whoever is speaking, glances about and blinks.
-import { STILL, type Expression, type Look, type Pose } from "./avatar.ts";
+import { STILL, type Expression, type Pose } from "./avatar.ts";
+import type { Look } from "./packs.ts";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
 // three.js as loaded from the CDN, untyped: this file only builds meshes
@@ -51,6 +52,8 @@ type Head = {
   blush: boolean;
   sleepy: boolean;
   look: string;
+  // where the camera stands to fit all of it (bunny ears, a crown) in frame
+  fit: { y: number; dist: number };
 };
 
 // A head on the page: its look, the face and turn it's easing towards, and
@@ -115,28 +118,257 @@ async function setUp(): Promise<T> {
 const mat = (THREE: T, color: string | number, rough = 0.55, extra: Record<string, unknown> = {}): T =>
   new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, ...extra });
 
+// What a part's builder is handed: three.js, the head it's adding to, the
+// look, and the materials the head shares.
+type Kit = { THREE: T; root: T; look: Look; skin: T; ink: T; hair: T; accent: T; shape: { w: number; h: number; d: number } };
+const side2 = [-1, 1] as const;
+const mesh = (k: Kit, geo: T, m: T, at: [number, number, number] = [0, 0, 0], scale?: [number, number, number], rot?: [number, number, number]): T => {
+  const o = new k.THREE.Mesh(geo, m);
+  o.position.set(...at);
+  if (scale) o.scale.set(...scale);
+  if (rot) o.rotation.set(...rot);
+  k.root.add(o);
+  return o;
+};
+
+// Each part's shapes, by their id in packs.ts. A shape is a function that
+// adds meshes to the head; adding a choice to a pack and a builder here is
+// all a new one takes. One a builder doesn't know is drawn as its first.
+
+// the skull, as a stretched sphere: how wide, tall and deep
+const FACES: Record<string, { w: number; h: number; d: number; jaw?: number }> = {
+  round: { w: 1, h: 1.08, d: 0.94 },
+  oval: { w: 0.9, h: 1.16, d: 0.92 },
+  square: { w: 1.04, h: 1.04, d: 0.94, jaw: 0.95 },
+  heart: { w: 1.04, h: 1.1, d: 0.92, jaw: 0.72 },
+  bean: { w: 0.96, h: 1.0, d: 0.98 },
+};
+
+const HAIR: Record<string, (k: Kit) => void> = {
+  none: () => {},
+  // a close cap: the top of a sphere just bigger than the skull
+  buzz: (k) => void mesh(k, new k.THREE.SphereGeometry(1.015, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.42), k.hair, [0, 0.02, -0.02], [k.shape.w, k.shape.h, k.shape.d], [-0.25, 0, 0]),
+  short: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.06, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.45), k.hair, [0, 0.04, -0.04], [k.shape.w, k.shape.h, k.shape.d], [-0.3, 0, 0]);
+  },
+  swoop: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.07, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.44), k.hair, [0, 0.05, -0.05], [k.shape.w, k.shape.h, k.shape.d], [-0.28, 0, 0]);
+    // a fringe swept to one side
+    mesh(k, new k.THREE.SphereGeometry(0.42, 24, 16), k.hair, [0.25, 0.78, 0.55], [1.5, 0.5, 0.7], [0.5, 0, -0.5]);
+  },
+  curly: (k) => {
+    // a cap of curls: little balls over the top
+    for (let i = 0; i < 46; i++) {
+      const phi = Math.acos(1 - (i + 0.5) / 46 * 0.95);
+      const th = i * 2.399;
+      const r = 1.03;
+      const x = Math.sin(phi) * Math.cos(th), y = Math.cos(phi), z = Math.sin(phi) * Math.sin(th);
+      if (z > 0.55 && y < 0.75) continue; // keep the face clear
+      mesh(k, new k.THREE.SphereGeometry(0.19, 12, 8), k.hair, [x * r * k.shape.w, y * r * k.shape.h + 0.04, z * r * k.shape.d]);
+    }
+  },
+  // up and back, so its front edge stays behind the face and forms a hairline
+  afro: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.4, 40, 30), k.hair, [0, 0.55, -0.45], [1.05 * k.shape.w, 0.9, 0.85]);
+  },
+  bob: (k) => {
+    // a cap, and sides that come down to the jaw
+    mesh(k, new k.THREE.SphereGeometry(1.08, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.5), k.hair, [0, 0.02, -0.06], [k.shape.w * 1.02, k.shape.h, k.shape.d], [-0.2, 0, 0]);
+    // the sides and back (a cylinder's front is at angle 0, so it's left open)
+    mesh(k, new k.THREE.CylinderGeometry(1.1, 1.12, 0.9, 48, 1, true, Math.PI * 0.32, Math.PI * 1.36), k.hair, [0, -0.15, -0.05], [k.shape.w, 1, k.shape.d]);
+  },
+  long: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.08, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.5), k.hair, [0, 0.02, -0.06], [k.shape.w * 1.02, k.shape.h, k.shape.d], [-0.2, 0, 0]);
+    // hanging down the back and over the shoulders
+    mesh(k, new k.THREE.CylinderGeometry(1.08, 1.25, 1.9, 48, 1, true, Math.PI * 0.34, Math.PI * 1.32), k.hair, [0, -0.55, -0.1], [k.shape.w, 1, k.shape.d]);
+  },
+  bun: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.03, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.45), k.hair, [0, 0.02, -0.03], [k.shape.w, k.shape.h, k.shape.d], [-0.28, 0, 0]);
+    mesh(k, new k.THREE.SphereGeometry(0.36, 24, 16), k.hair, [0, 1.12, -0.3]);
+  },
+  pigtails: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.03, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.45), k.hair, [0, 0.02, -0.03], [k.shape.w, k.shape.h, k.shape.d], [-0.28, 0, 0]);
+    for (const s of side2) mesh(k, new k.THREE.SphereGeometry(0.3, 20, 14), k.hair, [s * 1.12, 0.35, -0.15], [0.8, 1.4, 0.8], [0, 0, s * 0.5]);
+  },
+  mohawk: (k) => {
+    for (let i = 0; i < 7; i++) {
+      const a = -0.35 + i * 0.32;
+      mesh(k, new k.THREE.ConeGeometry(0.13, 0.55, 12), k.hair, [0, Math.cos(a) * 1.08 + 0.12, Math.sin(-a) * 1.0 - 0.1], undefined, [-a, 0, 0]);
+    }
+  },
+  spiky: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.02, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.4), k.hair, [0, 0.03, -0.03], [k.shape.w, k.shape.h, k.shape.d], [-0.3, 0, 0]);
+    for (let i = 0; i < 14; i++) {
+      const th = (i / 14) * Math.PI * 2;
+      const tilt = 0.55;
+      const x = Math.sin(tilt) * Math.cos(th), y = Math.cos(tilt), z = Math.sin(tilt) * Math.sin(th);
+      if (z > 0.35) continue;
+      const cone = mesh(k, new k.THREE.ConeGeometry(0.12, 0.45, 10), k.hair, [x * 1.05, y * 1.08 + 0.12, z * 1.0]);
+      cone.lookAt(x * 3, y * 3 + 0.4, z * 3);
+      cone.rotateX(Math.PI / 2);
+    }
+  },
+};
+
+const NOSES: Record<string, (k: Kit) => T> = {
+  button: (k) => mesh(k, new k.THREE.SphereGeometry(0.12, 24, 16), k.skin, [0, -0.02, 0.98], [0.9, 1, 1.1]),
+  pointy: (k) => mesh(k, new k.THREE.ConeGeometry(0.1, 0.32, 20), k.skin, [0, 0.0, 1.02], undefined, [Math.PI / 2 - 0.15, 0, 0]),
+  wide: (k) => mesh(k, new k.THREE.SphereGeometry(0.14, 24, 16), k.skin, [0, -0.05, 0.96], [1.45, 0.85, 1]),
+  long: (k) => mesh(k, new k.THREE.CapsuleGeometry(0.085, 0.22, 8, 16), k.skin, [0, 0.0, 1.0], undefined, [0.35, 0, 0]),
+  none: (k) => mesh(k, new k.THREE.SphereGeometry(0.01, 4, 4), k.skin, [0, 0, 0.9]),
+};
+
+const EARS: Record<string, (k: Kit) => void> = {
+  round: (k) => {
+    for (const s of side2) mesh(k, new k.THREE.SphereGeometry(0.2, 24, 16), k.skin, [s * 0.97 * k.shape.w, 0.02, -0.05], [0.5, 0.9, 0.6]);
+  },
+  pointy: (k) => {
+    for (const s of side2) mesh(k, new k.THREE.ConeGeometry(0.13, 0.55, 16), k.skin, [s * 1.02 * k.shape.w, 0.2, -0.05], [0.6, 1, 0.5], [0, 0, -s * 1.0]);
+  },
+  big: (k) => {
+    for (const s of side2) mesh(k, new k.THREE.SphereGeometry(0.33, 24, 16), k.skin, [s * 1.05 * k.shape.w, 0.05, -0.08], [0.45, 0.9, 0.55]);
+  },
+  cat: (k) => {
+    for (const s of side2) mesh(k, new k.THREE.ConeGeometry(0.26, 0.48, 4), k.skin, [s * 0.6, 1.0 * k.shape.h, -0.1], [1, 1, 0.45], [0, Math.PI / 4, -s * 0.35]);
+  },
+  bunny: (k) => {
+    for (const s of side2) mesh(k, new k.THREE.CapsuleGeometry(0.13, 0.75, 8, 16), k.skin, [s * 0.32, 1.45 * k.shape.h, -0.15], [1, 1, 0.45], [0, 0, -s * 0.18]);
+  },
+  none: () => {},
+};
+
+// brows: one mesh each side, which pose() lifts and tilts
+const BROWS: Record<string, (k: Kit) => T> = {
+  bar: (k) => new k.THREE.Mesh(new k.THREE.CapsuleGeometry(0.035, 0.2, 6, 12), k.hair),
+  thin: (k) => new k.THREE.Mesh(new k.THREE.CapsuleGeometry(0.018, 0.22, 6, 12), k.hair),
+  bushy: (k) => new k.THREE.Mesh(new k.THREE.CapsuleGeometry(0.06, 0.2, 6, 12), k.hair),
+  arched: (k) => {
+    const m = new k.THREE.Mesh(new k.THREE.TorusGeometry(0.15, 0.025, 8, 24, Math.PI * 0.75), k.hair);
+    // a torus arc lies in its own plane; turned so its curve is the brow's
+    m.geometry.rotateZ(Math.PI * 0.125);
+    m.geometry.translate(0, -0.15, 0);
+    m.geometry.rotateZ(-Math.PI / 2);
+    return m;
+  },
+  none: (k) => new k.THREE.Group(),
+};
+
+const BEARDS: Record<string, (k: Kit) => void> = {
+  none: () => {},
+  stubble: (k) => {
+    const m = mat(k.THREE, k.look.hairColour, 0.95, { transparent: true, opacity: 0.5 });
+    mesh(k, new k.THREE.SphereGeometry(1.008, 48, 24, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.35), m, [0, 0, 0], [k.shape.w, k.shape.h, k.shape.d], [0.2, 0, 0]);
+  },
+  moustache: (k) => {
+    for (const s of side2) mesh(k, new k.THREE.CapsuleGeometry(0.05, 0.16, 6, 12), k.hair, [s * 0.11, -0.22, 0.98], undefined, [0, 0, Math.PI / 2 + s * 0.35]);
+  },
+  goatee: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(0.16, 20, 14), k.hair, [0, -0.72, 0.72], [1, 1.2, 0.8]);
+    for (const s of side2) mesh(k, new k.THREE.CapsuleGeometry(0.04, 0.12, 6, 12), k.hair, [s * 0.1, -0.24, 0.97], undefined, [0, 0, Math.PI / 2 + s * 0.3]);
+  },
+  full: (k) => {
+    // round the jaw and chin only (the front half, below the mouth's corners)
+    mesh(k, new k.THREE.SphereGeometry(1.05, 48, 24, Math.PI * 0.12, Math.PI * 0.76, Math.PI * 0.64, Math.PI * 0.3), k.hair, [0, 0, 0.02], [k.shape.w * 1.01, k.shape.h * 1.02, k.shape.d * 1.04]);
+    for (const s of side2) mesh(k, new k.THREE.CapsuleGeometry(0.05, 0.16, 6, 12), k.hair, [s * 0.11, -0.22, 0.99], undefined, [0, 0, Math.PI / 2 + s * 0.35]);
+  },
+};
+
+const EXTRAS: Record<string, (k: Kit) => void> = {
+  none: () => {},
+  blush: () => {},
+  freckles: (k) => {
+    const m = mat(k.THREE, 0x8a4a2a, 0.9, { transparent: true, opacity: 0.55 });
+    for (const s of side2) for (const [x, y] of [[0.42, -0.06], [0.52, -0.02], [0.47, -0.14], [0.58, -0.1], [0.36, -0.12]]) mesh(k, new k.THREE.CircleGeometry(0.022, 10), m, [s * x, y, 0.87 - x * 0.18], undefined, [0, s * 0.45, 0]);
+  },
+  glasses: (k) => {
+    for (const s of side2) mesh(k, new k.THREE.TorusGeometry(0.21, 0.025, 10, 32), k.ink, [s * 0.34, 0.18, 1.0]);
+    mesh(k, new k.THREE.CapsuleGeometry(0.02, 0.18, 4, 8), k.ink, [0, 0.2, 1.03], undefined, [0, 0, Math.PI / 2]);
+  },
+  shades: (k) => {
+    const frame = mat(k.THREE, 0x111111, 0.2, { metalness: 0.4 });
+    for (const s of side2) {
+      mesh(k, new k.THREE.TorusGeometry(0.21, 0.025, 10, 32), frame, [s * 0.34, 0.18, 1.0]);
+      mesh(k, new k.THREE.CircleGeometry(0.21, 32), mat(k.THREE, 0x0a0a12, 0.1, { metalness: 0.6 }), [s * 0.34, 0.18, 1.01]);
+    }
+    mesh(k, new k.THREE.CapsuleGeometry(0.02, 0.18, 4, 8), frame, [0, 0.2, 1.03], undefined, [0, 0, Math.PI / 2]);
+  },
+  monocle: (k) => {
+    const gold = mat(k.THREE, 0xd4af37, 0.25, { metalness: 0.8 });
+    mesh(k, new k.THREE.TorusGeometry(0.22, 0.022, 10, 32), gold, [0.34, 0.18, 1.0]);
+    mesh(k, new k.THREE.CylinderGeometry(0.006, 0.006, 0.7, 6), gold, [0.5, -0.2, 0.9], undefined, [0, 0, 0.3]);
+  },
+  hat: (k) => {
+    const felt = mat(k.THREE, 0x3d4a6e, 0.8);
+    const top = 0.62 + (k.shape.h - 1.08) * 0.9;
+    mesh(k, new k.THREE.CylinderGeometry(1.22, 1.22, 0.05, 48), felt, [0, top, 0], undefined, [-0.08, 0, 0]);
+    mesh(k, new k.THREE.CylinderGeometry(0.66, 0.78, 0.52, 48), felt, [0, top + 0.28, 0], undefined, [-0.08, 0, 0]);
+    mesh(k, new k.THREE.CylinderGeometry(0.785, 0.79, 0.1, 48), k.accent, [0, top + 0.08, 0], undefined, [-0.08, 0, 0]);
+  },
+  beanie: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.09, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.42), k.accent, [0, 0.12, -0.04], [k.shape.w, k.shape.h, k.shape.d], [-0.18, 0, 0]);
+    mesh(k, new k.THREE.TorusGeometry(0.9 * k.shape.w, 0.09, 12, 48), k.accent, [0, 0.62 * k.shape.h, 0.1], [1, 1, 0.95], [Math.PI / 2 - 0.18, 0, 0]);
+    mesh(k, new k.THREE.SphereGeometry(0.17, 16, 12), mat(k.THREE, 0xf4f4f4, 0.95), [0, 1.3 * k.shape.h, -0.25]);
+  },
+  cap: (k) => {
+    mesh(k, new k.THREE.SphereGeometry(1.07, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.4), k.accent, [0, 0.1, -0.03], [k.shape.w, k.shape.h, k.shape.d], [-0.15, 0, 0]);
+    // the peak, out over the brow
+    mesh(k, new k.THREE.CylinderGeometry(0.62, 0.62, 0.035, 32, 1, false, 0, Math.PI), k.accent, [0, 0.62 * k.shape.h, 0.55], [1, 1, 1.1], [0.12, Math.PI / 2, 0]).rotateY(Math.PI / 2);
+  },
+  crown: (k) => {
+    const gold = mat(k.THREE, 0xf2c14e, 0.25, { metalness: 0.7 });
+    const y = 0.92 * k.shape.h;
+    mesh(k, new k.THREE.CylinderGeometry(0.55, 0.6, 0.22, 32, 1, true), gold, [0, y, -0.05]);
+    for (let i = 0; i < 6; i++) {
+      const th = (i / 6) * Math.PI * 2;
+      mesh(k, new k.THREE.ConeGeometry(0.1, 0.24, 8), gold, [Math.cos(th) * 0.57, y + 0.2, Math.sin(th) * 0.57 - 0.05]);
+      mesh(k, new k.THREE.SphereGeometry(0.045, 10, 8), k.accent, [Math.cos(th) * 0.6, y, Math.sin(th) * 0.6 - 0.05]);
+    }
+  },
+  halo: (k) => {
+    mesh(k, new k.THREE.TorusGeometry(0.55, 0.05, 12, 48), mat(k.THREE, 0xfff2a8, 0.2, { emissive: 0xffe066, emissiveIntensity: 0.9 }), [0, 1.42 * k.shape.h, -0.1], undefined, [Math.PI / 2 - 0.25, 0, 0]);
+  },
+  horns: (k) => {
+    for (const s of side2) mesh(k, new k.THREE.ConeGeometry(0.12, 0.45, 16), k.accent, [s * 0.5, 0.95 * k.shape.h, 0.05], undefined, [-0.2, 0, -s * 0.45]);
+  },
+  headphones: (k) => {
+    mesh(k, new k.THREE.TorusGeometry(1.05 * k.shape.w, 0.06, 12, 48, Math.PI), k.ink, [0, 0.05, 0]);
+    for (const s of side2) mesh(k, new k.THREE.CylinderGeometry(0.26, 0.26, 0.16, 32), k.accent, [s * 1.02 * k.shape.w, 0.02, 0], undefined, [0, 0, Math.PI / 2]);
+  },
+  flower: (k) => {
+    const at: [number, number, number] = [0.6, 0.78 * k.shape.h, 0.45];
+    for (let i = 0; i < 5; i++) {
+      const th = (i / 5) * Math.PI * 2;
+      mesh(k, new k.THREE.SphereGeometry(0.1, 12, 8), k.accent, [at[0] + Math.cos(th) * 0.11, at[1] + Math.sin(th) * 0.11, at[2]], [1, 1, 0.4]);
+    }
+    mesh(k, new k.THREE.SphereGeometry(0.07, 12, 8), mat(k.THREE, 0xf2c14e, 0.5), [at[0], at[1], at[2] + 0.03]);
+  },
+};
+
 // A head in a look: built once per look, rebuilt when the look changes.
 function build(THREE: T, look: Look): Head {
   const root = new THREE.Group();
-  const skin = mat(THREE, look.skin, 0.6);
-  const ink = mat(THREE, 0x1b1f2a, 0.4);
+  const shape = FACES[look.face] ?? FACES.round;
+  const k: Kit = {
+    THREE,
+    root,
+    look,
+    skin: mat(THREE, look.skin, 0.6),
+    ink: mat(THREE, 0x1b1f2a, 0.4),
+    hair: mat(THREE, look.hairColour, 0.75, { side: THREE.DoubleSide }),
+    accent: mat(THREE, look.extraColour, 0.55),
+    shape,
+  };
+  const { skin, ink } = k;
+  const pick = <F>(table: Record<string, F>, id: string): F => table[id] ?? Object.values(table)[0];
 
-  // the skull: a sphere, a little taller than wide, a little flat at the back
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), skin);
-  skull.scale.set(1, 1.08, 0.94);
-  root.add(skull);
-  // ears
-  for (const side of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.2, 24, 16), skin);
-    ear.scale.set(0.5, 0.9, 0.6);
-    ear.position.set(side * 0.97, 0.02, -0.05);
-    root.add(ear);
-  }
-  // nose
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.12, 24, 16), skin);
-  nose.scale.set(0.9, 1, 1.1);
-  nose.position.set(0, -0.02, 0.98);
-  root.add(nose);
+  // the skull: a sphere, stretched to the face's shape, a little flat at the
+  // back; a narrower jaw is a second sphere, squeezed, under it
+  mesh(k, new THREE.SphereGeometry(1, 64, 48), skin, [0, 0, 0], [shape.w, shape.h, shape.d]);
+  if (shape.jaw) mesh(k, new THREE.SphereGeometry(1, 48, 32, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.5), skin, [0, 0.02, 0.01], [shape.w * shape.jaw, shape.h * 1.01, shape.d * 1.0]);
+  pick(EARS, look.ears)(k);
+  const nose = pick(NOSES, look.nose)(k);
+  pick(HAIR, look.hair)(k);
+  pick(BEARDS, look.beard)(k);
   // cheeks that puff out: balls of skin just under the face's surface,
   // pushed through it as they grow
   const puffs: T[] = [];
@@ -148,11 +380,10 @@ function build(THREE: T, look: Look): Head {
     puffs.push(puff);
   }
 
-  // eyes: a white ball, an iris and pupil that can look about, and a lid that
-  // closes over it
+  // eyes: a white ball, an iris (in their eye colour) and pupil that can
+  // look about, and a lid that closes over it
   const eyeStyle = look.eyes;
-  const eyeR = eyeStyle === "round" ? 0.2 : 0.16;
-  const eyes: T[] = [];
+  const eyeR = eyeStyle === "round" ? 0.2 : eyeStyle === "big" ? 0.23 : 0.16;
   const irises: T[] = [];
   const lids: T[] = [];
   for (const side of [-1, 1]) {
@@ -161,13 +392,13 @@ function build(THREE: T, look: Look): Head {
     const white = new THREE.Mesh(new THREE.SphereGeometry(eyeR, 32, 24), mat(THREE, 0xffffff, 0.25));
     g.add(white);
     const iris = new THREE.Group();
-    const irisDisc = new THREE.Mesh(new THREE.CircleGeometry(eyeR * (eyeStyle === "dots" ? 0.62 : 0.5), 32), mat(THREE, eyeStyle === "dots" ? 0x1b1f2a : 0x3a2a1a, 0.3));
+    const irisDisc = new THREE.Mesh(new THREE.CircleGeometry(eyeR * (eyeStyle === "dots" ? 0.62 : 0.5), 32), mat(THREE, eyeStyle === "dots" ? 0x1b1f2a : look.eyeColour, 0.3));
     irisDisc.position.z = eyeR * 0.98;
     iris.add(irisDisc);
     const pupil = new THREE.Mesh(new THREE.CircleGeometry(eyeR * 0.26, 24), ink);
     pupil.position.z = eyeR * 0.99;
     iris.add(pupil);
-    if (eyeStyle === "sparkle") {
+    if (eyeStyle === "sparkle" || eyeStyle === "big") {
       const shine = new THREE.Mesh(new THREE.CircleGeometry(eyeR * 0.13, 16), mat(THREE, 0xffffff, 0.1, { emissive: 0xffffff, emissiveIntensity: 0.6 }));
       shine.position.set(eyeR * 0.18, eyeR * 0.18, eyeR * 1.0);
       iris.add(shine);
@@ -182,17 +413,26 @@ function build(THREE: T, look: Look): Head {
     // its open edge faces forward-down, sitting above the eye at rest
     lid.rotation.x = -0.45;
     lidPivot.add(lid);
+    // lashes: three little strokes on the lid's edge, which close with it
+    if (eyeStyle === "lashes") {
+      for (const i of [-1, 0, 1]) {
+        const lash = new THREE.Mesh(new THREE.CapsuleGeometry(0.008, 0.07, 4, 6), ink);
+        const a = -0.45 + Math.PI * 0.56;
+        lash.position.set(i * eyeR * 0.55 + side * eyeR * 0.25, Math.cos(a) * eyeR * 1.14 + 0.02, Math.sin(a) * eyeR * 1.14);
+        lash.rotation.set(0.5, 0, -side * (0.6 + i * 0.25));
+        lidPivot.add(lash);
+      }
+    }
     g.add(lidPivot);
     root.add(g);
-    eyes.push(g);
     irises.push(iris);
     lids.push(lidPivot);
   }
 
-  // brows: rounded bars that lift, drop and tilt
+  // brows: in their style and hair colour, which lift, drop and tilt
   const brows: T[] = [];
   for (const side of [-1, 1]) {
-    const brow = new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.2, 6, 12), ink);
+    const brow = pick(BROWS, look.brows)(k);
     brow.rotation.z = Math.PI / 2;
     brow.position.set(side * 0.34, 0.44, 0.9);
     root.add(brow);
@@ -202,13 +442,13 @@ function build(THREE: T, look: Look): Head {
   // the mouth: two lips drawn as tubes along curves that bend with the
   // expression (rebuilt as it changes, see pose()), a dark opening between
   // them, and teeth and a tongue that show as it opens
-  const mouthW = look.mouth === "wide" ? 0.34 : 0.27;
+  const mouthW = look.mouth === "wide" ? 0.34 : look.mouth === "full" ? 0.3 : 0.27;
   const mouth = new THREE.Group();
   mouth.position.set(0, -0.36, 0.88);
   // follow the face's curve: tilt the mouth to lie on the sphere
   mouth.rotation.x = -0.18;
   root.add(mouth);
-  const lipMat = mat(THREE, look.mouth === "cat" ? 0x2a2230 : 0xb0505f, 0.45);
+  const lipMat = mat(THREE, look.mouth === "cat" ? 0x2a2230 : look.mouth === "full" ? 0xc0485c : 0xb0505f, 0.45);
   const lipTop = new THREE.Mesh(new THREE.BufferGeometry(), lipMat);
   const lipBottom = new THREE.Mesh(new THREE.BufferGeometry(), lipMat);
   const cavity = new THREE.Mesh(new THREE.BufferGeometry(), mat(THREE, 0x3e121c, 0.85, { side: THREE.DoubleSide }));
@@ -223,7 +463,7 @@ function build(THREE: T, look: Look): Head {
   tongue.scale.set(1, 0.3, 0.55);
   tongue.position.set(0, -0.02, -0.035);
   jaw.add(tongue);
-  mouth.userData = { THREE, w: mouthW, teeth, tongue, cat: look.mouth === "cat" };
+  mouth.userData = { THREE, w: mouthW, teeth, tongue, cat: look.mouth === "cat", full: look.mouth === "full" };
 
   // blush, shown with "blush" or a big smile
   const cheeks = new THREE.Group();
@@ -236,49 +476,18 @@ function build(THREE: T, look: Look): Head {
   root.add(cheeks);
 
   // what they're wearing
-  if (look.extra === "glasses" || look.extra === "shades") {
-    const frame = look.extra === "shades" ? mat(THREE, 0x111111, 0.2, { metalness: 0.4 }) : ink;
-    for (const side of [-1, 1]) {
-      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.025, 10, 32), frame);
-      rim.position.set(side * 0.34, 0.18, 1.0);
-      root.add(rim);
-      if (look.extra === "shades") {
-        const lens = new THREE.Mesh(new THREE.CircleGeometry(0.21, 32), mat(THREE, 0x0a0a12, 0.1, { metalness: 0.6 }));
-        lens.position.set(side * 0.34, 0.18, 1.01);
-        root.add(lens);
-      }
-    }
-    const bridge = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.18, 4, 8), frame);
-    bridge.rotation.z = Math.PI / 2;
-    bridge.position.set(0, 0.2, 1.03);
-    root.add(bridge);
-  } else if (look.extra === "hat") {
-    const felt = mat(THREE, 0x3d4a6e, 0.8);
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(1.22, 1.22, 0.05, 48), felt);
-    brim.position.y = 0.62;
-    brim.rotation.x = -0.08;
-    root.add(brim);
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.78, 0.52, 48), felt);
-    crown.position.y = 0.9;
-    crown.rotation.x = -0.08;
-    root.add(crown);
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.785, 0.79, 0.1, 48), mat(THREE, 0xe0506a, 0.6));
-    band.position.y = 0.7;
-    band.rotation.x = -0.08;
-    root.add(band);
-  } else if (look.extra === "headphones") {
-    const band = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.06, 12, 48, Math.PI), mat(THREE, 0x1b1f2a, 0.4));
-    band.position.y = 0.05;
-    root.add(band);
-    for (const side of [-1, 1]) {
-      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.16, 32), mat(THREE, 0xe0506a, 0.4));
-      cup.rotation.z = Math.PI / 2;
-      cup.position.set(side * 1.02, 0.02, 0);
-      root.add(cup);
-    }
-  }
+  pick(EXTRAS, look.extra)(k);
 
-  return { root, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush", sleepy: look.eyes === "sleepy", look: JSON.stringify(look) };
+  // Framed to fit: the camera stands back far enough to see the whole head
+  // and whatever's on it, with room to turn and lean, and a bald round head
+  // fills the frame as it always did.
+  const box = new THREE.Box3().setFromObject(root);
+  const top = Math.max(box.max.y, 1.08);
+  const bottom = Math.min(box.min.y, -1.08);
+  const size = Math.max(top - bottom, 2 * Math.max(-box.min.x, box.max.x, 1.07));
+  const fit = { y: (top + bottom) / 2 + 0.06, dist: (size / 2) * 1.13 / Math.tan((14 * Math.PI) / 180) };
+
+  return { root, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush", sleepy: look.eyes === "sleepy", look: JSON.stringify(look), fit };
 }
 
 // set a head's face, turn, place and gaze (-1 to 1 across and up)
@@ -322,7 +531,7 @@ function pose(h: Head, e: Expression, p: Pose, gaze: { x: number; y: number }): 
 // lip is a tube along its curve, and the opening is filled between them.
 // Rebuilt only when the face has moved enough to see.
 function shapeMouth(h: Head, e: Expression): void {
-  const u = h.mouth.userData as { THREE: T; w: number; teeth: T; tongue: T; cat: boolean; key?: string };
+  const u = h.mouth.userData as { THREE: T; w: number; teeth: T; tongue: T; cat: boolean; full: boolean; key?: string };
   const key = [e.smile, e.frown, e.open, e.pucker, e.smirk, e.sneer, e.puff].map((v) => Math.round(v * 40)).join(",");
   if (u.key === key) return;
   u.key = key;
@@ -349,8 +558,8 @@ function shapeMouth(h: Head, e: Expression): void {
   const tube = (pts: T[], r: number): T => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 32, r, 8, false);
   h.lipTop.geometry.dispose();
   h.lipBottom.geometry.dispose();
-  h.lipTop.geometry = tube(top, u.cat ? 0.018 : 0.026);
-  h.lipBottom.geometry = tube(bottom, u.cat ? 0.018 : 0.03);
+  h.lipTop.geometry = tube(top, u.cat ? 0.018 : u.full ? 0.038 : 0.026);
+  h.lipBottom.geometry = tube(bottom, u.cat ? 0.018 : u.full ? 0.045 : 0.03);
   // the opening between them, as a strip
   const pos: number[] = [];
   for (let i = 0; i < N; i++) {
@@ -503,6 +712,8 @@ function frame(now: number): void {
     renderer.setScissor(0, LARGEST - size, size, size);
     renderer.setScissorTest(true);
     renderer.clear();
+    camera.position.set(0, s.head.fit.y, s.head.fit.dist);
+    camera.lookAt(0, s.head.fit.y, 0);
     scene.add(s.head.root);
     renderer.render(scene, camera);
     scene.remove(s.head.root);

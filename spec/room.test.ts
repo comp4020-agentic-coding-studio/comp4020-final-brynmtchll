@@ -292,15 +292,23 @@ describe.skipIf(!writable)("the room", () => {
     const watcher = listen();
     await watcher.ready;
     const p = await person();
-    const look = { skin: "#9ad0ec", eyes: "sparkle", mouth: "cat", extra: "headphones" };
+    const look = { skin: "#9ad0ec", eyes: "sparkle", mouth: "cat", extra: "headphones", hair: "afro", hairColour: "#ff6fae", ears: "bunny" };
     const post = (body: unknown) =>
       fetch(new URL("/look", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
     expect((await post({ look })).status).toBe(200);
-    expect((await watcher.waitFor(`"name":"${p.name}","look"`)) as unknown as { look: unknown }).toMatchObject({ look });
+    const shown = (await watcher.waitFor(`"name":"${p.name}","look"`)) as unknown as { look: Record<string, string> };
+    // as chosen, and whole: every part, the ones not chosen at their defaults
+    expect(shown.look).toMatchObject(look);
+    expect(Object.keys(shown.look)).toEqual(expect.arrayContaining(["face", "brows", "nose", "beard", "eyeColour", "extraColour"]));
+    // a change to one part leaves the rest
+    expect((await post({ look: { hair: "bun" } })).status).toBe(200);
+    expect(((await watcher.waitFor(`"hair":"bun"`)) as unknown as { look: Record<string, string> }).look).toMatchObject({ ...look, hair: "bun" });
     // anything not on offer is refused
-    for (const bad of [{ ...look, skin: "url(evil)" }, { ...look, extra: "<script>" }, {}]) expect((await post({ look: bad })).status).toBe(400);
+    for (const bad of [{ ...look, skin: "url(evil)" }, { ...look, extra: "<script>" }, { hair: "jetpack" }, "a look"]) expect((await post({ look: bad })).status).toBe(400);
     // and it's kept: a page drawn later has it
-    expect(await (await fetch(new URL("/", baseUrl))).text()).toContain(`data-look="${JSON.stringify(look).replace(/"/g, "&quot;")}"`);
+    const page = await (await fetch(new URL("/", baseUrl))).text();
+    const kept = JSON.parse(page.match(new RegExp(`data-name="${p.name}"[^>]*data-look="([^"]*)"`))![1].replace(/&quot;/g, '"'));
+    expect(kept).toMatchObject({ ...look, hair: "bun" });
     watcher.close();
   });
 
@@ -323,7 +331,7 @@ describe.skipIf(!writable)("the room", () => {
     expect(e.name).toBe(a.name);
     const look = { skin: "#e3b6ff", eyes: "round", mouth: "wide", extra: "hat" };
     await fetch(new URL("/look", baseUrl), { method: "POST", headers: { cookie: a.cookie, "content-type": "application/json" }, body: JSON.stringify({ look, name: b.name }) });
-    expect((await watcher.waitFor(`"look":{"skin":"#e3b6ff"`)) as unknown as { name: string }).toMatchObject({ name: a.name });
+    expect((await watcher.waitFor(`"skin":"#e3b6ff"`)) as unknown as { name: string; type: string }).toMatchObject({ type: "look", name: a.name });
     watcher.close();
   });
 
