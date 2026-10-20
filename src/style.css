@@ -263,7 +263,9 @@ main.room {
 @keyframes pulse { 50% { opacity: 0.45; } }
 .face-toggle { border-radius: 999px; padding: 12px 18px; }
 .face-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-.face-preview { width: 64px; height: 48px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); transform: scaleX(-1); }
+.face-preview { width: 64px; height: 48px; object-fit: cover; border-radius: 10px; border: 2px solid var(--warn, #e0a050); transform: scaleX(-1); transition: border-color 0.2s; }
+/* green while it can see your face, amber while it's looking */
+.face-preview.found { border-color: var(--ok, #3ecf8e); }
 .face-preview[hidden] { display: none; }
 .status { margin: 0; color: var(--muted); font-size: 0.875rem; min-height: 1.4em; }
 

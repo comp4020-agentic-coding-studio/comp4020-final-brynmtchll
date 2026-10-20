@@ -5,7 +5,7 @@
 import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import { phraser, type Phraser } from "./phrases.ts";
-import { hear, invented, spoke, words, type Heard } from "./prosody.ts";
+import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
 import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
 
@@ -643,7 +643,7 @@ let earlyBusy = false;
 function maybeEarly(): void {
   if (!modelReady || earlyBusy || behind > 0 || Date.now() - earlyAt < EARLY_EVERY) return;
   const { pcm, sound } = phrases.sofar();
-  if (sound < EARLY_AFTER || !spoke(pcm, RATE)) return;
+  if (sound < EARLY_AFTER || !fromHere(pcm)) return;
   earlyBusy = true;
   earlyAt = Date.now();
   const forDraft = draft;
@@ -664,12 +664,26 @@ function maybeEarly(): void {
 }
 
 // A phrase that's mostly a breath, a click or the room is never sent to
-// Whisper, which would hear a sentence in it (spoke() says why). What's heard
-// goes into the speaker's queue, in the order it was said.
+// Whisper, which would hear a sentence in it (spoke() says why), nor is a
+// voice somewhere else in the room, a television or the next room (near()
+// says why). How loud this person usually speaks is the median of their
+// last few phrases' voices. What's heard goes out in the order it was said.
+const usualLevels: number[] = [];
+const usualLevel = (): number | null => (usualLevels.length >= 2 ? [...usualLevels].sort((a, b) => a - b)[Math.floor(usualLevels.length / 2)] : null);
+function fromHere(pcm: Float32Array): boolean {
+  if (!spoke(pcm, RATE)) return false;
+  const level = voiceLevel(pcm, RATE);
+  return near(level, phrases.room(), usualLevel());
+}
 function send(pcm: Float32Array): void {
   const forDraft = draft++;
   earlyAt = Date.now();
-  if (!spoke(pcm, RATE)) return void clearDraft(forDraft);
+  if (!fromHere(pcm)) return void clearDraft(forDraft);
+  const level = voiceLevel(pcm, RATE);
+  if (level !== null) {
+    usualLevels.push(level);
+    if (usualLevels.length > 8) usualLevels.shift();
+  }
   behind++;
   showBehind();
   const heard = transcribe(pcm.slice());
@@ -1024,7 +1038,9 @@ async function faceStart(): Promise<void> {
   faceButton!.disabled = true;
   let camera: MediaStream;
   try {
-    camera = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } });
+    // big enough to find a face across a desk in a dim room, small enough
+    // to read quickly
+    camera = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: "user" } });
   } catch (err) {
     faceButton!.disabled = false;
     const blocked = err instanceof DOMException && err.name === "NotAllowedError";
@@ -1038,9 +1054,14 @@ async function faceStart(): Promise<void> {
     // a stalled download mustn't leave the button stuck
     landmarker = await Promise.race([
       FaceLandmarker.createFromOptions(files, {
-        // on the graphics card where there is one, which reads a face in a
-        // few milliseconds rather than tens; MediaPipe falls back itself
-        baseOptions: { modelAssetPath: FACE_MODEL, delegate: "GPU" },
+        // On the processor: on an M4 Pro it read a face in 12 ms, and on the
+        // graphics card in 143 (each frame goes through WebGL to get there).
+        baseOptions: { modelAssetPath: FACE_MODEL, delegate: "CPU" },
+        // found in poorer light, and kept hold of as a face turns, rather
+        // than lost and searched for again
+        minFaceDetectionConfidence: 0.3,
+        minFacePresenceConfidence: 0.3,
+        minTrackingConfidence: 0.3,
         runningMode: "VIDEO",
         outputFaceBlendshapes: true,
         outputFacialTransformationMatrixes: true,
@@ -1070,6 +1091,17 @@ async function faceStart(): Promise<void> {
   }
   const started = Date.now();
   let seenFace = false;
+  // whether it can see a face right now, on the preview (a ring) and the
+  // button, where the speech model's progress can't write over it
+  const label = faceButton!.querySelector(".label")!;
+  let showing: boolean | null = null;
+  const found = (yes: boolean): void => {
+    if (showing === yes) return;
+    showing = yes;
+    video.classList.toggle("found", yes);
+    label.textContent = yes ? "Following your face" : "Looking for your face…";
+  };
+  found(false);
   let shown: Expression = REST;
   let turned: Pose = STILL;
   const steadyFace = smoother<Expression>(1.2, 0.6);
@@ -1106,8 +1138,9 @@ async function faceStart(): Promise<void> {
     // takes at most about half the page's time
     const took = performance.now() - now;
     wait = took > 25 ? took * 1.8 : READ_EVERY;
+    found(!!shapes);
     if (!shapes) {
-      if (Date.now() - started > 4000 && !seenFace) say("Can't see a face. Face the camera, in some light.");
+      if (Date.now() - started > 4000 && !seenFace) warn("Can't see a face. Face the camera, with light on your face rather than behind you.");
       const k = 1 - Math.exp(-dt / 250);
       shown = ease(shown, REST, k);
       turned = ease(turned, STILL, k);
@@ -1145,11 +1178,11 @@ async function faceStart(): Promise<void> {
     landmarker.close();
     video.srcObject = null;
     video.hidden = true;
+    video.classList.remove("found");
   };
   faceOn = true;
   faceButton!.disabled = false;
   faceButton!.setAttribute("aria-pressed", "true");
-  faceButton!.querySelector(".label")!.textContent = "Following your face";
 }
 
 function faceStop(): void {

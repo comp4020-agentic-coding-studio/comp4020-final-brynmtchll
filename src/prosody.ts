@@ -402,14 +402,49 @@ export function spoke(pcm: Float32Array, rate: number): boolean {
   return fs.length >= 50 && loudest > WHISPER_FLOOR && wobble(fs) >= SYLLABIC * 1.5;
 }
 
+// Whether a phrase is someone speaking into this microphone, rather than a
+// voice somewhere else in the room: a television, people talking in the
+// next room. Those have a pitch, so spoke() lets them through, and Whisper
+// makes sentences of them. But someone speaking into the microphone is far
+// louder than the room, and about as loud as they usually are; a voice
+// through a wall is neither. Mixed into room noise, JFK was 17 to 50 dB
+// above the room even 15 dB down; a CREMA-D actor at television and
+// next-room levels was 8 to 20 dB above it, and 28 to 38 dB below JFK. So
+// a phrase's voice must be NEAR_ROOM above the room's own level (the
+// phraser's background; less, ROOM_UNSURE, until it's heard enough of the
+// room to be sure of it, as a quiet CREMA-D actor right after the
+// microphone came on was 11 dB above it), and no more than NEAR_USUAL below
+// how loud this person's recent phrases were (once there are some):
+// speaking softly is 15 dB down, a television nearly double that.
+const NEAR_ROOM = 12; // dB
+const ROOM_UNSURE = 8; // dB
+const NEAR_USUAL = 20; // dB
+// how loud a phrase's voice is, dB: the median of its clearly voiced frames
+export function voiceLevel(pcm: Float32Array, rate: number): number | null {
+  const voiced = frames(pcm, rate).filter((f) => f.clear).map((f) => f.db);
+  return voiced.length >= ENOUGH_VOICE / 2 ? percentile(voiced, 0.5) : null;
+}
+export function near(level: number | null, room: { db: number; sure: boolean }, usual: number | null): boolean {
+  if (level === null) return true; // a whisper: spoke() has judged it already
+  return level - room.db >= (room.sure ? NEAR_ROOM : ROOM_UNSURE) && (usual === null || level >= usual - NEAR_USUAL);
+}
+
 // What Whisper writes for audio it can't make words of, when there's nothing
 // else in the phrase: its best-known inventions ("Thank you.", "Thanks for
 // watching!", "you"), and humming written as words ("Mmm-hmm-hmm."). A phrase
 // that's only these, with no voice under it, is dropped; said with a voice
 // ("thank you" in the middle of a sentence, or clearly voiced), it stays.
-const INVENTED = /^(thank you|thanks|thank you for watching|thanks for watching|you|bye|so|okay|mm+(-?h?m+)*|uh+|um+|hmm+)[.!?]*$/i;
+// Some are only ever inventions, and go however they're voiced: the end of
+// a video ("Thanks for watching!", "Please subscribe"), and sounds written
+// out ("pfft", "(sighs)", "[Music]").
+const INVENTED = /^(thank you|thanks|you|bye|bye-bye|so|okay|oh|ah|mm+(-?h?m+)*|uh+|um+|hmm+|heh|huh)[.!?,]*$/i;
+const ALWAYS_INVENTED = /^(thank you for watching|thanks for watching|please subscribe|subscribe|see you next time|i'll see you next time|pf+t+|psst|shh+|[\[(].*[\])]|♪.*)[.!?,]*$/i;
 export function invented(text: string, voiced: boolean): boolean {
-  return !voiced && INVENTED.test(text.trim().replace(/\s+/g, " "));
+  const t = text.trim().replace(/\s+/g, " ");
+  // every part of it one of these ("Thank you. Thank you.", "Heh, heh.")
+  const sentences = t.split(/(?<=[.!?,])\s+/).filter(Boolean);
+  if (sentences.length && sentences.every((x) => ALWAYS_INVENTED.test(x))) return true;
+  return !voiced && sentences.length > 0 && sentences.every((x) => INVENTED.test(x) || ALWAYS_INVENTED.test(x));
 }
 
 export function hear(pcm: Float32Array, rate: number, timed: Timed[]): { words: Word[]; voice: Voice | null } {

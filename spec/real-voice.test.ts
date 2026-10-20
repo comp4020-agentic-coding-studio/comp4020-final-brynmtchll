@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { hear as hearWhole, measure, words, type Heard } from "../src/prosody.ts";
+import { frames, hear as hearWhole, invented, measure, near, spoke, voiceLevel, words, type Heard } from "../src/prosody.ts";
 import { compare, describe as describeVoice, renderWords, type Word } from "../src/voice.ts";
 
 // The hearing, checked on a real voice rather than made-up tones: eleven
@@ -114,4 +114,66 @@ describe("hearing the same sentence said in different moods (CREMA-D)", () => {
       for (const t of [neutral, angry, sad]) expect(seen(t.words)).not.toMatch(/(\p{L})\1\1/u);
     });
   }
+});
+
+// Someone speaking into the microphone against a voice elsewhere in the
+// room: JFK at his own level and softly (15 dB down), and a CREMA-D actor
+// at television (20 dB down) and next-room (30 dB down) levels, each over
+// pink room noise at -60, -50 and -42 dB. The room's level is the quietest
+// tenth of a stretch of it alone, as the phraser measures it.
+describe("telling someone at the microphone from a voice elsewhere in the room", () => {
+  let seed = 7;
+  const rnd = (): number => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648) * 2 - 1;
+  const db = (x: Float32Array): number => 10 * Math.log10(x.reduce((n, v) => n + v * v, 0) / x.length + 1e-12);
+  function pink(n: number, level: number): Float32Array {
+    const out = new Float32Array(n);
+    let b0 = 0, b1 = 0, b2 = 0;
+    for (let i = 0; i < n; i++) {
+      const w = rnd();
+      b0 = 0.99765 * b0 + w * 0.099;
+      b1 = 0.963 * b1 + w * 0.2965;
+      b2 = 0.57 * b2 + w * 1.0527;
+      out[i] = b0 + b1 + b2 + w * 0.1848;
+    }
+    const g = 10 ** ((level - db(out)) / 20);
+    return out.map((v) => v * g);
+  }
+  const over = (voice: Float32Array, dB: number, room: number): Float32Array => {
+    const noise = pink(voice.length, room);
+    return voice.map((v, i) => v * 10 ** (dB / 20) + noise[i]);
+  };
+  const levelOf = (room: number): number => {
+    const fs = frames(pink(RATE * 3, room), RATE).map((f) => f.db).sort((a, b) => a - b);
+    return fs[Math.floor(fs.length * 0.1)];
+  };
+  const jfk = wav(new URL("./fixtures/jfk-1961.wav", import.meta.url).pathname).slice(0, Math.round(2.2 * RATE));
+  const actor = wav(new URL("./fixtures/crema-d/1020_TIE_ANG_XX.wav", import.meta.url).pathname);
+  const passes = (pcm: Float32Array, room: number, usual: number | null): boolean => spoke(pcm, RATE) && near(voiceLevel(pcm, RATE), { db: levelOf(room), sure: true }, usual);
+
+  for (const room of [-60, -50, -42]) {
+    it(`lets through someone speaking, loud or soft, and not a television or the next room, in a room at ${room} dB`, () => {
+      const usual = voiceLevel(over(jfk, 0, room), RATE);
+      expect(passes(over(jfk, 0, room), room, usual)).toBe(true);
+      expect(passes(over(jfk, -15, room), room, usual)).toBe(true);
+      // a voice elsewhere, once this person's usual level is known
+      expect(passes(over(actor, -20, room), room, usual)).toBe(false);
+      expect(passes(over(actor, -30, room), room, usual)).toBe(false);
+    });
+  }
+
+  it("lets through the first things someone says, before their usual level is known, unless they're lost in the room", () => {
+    expect(passes(over(jfk, 0, -50), -50, null)).toBe(true);
+    expect(passes(over(actor, -30, -50), -50, null)).toBe(false);
+  });
+});
+
+describe("dropping what Whisper invents", () => {
+  // what it wrote, live, for one person's room between things they said
+  it("drops the end of a video and sounds written out however they're voiced, and repeats of what it invents", () => {
+    for (const t of ["Thanks for watching!", "pfft", "[Music]", "(sighs)", "Please subscribe."]) expect(invented(t, true), t).toBe(true);
+    for (const t of ["Mm-hmm.", "Heh, heh.", "Bye.", "Oh.", "Thank you. Thank you."]) expect(invented(t, false), t).toBe(true);
+    // but not things people say
+    for (const t of ["Bye!", "Thank you.", "Okay. Let's go."]) expect(invented(t, true), t).toBe(false);
+    expect(invented("I'm going to go.", false)).toBe(false);
+  });
 });

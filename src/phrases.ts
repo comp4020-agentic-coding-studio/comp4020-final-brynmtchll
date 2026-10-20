@@ -33,6 +33,7 @@ const DIP_OVER = 0.3; // seconds: about a syllable and a half
 const BACKGROUND_OVER = 8; // seconds
 const ASSUMED_FLOOR = -50; // dB
 const KNOWN_AFTER = 2; // seconds
+const ROOM_SURE = 4; // seconds
 
 const db = (xs: Float32Array): number => {
   let s = 0;
@@ -51,6 +52,9 @@ export type Phraser = {
   // room and how loud this voice has lately been at its loudest, so each
   // syllable opens it and the dips between them close it again
   mouth(): number;
+  // the room's own level, dB, what quiet is measured against, and whether
+  // it's been heard for long enough to be sure of (ROOM_SURE)
+  room(): { db: number; sure: boolean };
   // the phrase still being said, as it stands (empty if nothing's being said),
   // and how much sound is in it, in seconds: for hearing it early, before it
   // ends
@@ -166,6 +170,7 @@ export function phraser(): Phraser {
       return [phrase];
     },
     level: () => lastLevel,
+    room: () => ({ db: floor(), sure: heard >= ROOM_SURE * RATE }),
     mouth: () => lastMouth,
     sofar() {
       const pcm = new Float32Array(length);
