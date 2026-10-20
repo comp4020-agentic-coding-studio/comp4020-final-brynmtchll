@@ -39,16 +39,22 @@ setInterval(() => {
     showExpression(name, null);
   }
 }, 2000).unref();
-// faces are limited apart from words, so a talker near the word limit can
-// still clear their face
-const facesSent = new Map<string, number[]>();
-function faceTooFast(personId: string): boolean {
-  const now = Date.now();
-  const recent = (facesSent.get(personId) ?? []).filter((t) => now - t < 10_000);
-  recent.push(now);
-  facesSent.set(personId, recent);
-  return recent.length > 120;
+// Faces and voices are limited apart from words, so a talker near the word
+// limit can still clear their face. A page sends a face up to 20 times a
+// second and a voice about 8; each limit leaves room over that.
+function limiter(most: number, over = 10_000): (personId: string) => boolean {
+  const sent = new Map<string, number[]>();
+  return (personId) => {
+    const now = Date.now();
+    const recent = (sent.get(personId) ?? []).filter((t) => now - t < over);
+    recent.push(now);
+    sent.set(personId, recent);
+    return recent.length > most;
+  };
 }
+const faceTooFast = limiter(300);
+const voiceTooFast = limiter(150);
+const earlyTooFast = limiter(120);
 
 const css = readFileSync(new URL("./style.css", import.meta.url));
 const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")));
@@ -204,10 +210,13 @@ const tenths = (n: number): number => Math.round(n * 10) / 10;
 // A phrase goes out as what the stage needs to play it: who, where they
 // stand and in what colour, each word as HTML with when it was said, and the
 // plain text for screen readers.
+// (with their look, so a page that had no card for them, or had let it go
+// for room, can draw them as they are)
 const phraseOf = (m: Message) => ({
   id: m.id,
   name: m.name,
   hue: hueOf(room.seatOf(m.name)),
+  look: room.lookOf(m.name),
   text: m.text,
   at: m.at,
   words: m.words.map((w, i) => ({
@@ -223,6 +232,7 @@ const event = (m: Message, draft?: number): string =>
     id: m.id,
     name: m.name,
     hue: hueOf(room.seatOf(m.name)),
+    look: room.lookOf(m.name),
     text: m.text,
     at: m.at,
     words: m.words.map((w, i) => ({
@@ -324,10 +334,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     });
   }
 
-  // Someone's expression, as seven numbers (avatar.ts says which) or none,
-  // and which way their head is turned, as three: their avatar pulls it on
-  // every open page. Nothing else is accepted, so no picture can ride along.
-  // Limited apart from words.
+  // Someone's expression and how their head is turned, as numbers
+  // (avatar.ts says which), or none: their avatar pulls it on every open
+  // page. Nothing else is accepted, so no picture can ride along. Limited
+  // apart from words.
   if (req.method === "POST" && url.pathname === "/face") {
     if (!me) {
       log(undefined, "refused", { why: "not-joined", path: "/face" });
@@ -337,7 +347,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     let raw: unknown;
     let rawPose: unknown;
     try {
-      const sent = JSON.parse((await body(req, 512)) ?? "{}") as { e?: unknown; pose?: unknown };
+      const sent = JSON.parse((await body(req, 1024)) ?? "{}") as { e?: unknown; pose?: unknown };
       raw = sent.e ?? null;
       rawPose = sent.pose ?? null;
     } catch {
@@ -413,13 +423,35 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return json(res, 200, { look });
   }
 
+  // How loud someone is talking, as it happens: a few levels, 0 to 1, a
+  // microphone batch each, which move their avatar's mouth on every open
+  // page. Not the sound: a dozen numbers at most, each rounded. Never stored
+  // or logged.
+  if (req.method === "POST" && url.pathname === "/voice") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (voiceTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let levels: unknown;
+    try {
+      levels = (JSON.parse((await body(req, 512)) ?? "{}") as { levels?: unknown }).levels;
+    } catch {
+      return json(res, 400, { error: "not-a-voice" });
+    }
+    if (!Array.isArray(levels) || levels.length === 0 || levels.length > 12 || !levels.every((l) => typeof l === "number" && Number.isFinite(l))) {
+      return json(res, 400, { error: "not-a-voice" });
+    }
+    const clean = levels.map((l: number) => Math.round(Math.min(1, Math.max(0, l)) * 100) / 100);
+    const payload = `event: voice\ndata: ${JSON.stringify({ name: me.name, levels: clean })}\n\n`;
+    for (const listener of listening) listener.write(payload);
+    return json(res, 200, {});
+  }
+
   // Words heard early, while a phrase is still being said: shown to everyone
   // at once, faded, until the phrase ends and the real one (POST /say)
   // replaces them. Never stored or logged; each page keeps only the latest
   // for each speaker, keyed by a number the speaker's page chose.
   if (req.method === "POST" && url.pathname === "/early") {
     if (!me) return json(res, 401, { error: "no-person" });
-    if (faceTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    if (earlyTooFast(me.id)) return json(res, 429, { error: "too-fast" });
     let parsed: { words?: unknown; draft?: unknown } = {};
     try {
       parsed = JSON.parse((await body(req, 32 * 1024)) ?? "{}");
@@ -431,6 +463,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const payload = `event: early\ndata: ${JSON.stringify({
       name: me.name,
       hue: hueOf(room.seatOf(me.name)),
+      look: room.lookOf(me.name),
       draft: parsed.draft,
       words: words.map((w, i) => ({ html: wordHtml(w), t: w.start, d: tenths(w.end - w.start), gap: tenths((words[i + 1]?.start ?? w.end) - w.end) })),
     })}\n\n`;

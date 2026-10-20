@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { faceReader, readFace } from "../src/face.ts";
-import { cleanPose, fromShapes, poseFrom } from "../src/avatar.ts";
+import { cleanExpression, cleanPose, fromShapes, oneEuro, poseFrom, resting } from "../src/avatar.ts";
 
 // Reading an emoji off a face's expression scores, checked on made-up scores.
 // Whether those rules match real faces is judged by people trying it.
@@ -53,6 +53,77 @@ describe("an avatar following a face", () => {
     const rest = fromShapes({ mouthSmileLeft: 0.05, mouthSmileRight: 0.05, jawOpen: 0.03, browInnerUp: 0.08, eyeBlinkLeft: 0.1 });
     for (const v of Object.values(rest)) expect(v).toBe(0);
   });
+
+  // MediaPipe names sides as the person's own; drawn in a mirror, their left
+  // is the screen's left (-). Its own sample portrait with the eye on the
+  // picture's left painted shut scored eyeBlinkRight 0.6, eyeBlinkLeft 0.34.
+  it("tells a wink from a blink, on the side it's drawn", () => {
+    const wink = fromShapes({ eyeBlinkLeft: 0.341, eyeBlinkRight: 0.595 });
+    expect(wink.wink).toBeGreaterThan(0.2);
+    expect(wink.blink).toBe(0);
+    const blink = fromShapes({ eyeBlinkLeft: 0.8, eyeBlinkRight: 0.78 });
+    expect(blink.blink).toBe(1);
+    expect(blink.wink).toBe(0);
+  });
+
+  // the same portrait with both irises moved toward the picture's right (the
+  // screen's left, in the mirror), then its left
+  it("follows where the eyes look, the way they look in the mirror", () => {
+    const toScreenLeft = fromShapes({ eyeLookInLeft: 0.008, eyeLookInRight: 0.402, eyeLookOutLeft: 0.397, eyeLookOutRight: 0.015 });
+    const toScreenRight = fromShapes({ eyeLookInLeft: 0.148, eyeLookInRight: 0.026, eyeLookOutLeft: 0.052, eyeLookOutRight: 0.247 });
+    expect(toScreenLeft.lookX).toBeLessThan(-0.5);
+    expect(toScreenRight.lookX).toBeGreaterThan(0.2);
+  });
+
+  it("reads a smirk and one brow raised on their side, and puffed cheeks and a sneer", () => {
+    const e = fromShapes({ mouthSmileLeft: 0.6, mouthSmileRight: 0.05, browOuterUpRight: 0.6, cheekPuff: 0.7, noseSneerLeft: 0.6, noseSneerRight: 0.6 });
+    expect(e.smirk).toBeLessThan(-0.9);
+    expect(e.brow).toBeGreaterThan(0.9);
+    expect(e.puff).toBe(1);
+    expect(e.sneer).toBe(1);
+  });
+
+  it("takes someone's own resting face off, so a face that rests a little frowny rests", () => {
+    const frowny = { mouthFrownLeft: 0.3, mouthFrownRight: 0.3, mouthPressLeft: 0.25, mouthPressRight: 0.25, browDownLeft: 0.3, browDownRight: 0.3 };
+    expect(fromShapes(frowny).frown).toBeGreaterThan(0.4);
+    const learn = resting();
+    for (let i = 0; i < 60; i++) learn.add(frowny);
+    // a few seconds of a big smile don't become their rest
+    for (let i = 0; i < 20; i++) learn.add({ ...frowny, mouthSmileLeft: 0.9, mouthSmileRight: 0.9 });
+    const rest = learn.rest();
+    expect(fromShapes(frowny, rest).frown).toBe(0);
+    expect(fromShapes(frowny, rest).browDown).toBe(0);
+    expect(fromShapes({ ...frowny, mouthSmileLeft: 0.8, mouthSmileRight: 0.8 }, rest).smile).toBeGreaterThan(0.9);
+  });
+
+  it("keeps each number of a face as sent within its range, and nothing else", () => {
+    const e = cleanExpression({ smile: 2, wink: -5, lookX: 0.4, picture: "data:," })!;
+    expect(e.smile).toBe(1);
+    expect(e.wink).toBe(-1);
+    expect(e.lookX).toBe(0.4);
+    expect(e).not.toHaveProperty("picture");
+  });
+});
+
+describe("holding a face steady without lagging behind it", () => {
+  it("smooths jitter on a held face, and follows a quick move closely", () => {
+    const f = oneEuro(1.2, 0.6);
+    // held still, jittering by 0.1 either side, 30 times a second (once
+    // it's settled: it starts from the first reading, itself 0.1 out)
+    let worst = 0;
+    for (let i = 0; i < 60; i++) {
+      const v = f(0.5 + (i % 2 ? 0.1 : -0.1), i / 30);
+      if (i >= 15) worst = Math.max(worst, Math.abs(v - 0.5));
+    }
+    expect(worst).toBeLessThan(0.05);
+    // then a smile in a tenth of a second: within a fifth of the way after
+    // a fifth of a second
+    const g = oneEuro(1.2, 0.6);
+    for (let i = 0; i < 30; i++) g(0, i / 30);
+    let v = 0;
+    for (let i = 0; i < 7; i++) v = g(Math.min(1, i / 3), (30 + i) / 30);
+    expect(v).toBeGreaterThan(0.8);
+  });
 });
 
 describe("a head turning", () => {
@@ -73,8 +144,22 @@ describe("a head turning", () => {
     expect(Math.abs(p.yaw)).toBeLessThan(0.1);
   });
 
-  it("keeps a turn within a head's reach, as three numbers and nothing else", () => {
-    expect(cleanPose({ pitch: 3, yaw: -9, roll: "left", picture: "data:image/png;base64,AAAA" })).toEqual({ pitch: 0.5, yaw: -0.7, roll: 0 });
+  it("keeps a turn within a head's reach, as its numbers and nothing else", () => {
+    expect(cleanPose({ pitch: 3, yaw: -9, roll: "left", z: 4, picture: "data:image/png;base64,AAAA" })).toEqual({ pitch: 0.5, yaw: -0.7, roll: 0, x: 0, y: 0, z: 1 });
     expect(cleanPose("a picture")).toBeNull();
+  });
+
+  // the portrait moved 120 px to the picture's right in a 640 px frame, and
+  // made 1.3 times bigger (nearer): MediaPipe's matrix moved 23 cm across
+  // and 17 cm nearer
+  it("moves the head as its owner moves about, mirrored, and leans it in as they come nearer", () => {
+    const at = (x: number, y: number, z: number) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1];
+    const home = { pitch: 0, yaw: 0, roll: 0, x: -0.4, y: 22.8, z: -78.5 };
+    expect(poseFrom(at(22.6, 22.7, -78.2), home).x).toBe(-1);
+    expect(poseFrom(at(-0.5, 22.9, -61.5), home).z).toBe(1);
+    // a head facing a camera that's below the screen faces the screen
+    const tilted = [1, 0, 0, 0, 0, 0.98, -0.2, 0, 0, 0.2, 0.98, 0, 0, 0, -60, 1];
+    const usual = { pitch: Math.atan2(-0.2, 0.98), yaw: 0, roll: 0, x: 0, y: 0, z: -60 };
+    expect(poseFrom(tilted, usual).pitch).toBe(0);
   });
 });

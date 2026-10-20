@@ -29,6 +29,7 @@ const TAIL = 0.2; // seconds of quiet kept on the end, so the last word isn't cl
 // none of their pauses heard. JFK's first sentence, from a recording with
 // hiss, ran to the cap when the background was learned slowly from a guess.
 const QUIET_MARGIN = 8; // dB
+const DIP_OVER = 0.3; // seconds: about a syllable and a half
 const BACKGROUND_OVER = 8; // seconds
 const ASSUMED_FLOOR = -50; // dB
 const KNOWN_AFTER = 2; // seconds
@@ -46,6 +47,10 @@ export type Phraser = {
   end(): Float32Array[];
   // how loud the last batch was above the room, 0 to 1, for a level meter
   level(): number;
+  // how open a mouth saying it would be, 0 to 1: the last batch between the
+  // room and how loud this voice has lately been at its loudest, so each
+  // syllable opens it and the dips between them close it again
+  mouth(): number;
   // the phrase still being said, as it stands (empty if nothing's being said),
   // and how much sound is in it, in seconds: for hearing it early, before it
   // ends
@@ -60,6 +65,9 @@ export function phraser(): Phraser {
   const levels: { db: number; n: number }[] = []; // the last few seconds, for the background
   let heard = 0; // samples heard since starting
   let lastLevel = 0;
+  let lastMouth = 0;
+  let peak = -30; // dB: the voice at its loudest lately, falling slowly
+  const recent: number[] = []; // the last few batches' dB, for the dips between syllables
 
   const floor = (): number => {
     const sorted = levels.map((l) => l.db).sort((a, b) => a - b);
@@ -118,6 +126,15 @@ export function phraser(): Phraser {
       const f = floor();
       const quiet = level < f + QUIET_MARGIN;
       lastLevel = Math.min(1, Math.max(0, (level - f) / 40));
+      // A mouth opens on each syllable and closes between: measured from
+      // the quieter of the room and the dip of the last DIP_OVER (the gap
+      // between syllables), up to just under the voice's loudest lately
+      // (which rises at once and falls about 3 dB a second). Quiet is shut.
+      recent.push(level);
+      if (recent.length > Math.round((DIP_OVER * RATE) / samples.length)) recent.shift();
+      peak = Math.max(level, peak - (3 * samples.length) / RATE);
+      const dip = Math.max(f + QUIET_MARGIN, Math.min(...recent) + 4, peak - 30);
+      lastMouth = quiet ? 0 : Math.min(1, Math.max(0, (level - dip) / Math.max(6, peak - 2 - dip)));
 
       if (length === 0 && quiet) return []; // nothing said yet: don't keep silence
       batches.push({ samples, db: level });
@@ -149,6 +166,7 @@ export function phraser(): Phraser {
       return [phrase];
     },
     level: () => lastLevel,
+    mouth: () => lastMouth,
     sofar() {
       const pcm = new Float32Array(length);
       let at = 0;

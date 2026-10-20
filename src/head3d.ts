@@ -9,9 +9,12 @@
 // a handful of contexts), at one size: each card has a canvas of its own, and
 // the shared renderer draws each head in turn and copies it over.
 //
-// Between what its owner's camera sends, a head keeps living: it moves its
-// mouth to each word as the word goes up, turns its eyes (and, if nobody's
-// camera is steering it, its head) to whoever is speaking, and blinks.
+// A head with its owner's camera on is theirs: it pulls their face, looks
+// where they look, turns and leans as they do, as fast as it hears. Without
+// one it keeps living on what else it hears: its mouth moves with its
+// owner's voice as they talk (and with each word as it goes up, if there's
+// no voice to go on), it reacts to how each word was said, turns its eyes
+// and head to whoever is speaking, glances about and blinks.
 import { STILL, type Expression, type Look, type Pose } from "./avatar.ts";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
@@ -32,6 +35,8 @@ export const webgl = (() => {
 
 type Head = {
   root: T;
+  nose: T;
+  puffs: T[];
   jaw: T;
   lidL: T;
   lidR: T;
@@ -55,15 +60,28 @@ type Shown = {
   head: Head;
   e: Expression;
   pose: Pose;
+  // pose is null when its owner's camera isn't steering it
   target: { e: Expression; pose: Pose | null };
   talk: { from: number; until: number; loud: number };
+  // their voice: levels (0 to 1) waiting to be played, one every LEVEL_EVERY
+  voice: { level: number; to: number; queue: number[]; nextAt: number; loudAt: number; since: number };
+  // a reaction to a word, fading: brows up, eyes wide, a nod, a lean
+  accent: { at: number; brows: number; wide: number; nod: number; lean: number; smile: number };
   gaze: { x: number; y: number };
   glance: { x: number; y: number; at: number };
   blinkAt: number;
+  // what it was last drawn as, so a head that hasn't moved isn't drawn again
+  drawn: string;
+  open: number; // how open its mouth was last drawn
 };
+const LEVEL_EVERY = 43; // ms: one microphone batch
+const VOICE_FOR = 600; // ms after the last loud level that someone's still talking
 
-// how big each head is drawn before it's copied into its card's canvas
-const SIZE = 256;
+// how big each head is drawn before it's copied into its card's canvas: as
+// big as it shows on a sharp screen, within LARGEST
+const LARGEST = 384;
+const sizeFor = (canvas: HTMLCanvasElement): number =>
+  Math.min(LARGEST, Math.max(128, Math.round((canvas.getBoundingClientRect().width || 128) * Math.min(2, devicePixelRatio) / 32) * 32));
 const BLINK = 140; // ms
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -78,7 +96,7 @@ async function setUp(): Promise<T> {
   if (renderer) return THREE;
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(1);
-  renderer.setSize(SIZE, SIZE, false);
+  renderer.setSize(LARGEST, LARGEST, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(28, 1, 0.1, 50);
@@ -119,6 +137,16 @@ function build(THREE: T, look: Look): Head {
   nose.scale.set(0.9, 1, 1.1);
   nose.position.set(0, -0.02, 0.98);
   root.add(nose);
+  // cheeks that puff out: balls of skin just under the face's surface,
+  // pushed through it as they grow
+  const puffs: T[] = [];
+  for (const side of [-1, 1]) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), skin);
+    puff.position.set(side * 0.4, -0.3, 0.55);
+    puff.scale.setScalar(0.05);
+    root.add(puff);
+    puffs.push(puff);
+  }
 
   // eyes: a white ball, an iris and pupil that can look about, and a lid that
   // closes over it
@@ -250,28 +278,41 @@ function build(THREE: T, look: Look): Head {
     }
   }
 
-  return { root, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush", sleepy: look.eyes === "sleepy", look: JSON.stringify(look) };
+  return { root, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush", sleepy: look.eyes === "sleepy", look: JSON.stringify(look) };
 }
 
-// set a head's face, turn and gaze (-1 to 1 across and up)
+// set a head's face, turn, place and gaze (-1 to 1 across and up)
 function pose(h: Head, e: Expression, p: Pose, gaze: { x: number; y: number }): void {
   h.root.rotation.set(p.pitch, p.yaw, p.roll);
-  // lids: open (half shut, for sleepy eyes), swinging down over the eye with
-  // a blink, and partway with a big smile (the cheeks push up) or a glare
-  // (a smile narrows them only a little: much more read as sleepy, not happy)
-  const close = Math.min(1, (h.sleepy ? 0.32 : 0) + e.blink + e.smile * 0.15 + e.browDown * 0.12);
-  for (const lid of [h.lidL, h.lidR]) lid.rotation.x = close * 1.95;
+  // moving about and leaning in: only so far, so it stays in its frame
+  h.root.position.set(p.x * 0.16, p.y * 0.1, p.z * 0.45);
+  // lids: open (half shut, for sleepy eyes; further open, for wide), swinging
+  // down over the eye with a blink or a wink on its side, and partway with a
+  // big smile (the cheeks push up), a glare or a sneer (a smile narrows them
+  // only a little: much more read as sleepy, not happy)
+  const shut = (h.sleepy ? 0.32 : 0) + e.blink + e.smile * 0.15 + e.browDown * 0.12 + e.sneer * 0.3;
+  // wide eyes lift the lid back; a wink shuts its own eye all the way
+  const lid = (wink: number): number => Math.max(shut, 0) + Math.max(0, wink) * 1.1 - e.wide * 0.35;
+  h.lidL.rotation.x = clamp(lid(-e.wink), -0.35, 1) * 1.95;
+  h.lidR.rotation.x = clamp(lid(e.wink), -0.35, 1) * 1.95;
   // eyes: the irises turn in their sockets, less far up than down, so
   // looking up doesn't take them under the lid
-  for (const iris of [h.irisL, h.irisR]) iris.rotation.set(-gaze.y * (gaze.y > 0 ? 0.12 : 0.3), gaze.x * 0.45, 0);
+  for (const iris of [h.irisL, h.irisR]) iris.rotation.set(-gaze.y * (gaze.y > 0 ? 0.22 : 0.38), gaze.x * 0.65, 0);
   // brows: up lifts; down drops and angles the inner ends down (cross);
-  // up with a frown lifts the inner ends (worried)
-  const y = 0.44 + e.browUp * 0.09 - e.browDown * 0.05;
-  const tilt = e.browDown * 0.35 - e.browUp * e.frown * 0.4;
-  h.browL.position.y = y;
-  h.browR.position.y = y;
-  h.browL.rotation.z = Math.PI / 2 - tilt;
-  h.browR.rotation.z = Math.PI / 2 + tilt;
+  // up with a frown lifts the inner ends (worried); one raised on its own
+  const down = Math.min(1, e.browDown + e.sneer * 0.4);
+  const y = 0.44 + e.browUp * 0.09 + e.wide * 0.03 - down * 0.05;
+  const tilt = down * 0.35 - e.browUp * e.frown * 0.4;
+  // one brow up: it lifts and arches, and the other drops a little
+  h.browL.position.y = y + Math.max(0, -e.brow) * 0.15 - Math.max(0, e.brow) * 0.03;
+  h.browR.position.y = y + Math.max(0, e.brow) * 0.15 - Math.max(0, -e.brow) * 0.03;
+  h.browL.rotation.z = Math.PI / 2 - tilt - Math.max(0, -e.brow) * 0.35;
+  h.browR.rotation.z = Math.PI / 2 + tilt + Math.max(0, e.brow) * 0.35;
+  // a sneer wrinkles the nose up; puffed cheeks push out
+  h.nose.scale.set(0.9 + e.sneer * 0.25, 1 - e.sneer * 0.2, 1.1);
+  h.nose.position.y = -0.02 + e.sneer * 0.06;
+  // flattened against the face, so they swell it rather than sit on it
+  for (const puff of h.puffs) puff.scale.set(0.05 + e.puff * 0.3, 0.05 + e.puff * 0.26, 0.05 + e.puff * 0.42);
   shapeMouth(h, e);
   for (const c of h.cheeks.children) c.material.opacity = h.blush ? 0.5 : Math.max(0, (e.smile - 0.55) * 1.2);
 }
@@ -282,24 +323,28 @@ function pose(h: Head, e: Expression, p: Pose, gaze: { x: number; y: number }): 
 // Rebuilt only when the face has moved enough to see.
 function shapeMouth(h: Head, e: Expression): void {
   const u = h.mouth.userData as { THREE: T; w: number; teeth: T; tongue: T; cat: boolean; key?: string };
-  const key = [e.smile, e.frown, e.open, e.pucker].map((v) => Math.round(v * 40)).join(",");
+  const key = [e.smile, e.frown, e.open, e.pucker, e.smirk, e.sneer, e.puff].map((v) => Math.round(v * 40)).join(",");
   if (u.key === key) return;
   u.key = key;
   const THREE = u.THREE;
-  const w = u.w * (1 - e.pucker * 0.5) * (1 + e.smile * 0.18);
+  const w = u.w * (1 - e.pucker * 0.5) * (1 + e.smile * 0.18) * (1 - e.puff * 0.25);
   const lift = (e.smile - e.frown) * 0.075; // corners up (+) or down (-)
-  const open = e.open * 0.2 + e.pucker * 0.035;
+  // puffed cheeks keep the lips shut
+  const open = (e.open * 0.2 + e.pucker * 0.035) * (1 - e.puff * 0.8);
+  // a smirk lifts one corner, on its side
+  const side = Math.sign(e.smirk);
   const N = 16;
   const curve = (dip: number, drop: number): T[] =>
     Array.from({ length: N + 1 }, (_, i) => {
       const x = (i / N) * 2 - 1; // -1 to 1 across the mouth
       // the corners rise with lift; the middle dips (or rises) by dip; the
       // lower lip drops by drop at the middle, less at the corners
-      const y = lift * x * x - lift * 0.35 + dip * (1 - x * x) - drop * (1 - x * x * 0.7);
+      const y = lift * x * x - lift * 0.35 + dip * (1 - x * x) - drop * (1 - x * x * 0.7) + Math.abs(e.smirk) * 0.08 * Math.max(0, x * side) ** 2;
       const z = -0.04 * x * x; // curving back round the face
       return new THREE.Vector3(x * w, y, z);
     });
-  const top = curve(e.pucker * 0.01, 0);
+  // a sneer lifts the upper lip
+  const top = curve(e.pucker * 0.01 + e.sneer * 0.06, 0);
   const bottom = curve(-0.006, open);
   const tube = (pts: T[], r: number): T => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 32, r, 8, false);
   h.lipTop.geometry.dispose();
@@ -340,9 +385,9 @@ const centre = (el: Element): { x: number; y: number } => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 };
 
-// Heads are drawn at most FPS times a second: smooth enough for a face, and
-// half the work of a fast screen's every frame, which matters in a full room
-// on a phone.
+// Heads are drawn at most FPS times a second, and only those that have
+// moved since they were last drawn: drawing one and copying it into its
+// card costs the page time it needs for reading its owner's face.
 const FPS = 30;
 let last = performance.now();
 function frame(now: number): void {
@@ -355,7 +400,12 @@ function frame(now: number): void {
   const k = (perSecond: number): number => 1 - Math.exp(-perSecond * dt);
   const calm = still.matches;
   const t = now / 1000;
-  const talker = speaker && heads.has(speaker) ? centre(speaker) : null;
+  // the one to look at: whoever started talking most recently, by their
+  // voice if it's coming, or by their words going up if not
+  let voiced: [HTMLElement, number] | null = null;
+  for (const [slot, s] of heads) if (now - s.voice.loudAt < VOICE_FOR && (!voiced || s.voice.since > voiced[1])) voiced = [slot, s.voice.since];
+  const speakerNow = voiced?.[0] ?? speaker;
+  const talker = speakerNow && heads.has(speakerNow) ? centre(speakerNow) : null;
   for (const [slot, s] of heads) {
     if (!s.canvas.isConnected) {
       heads.delete(slot);
@@ -365,43 +415,109 @@ function frame(now: number): void {
     }
     const r = s.canvas.getBoundingClientRect();
     if (r.width === 0 || r.bottom < 0 || r.top > innerHeight) continue;
-    for (const key of Object.keys(s.e) as (keyof Expression)[]) s.e[key] = ease(s.e[key], s.target.e[key], k(14));
-    // eyes on whoever's speaking; with nobody speaking (or when it's them),
-    // a glance somewhere now and then
+    // A head its owner's camera steers follows it closely: what's sent is
+    // already smoothed, so easing much more only adds lag. One left to
+    // itself eases more gently.
+    const live = s.target.pose !== null;
+    for (const key of Object.keys(s.e) as (keyof Expression)[]) s.e[key] = ease(s.e[key], s.target.e[key], k(live ? 30 : 14));
+    // their voice, a level at a time, opening fast and closing a little slower
+    // (as many as are due since the last frame, the loudest of them, so a
+    // syllable between two frames isn't missed; and fallen far behind, a
+    // network hiccup, it skips ahead rather than stay late)
+    if (s.voice.queue.length > 12) s.voice.queue.splice(0, s.voice.queue.length - 6);
+    if (s.voice.queue.length && now >= s.voice.nextAt) {
+      if (now - s.voice.nextAt > 250) s.voice.nextAt = now;
+      let loudest = 0;
+      while (s.voice.queue.length && now >= s.voice.nextAt) {
+        loudest = Math.max(loudest, s.voice.queue.shift()!);
+        s.voice.nextAt += LEVEL_EVERY;
+      }
+      s.voice.to = loudest;
+    } else if (!s.voice.queue.length && now > s.voice.nextAt + 200) s.voice.to = 0;
+    if (s.voice.to > 0.15) {
+      if (now - s.voice.loudAt > VOICE_FOR) s.voice.since = now;
+      s.voice.loudAt = now;
+    }
+    s.voice.level = ease(s.voice.level, s.voice.to, k(s.voice.to > s.voice.level ? 40 : 22));
+    // eyes: where their owner looks, if their camera's on; otherwise on
+    // whoever's speaking, or (nobody, or it's them) a glance now and then
     const me = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     let look = { x: s.glance.x, y: s.glance.y };
-    if (talker && speaker !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
+    if (live) look = { x: s.e.lookX, y: s.e.lookY };
+    else if (talker && speakerNow !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
     else if (!calm && now > s.glance.at) s.glance = { x: (Math.random() - 0.5) * 0.8, y: (Math.random() - 0.5) * 0.4, at: now + 1800 + Math.random() * 3500 };
-    s.gaze.x = ease(s.gaze.x, look.x, k(8));
-    s.gaze.y = ease(s.gaze.y, look.y, k(8));
+    s.gaze.x = ease(s.gaze.x, look.x, k(live ? 30 : 8));
+    s.gaze.y = ease(s.gaze.y, look.y, k(live ? 30 : 8));
+    // a word's reaction rises fast and fades over half a second or so
+    const since = (now - s.accent.at) / 1000;
+    const a = calm || since > 1.2 ? 0 : Math.min(1, since / 0.06) * Math.exp(-since / 0.35);
     // turned as its owner's head is turned, if their camera's on; if not,
-    // a little towards where it's looking, swaying slightly
-    const sway = calm ? STILL : { pitch: Math.sin(t * 0.9 + r.left) * 0.025, yaw: Math.sin(t * 0.6 + r.top) * 0.04, roll: Math.sin(t * 0.5 + r.left) * 0.015 };
-    const to = s.target.pose ?? { pitch: -s.gaze.y * 0.15 + sway.pitch, yaw: s.gaze.x * 0.3 + sway.yaw, roll: sway.roll };
-    for (const key of Object.keys(s.pose) as (keyof Pose)[]) s.pose[key] = ease(s.pose[key], to[key], k(10));
-    // the mouth, moving with each word as it goes up: open once per
-    // syllable, wider for a louder word, held open through a drawn-out one
+    // a little towards where it's looking, swaying slightly, nodding with
+    // the beat of what they say
+    const sway = calm ? STILL : { ...STILL, pitch: Math.sin(t * 0.9 + r.left) * 0.025, yaw: Math.sin(t * 0.6 + r.top) * 0.04, roll: Math.sin(t * 0.5 + r.left) * 0.015 };
+    const to: Pose = s.target.pose ?? {
+      ...sway,
+      pitch: -s.gaze.y * 0.15 + sway.pitch + s.voice.level * 0.05 + s.accent.nod * a,
+      yaw: s.gaze.x * 0.3 + sway.yaw,
+      z: s.accent.lean * a,
+    };
+    for (const key of Object.keys(s.pose) as (keyof Pose)[]) s.pose[key] = ease(s.pose[key], to[key], k(live ? 30 : 10));
     const e = { ...s.e };
-    if (!calm && now < s.talk.until) {
-      // (a syllable's start comes from a timer, which can be a moment ahead
-      // of this frame's clock)
-      const done = clamp((now - s.talk.from) / (s.talk.until - s.talk.from), 0, 1);
-      e.open = Math.max(e.open, s.talk.loud * Math.pow(Math.sin(Math.PI * done), 0.6));
+    // the mouth: with their voice as it comes (phrases.ts gives each
+    // syllable's peak about 1 and the dips between about 0, so this follows
+    // it almost as it is, a little short of wide). With their camera on too,
+    // the voice still helps, more gently: the camera's jaw lags a little
+    // and misses short syllables.
+    const fromVoice = calm ? 0 : clamp((s.voice.level - 0.1) / 0.9, 0, 1) * (live ? 0.45 : 0.75);
+    e.open = Math.max(e.open, fromVoice);
+    if (!live && !calm) {
+      // failing a voice, with each word as it goes up, opening once per
+      // syllable, wider for a louder word (a syllable's start comes from a
+      // timer, which can be a moment ahead of this frame's clock)
+      let fromWords = 0;
+      if (now < s.talk.until) fromWords = s.talk.loud * Math.pow(Math.sin(Math.PI * clamp((now - s.talk.from) / (s.talk.until - s.talk.from), 0, 1)), 0.6);
+      e.open = Math.max(e.open, fromWords);
+      e.browUp = Math.min(1, e.browUp + s.accent.brows * a);
+      e.wide = Math.min(1, e.wide + s.accent.wide * a);
+      e.smile = Math.min(1, e.smile + s.accent.smile * a);
     }
     // and a blink every few seconds, BLINK long
     if (!calm && now >= s.blinkAt) {
       if (now < s.blinkAt + BLINK) e.blink = 1;
       else s.blinkAt = now + 2200 + Math.random() * 4000;
     }
+    // drawn only if it's moved enough to see
+    const looks = [...Object.values(e), ...Object.values(s.pose), s.gaze.x, s.gaze.y].map((v) => Math.round(v * 200)).join(",");
+    if (looks === s.drawn) continue;
+    s.drawn = looks;
+    s.open = e.open;
     pose(s.head, e, s.pose, s.gaze);
+    // drawn at this card's size, in the corner of the shared canvas, and
+    // copied from there
+    const size = sizeFor(s.canvas);
+    if (s.canvas.width !== size) {
+      s.canvas.width = size;
+      s.canvas.height = size;
+    }
+    renderer.setViewport(0, LARGEST - size, size, size);
+    renderer.setScissor(0, LARGEST - size, size, size);
+    renderer.setScissorTest(true);
+    renderer.clear();
     scene.add(s.head.root);
     renderer.render(scene, camera);
     scene.remove(s.head.root);
     const ctx = s.canvas.getContext("2d");
-    ctx?.clearRect(0, 0, SIZE, SIZE);
-    ctx?.drawImage(renderer.domElement, 0, 0);
+    ctx?.clearRect(0, 0, size, size);
+    ctx?.drawImage(renderer.domElement, 0, 0, size, size, 0, 0, size, size);
   }
 }
+
+// how a head is turned, and its mouth open, as drawn: for the checks that
+// time it
+export const drawn = (slot: HTMLElement): { pose: Pose; open: number } | null => {
+  const s = heads.get(slot);
+  return s ? { pose: { ...s.pose }, open: s.open } : null;
+};
 
 // Draw (or redraw) a person's head in their avatar's slot, in their look,
 // pulling their face and, if their camera's sending it, turned as their head
@@ -420,8 +536,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
     const label = slot.querySelector("[aria-label]")?.getAttribute("aria-label") ?? known?.canvas.getAttribute("aria-label") ?? "";
     if (known) drop(known.head);
     const canvas = known?.canvas.isConnected ? known.canvas : document.createElement("canvas");
-    canvas.width = SIZE;
-    canvas.height = SIZE;
+    canvas.width = canvas.height = 128;
     canvas.className = "avatar head3d";
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", label);
@@ -433,9 +548,13 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       pose: known?.pose ?? { ...(p ?? STILL) },
       target: { e: { ...e }, pose: p && { ...p } },
       talk: known?.talk ?? { from: 0, until: 0, loud: 0 },
+      voice: known?.voice ?? { level: 0, to: 0, queue: [], nextAt: 0, loudAt: -Infinity, since: 0 },
+      accent: known?.accent ?? { at: -Infinity, brows: 0, wide: 0, nod: 0, lean: 0, smile: 0 },
       gaze: known?.gaze ?? { x: 0, y: 0 },
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
+      drawn: "",
+      open: 0,
     });
     return true;
   } catch (err) {
@@ -444,22 +563,55 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
   }
 }
 
-// A word going up for a head: its mouth moves for as long as it was said,
-// opening once per syllable, wider the louder it was (dB against the
-// speaker's typical word, as in voice.ts).
-export function mouthWord(slot: HTMLElement, seconds: number, loud: number, syllables: number): void {
+// A word going up, for its speaker's head. It reacts to how the word was
+// said (voice.ts's numbers, against the speaker's typical word): brows up
+// for a high one, eyes wide and a nod for a loud one or an Impact, a lean in
+// for a Whisper, a smile for a Glow. And if their voice isn't coming
+// through to move its mouth, the mouth moves for as long as the word was
+// said, opening once per syllable, wider the louder it was.
+export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; syllables: number; effect: string | null }): void {
   const s = heads.get(slot);
   if (!s) return;
   const now = performance.now();
+  const loud = clamp((w.loud - 3) / 9, 0, 1);
+  const high = clamp((w.pitch - 1.5) / 6, 0, 1);
+  const impact = w.effect === "impact" ? 1 : 0;
+  if (loud > 0.05 || high > 0.05 || w.effect) {
+    s.accent = {
+      at: now,
+      brows: Math.max(high, loud * 0.5, impact * 0.6),
+      wide: Math.max(loud * 0.7, impact * 0.8),
+      nod: Math.max(loud * 0.12, impact * 0.2),
+      lean: w.effect === "whisper" ? 0.6 : 0,
+      smile: w.effect === "glow" ? 0.5 : 0,
+    };
+  }
+  if (now - s.voice.loudAt < 1500) return; // their voice is moving it already
   // one opening per syllable, back to back, so a word of three moves three times
-  const each = Math.max(0.12, seconds / Math.max(1, syllables));
-  s.talk = { from: now, until: now + each * 1000, loud: clamp(0.45 + loud / 30, 0.2, 0.85) };
-  for (let i = 1; i < syllables; i++) {
+  const each = Math.max(0.12, w.seconds / Math.max(1, w.syllables));
+  const open = clamp(0.45 + w.loud / 30, 0.2, 0.85);
+  s.talk = { from: now, until: now + each * 1000, loud: open };
+  for (let i = 1; i < w.syllables; i++) {
     window.setTimeout(() => {
       const at = performance.now();
-      if (heads.get(slot) === s) s.talk = { from: at, until: at + each * 1000, loud: s.talk.loud };
+      if (heads.get(slot) === s) s.talk = { from: at, until: at + each * 1000, loud: open };
     }, i * each * 1000);
   }
+}
+
+// How loud someone is talking, as it happens: 0 to 1 a microphone batch at a
+// time, from their own microphone (now) or from the room (a few at once,
+// played back at the pace they were heard).
+export function voiceLevels(slot: HTMLElement, levels: number[], now = false): void {
+  const s = heads.get(slot);
+  if (!s) return;
+  if (now) {
+    s.voice.queue.length = 0;
+    s.voice.to = levels.at(-1) ?? 0;
+    s.voice.nextAt = performance.now() + LEVEL_EVERY * 3;
+    return;
+  }
+  s.voice.queue.push(...levels);
 }
 
 // Who's speaking now, so every other head can look at them; the last to

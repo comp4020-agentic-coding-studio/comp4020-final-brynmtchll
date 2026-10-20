@@ -209,23 +209,25 @@ describe.skipIf(!writable)("the room", () => {
     expect(line).toBe(`hello${stamp} there friend`);
   });
 
-  // a face as the page sends it: seven numbers, 0 to 1
+  // a face as the page sends it: a handful of numbers
   const grin = { smile: 0.9, frown: 0, open: 0.6, pucker: 0, browUp: 0.2, browDown: 0, blink: 0 };
   const scowl = { smile: 0, frown: 0.7, open: 0, pucker: 0, browUp: 0, browDown: 0.9, blink: 0 };
   const sendFace = (cookie: string, body: unknown) =>
     fetch(new URL("/face", baseUrl), { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
 
-  it("puts someone's expression on their avatar on every open page, and takes nothing but the seven numbers", async () => {
+  it("puts someone's expression on their avatar on every open page, and takes nothing but its numbers", async () => {
     const watcher = listen();
     await watcher.ready;
     const p = await person();
     expect((await sendFace(p.cookie, { e: { ...grin, picture: "data:image/png;base64,AAAA" } })).status).toBe(200);
     const e = (await watcher.waitFor(`"name":"${p.name}","e":{"smile":0.9`)) as unknown as { type: string; e: Record<string, number> };
     expect(e.type).toBe("face");
-    // only the seven, each pulled into 0 to 1
-    expect(Object.keys(e.e).sort()).toEqual(["blink", "browDown", "browUp", "frown", "open", "pucker", "smile"]);
-    expect((await sendFace(p.cookie, { e: { ...grin, smile: 7 } })).status).toBe(200);
-    await watcher.waitFor(`"name":"${p.name}","e":{"smile":1`);
+    // only the expression's own numbers, each pulled into its range
+    expect(Object.keys(e.e).sort()).toEqual(["blink", "brow", "browDown", "browUp", "frown", "lookX", "lookY", "open", "pucker", "puff", "smile", "smirk", "sneer", "wide", "wink"]);
+    expect(e.e).not.toHaveProperty("picture");
+    expect((await sendFace(p.cookie, { e: { ...grin, smile: 7, wink: -3 } })).status).toBe(200);
+    const pulled = (await watcher.waitFor(`"name":"${p.name}","e":{"smile":1`)) as unknown as { e: Record<string, number> };
+    expect(pulled.e.wink).toBe(-1);
     // and whoever arrives later sees their avatar mid-grin
     expect(await (await fetch(new URL("/", baseUrl))).text()).toMatch(new RegExp(`data-name="${p.name}"[\\s\\S]*?<svg class="avatar"`));
     expect((await sendFace(p.cookie, { e: "a picture" })).status).toBe(400);
@@ -237,13 +239,30 @@ describe.skipIf(!writable)("the room", () => {
     const watcher = listen();
     await watcher.ready;
     const p = await person();
-    expect((await sendFace(p.cookie, { e: grin, pose: { pitch: 0.1, yaw: -4, roll: 0.2, picture: "data:image/png;base64,AAAA" } })).status).toBe(200);
+    expect((await sendFace(p.cookie, { e: grin, pose: { pitch: 0.1, yaw: -4, roll: 0.2, z: 0.5, picture: "data:image/png;base64,AAAA" } })).status).toBe(200);
     const turned = (await watcher.waitFor(`"name":"${p.name}","e":{"smile":0.9`)) as unknown as { pose: unknown };
-    expect(turned.pose).toEqual({ pitch: 0.1, yaw: -0.7, roll: 0.2 });
+    expect(turned.pose).toEqual({ pitch: 0.1, yaw: -0.7, roll: 0.2, x: 0, y: 0, z: 0.5 });
     expect((await sendFace(p.cookie, { e: grin, pose: "a picture" })).status).toBe(400);
     // a face put away isn't left turned
     await sendFace(p.cookie, { e: null, pose: { pitch: 0.3, yaw: 0, roll: 0 } });
     expect((await watcher.waitFor(`"name":"${p.name}","e":{"smile":0,`)) as unknown as { pose: unknown }).toMatchObject({ pose: null });
+    watcher.close();
+  });
+
+  it("moves someone's avatar's mouth with how loud they're talking, as levels and nothing else", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const sendVoice = (body: unknown) =>
+      fetch(new URL("/voice", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect((await sendVoice({ levels: [0.1, 0.62, 3, -1], audio: "UklGRg==" })).status).toBe(200);
+    const heard = (await watcher.waitFor(`"name":"${p.name}","levels"`)) as unknown as Record<string, unknown>;
+    expect(heard).toMatchObject({ type: "voice", levels: [0.1, 0.62, 1, 0] });
+    expect(heard).not.toHaveProperty("audio");
+    // a level a batch, a dozen at most: room for nothing that sounds
+    expect((await sendVoice({ levels: Array(13).fill(0.5) })).status).toBe(400);
+    expect((await sendVoice({ levels: "UklGRg==" })).status).toBe(400);
+    expect((await fetch(new URL("/voice", baseUrl), { method: "POST", body: JSON.stringify({ levels: [0.5] }) })).status).toBe(401);
     watcher.close();
   });
 
@@ -256,6 +275,18 @@ describe.skipIf(!writable)("the room", () => {
     expect(rested).toMatchObject({ type: "face" });
     watcher.close();
   }, 16_000);
+
+  it("sends each phrase with its speaker's look, so a page that had no card for them can draw them as they are", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const look = { skin: "#b9f2a1", eyes: "round", mouth: "cat", extra: "hat" };
+    await fetch(new URL("/look", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify({ look }) });
+    const stamp = Date.now().toString(36);
+    await p.say({ words: [word(`looked${stamp}`, 0)] });
+    expect((await watcher.waitFor(`looked${stamp}`)) as unknown as { look: unknown }).toMatchObject({ type: "said", look });
+    watcher.close();
+  });
 
   it("keeps how someone's avatar looks, from the choices on offer, and shows it to everyone", async () => {
     const watcher = listen();

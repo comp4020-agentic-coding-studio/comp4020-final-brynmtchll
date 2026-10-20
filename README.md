@@ -23,11 +23,15 @@ A room where you speak instead of type, and everyone sees how you said it.
   changed.
 - Everyone has an avatar, a 3D head in a look they choose (colour, eyes,
   mouth, and glasses, shades, a hat, headphones or blush). Its mouth moves
-  with each word as it goes up, and its eyes turn to whoever is speaking.
-  Turn on "Show my face" and it pulls the faces you pull and turns as your
-  head turns. Your face is read in your browser and only numbers about it
-  are sent, no picture. Where a browser can't draw 3D, it's a flat face
-  instead.
+  with your voice as you talk, on everyone's screen, a quarter of a second
+  behind you, before your words arrive. It reacts to how each word was said
+  (brows up for a high one, eyes wide for a loud one), and its eyes turn to
+  whoever is speaking. Turn on "Show my face" and it pulls the faces you
+  pull, winks, raises one brow, looks where you look, and turns and leans
+  as you do. It learns your face at rest, so a resting frown doesn't show as
+  one. Your face and voice are read in your browser and only numbers about
+  them are sent: no picture, no sound. Where a browser can't draw 3D, it's
+  a flat face instead.
 - Under the stage, a short record of what's been said lately, each person's
   words joined into lines in their colour, so someone arriving can catch up.
 
@@ -46,9 +50,11 @@ Checked automatically in `spec/`:
 - What one person says reaches every other open page within a second, without
   a reload, and several people speaking at once each stay in their own place.
 - Only words and numbers about how they were said are stored; nothing else
-  (audio included) can be sent along. A face is only ever seven numbers for
-  its expression and three for which way the head is turned, read off
-  MediaPipe's own sample portrait in the checks.
+  (audio included) can be sent along. A face is only ever a handful of
+  numbers for its expression and where the head is, and a voice only a few
+  loudness levels; which way round a wink, a glance and a head's turn go is
+  checked on MediaPipe's own sample portrait with an eye painted shut, its
+  irises moved and the picture tilted and shifted.
 - A word is never split between two phrases, and the room's background noise,
   breaths and silence are never sent to be transcribed.
 - How loud, high and drawn-out words were is measured on made-up tones whose

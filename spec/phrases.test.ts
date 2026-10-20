@@ -37,6 +37,31 @@ function tone(clip: Float32Array, from: number, to: number, amplitude = 0.1): vo
   }
 }
 
+describe("a mouth moving with a voice as it's heard", () => {
+  it("opens with each syllable and closes between them, on a real recording, and stays shut in silence", () => {
+    const pcm = wav("jfk-1961.wav");
+    const p = phraser();
+    const opens: number[] = [];
+    for (let i = 0; i < pcm.length; i += BATCH) {
+      p.push(pcm.slice(i, i + BATCH));
+      opens.push(p.mouth());
+    }
+    const at = (seconds: number): number => Math.round((seconds * RATE) / BATCH);
+    // the pause after "And so, my fellow Americans" (about 2.2 s to 3.4 s) is
+    // the room: shut
+    expect(Math.max(...opens.slice(at(2.3), at(3.3)))).toBe(0);
+    // the sentence itself: it opens and shuts several times, and opens wide
+    // at least once
+    const sentence = opens.slice(at(0.3), at(2.2));
+    let openings = 0;
+    for (let i = 1; i < sentence.length; i++) if (sentence[i - 1] < 0.3 && sentence[i] >= 0.3) openings++;
+    expect(openings).toBeGreaterThanOrEqual(4);
+    expect(Math.max(...sentence)).toBeGreaterThan(0.85);
+    // it isn't just held open: shut, or nearly, a good part of the time
+    expect(sentence.filter((o) => o < 0.3).length / sentence.length).toBeGreaterThan(0.2);
+  });
+});
+
 describe("cutting speech into phrases as it's said", () => {
   it("cuts JFK at his pauses, so each phrase goes out as soon as he stops", () => {
     // he pauses after "Americans," (about 2.1 s), for over a second after

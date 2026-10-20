@@ -136,8 +136,24 @@ main.room {
 .spot-avatar .avatar { width: 100%; height: 100%; display: block; filter: drop-shadow(0 3px 6px rgb(0 0 0 / 0.3)); }
 /* a 3D head fills its frame (a hat's brim reaches the edges), so it's given
    a little more room than the flat face */
-.spot:has(.head3d) .spot-avatar { width: 68px; height: 68px; margin: -6px 0 -4px -6px; }
-.mine-card .spot:has(.head3d) .spot-avatar { width: 120px; height: 120px; margin: -14px 0 -10px -12px; }
+.spot:has(.head3d) .spot-avatar { width: 112px; height: 112px; margin: -12px 0 -14px -14px; }
+.mine-card .spot:has(.head3d) .spot-avatar { width: 176px; height: 176px; margin: -24px 0 -26px -22px; }
+/* on a phone, a little smaller, so the thread keeps its room */
+@media (max-width: 600px) {
+  .spot:has(.head3d) .spot-avatar { width: 92px; height: 92px; margin: -10px 0 -10px -12px; }
+  .mine-card .spot:has(.head3d) .spot-avatar { width: 128px; height: 128px; margin: -16px 0 -16px -16px; }
+}
+/* With a head that size, the word being said goes beside it, under their
+   name, as if it's coming from the head, rather than in a row of its own
+   (where the head crowded it). The head's row and the word's are one. */
+.spot:has(.head3d) { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 10px; }
+.spot:has(.head3d) .spot-head { display: contents; }
+.spot:has(.head3d) .spot-avatar { grid-column: 1; grid-row: 1 / 3; align-self: start; }
+.spot:has(.head3d) .spot-name { grid-column: 2; grid-row: 1; align-self: end; padding-top: 6px; }
+.spot:has(.head3d) .spot-word { grid-column: 2; grid-row: 2; align-self: start; margin: 2px 0 0; }
+.spot:has(.head3d) .thread { grid-column: 1 / -1; grid-row: 3; }
+.mine-card .spot:has(.head3d) .spot-name { padding-top: 22px; }
+.mine-card .spot:has(.head3d) .spot-word { margin-top: 6px; }
 .spot-name { flex: 1; display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.9375rem; font-weight: 700; color: var(--person); }
 .spot-name .you { margin-left: auto; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .spot-word {

@@ -2,8 +2,8 @@
 // reads fine without this; the script keeps it live, plays each phrase in its
 // speaker's spot, and, while someone's microphone is on, hears them a phrase
 // at a time and sends each phrase as it's heard.
-import { avatarSvg, fromShapes, poseFrom, REST, STILL, type Expression, type Look, type Pose } from "./avatar.ts";
-import { head3d, mouthWord, speaking, webgl } from "./head3d.ts";
+import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
+import { head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, spoke, words, type Heard } from "./prosody.ts";
 import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
@@ -17,7 +17,7 @@ const heardAloud = document.getElementById("heard") as HTMLElement;
 // ---- the stage: each person's words, one at a time, in their spot ----
 
 type StageWord = { html: string; t: number; d: number; gap: number };
-type Phrase = { id: number; name: string; hue: number; text: string; at: number; words: StageWord[] };
+type Phrase = { id: number; name: string; hue: number; look?: Look; text: string; at: number; words: StageWord[] };
 
 // Each word appears when it was said, but stays up at least SHORTEST_WORD so
 // it can be read: fast speech has words a tenth of a second long, gone before
@@ -59,6 +59,10 @@ function spotFor(p: Pick<Phrase, "name" | "hue">, look?: Look): Spot {
     // most recently heard from last, so the quietest is first to go
     spots.delete(p.name);
     spots.set(p.name, known);
+    if (look && !known.el.dataset.look) {
+      known.el.dataset.look = JSON.stringify(look);
+      drawAvatar(p.name, expressionOf.get(p.name) ?? REST);
+    }
     return known;
   }
   let el = cardOf(p.name);
@@ -146,11 +150,19 @@ function play(spot: Spot): void {
   spot.el.classList.add("speaking");
   if (slot) speaking(slot, true);
   const later = (at: number, fn: () => void): void => void spot.timers.push(window.setTimeout(fn, at * 1000));
-  // each word goes up large, and their head says it
+  // each word goes up large, and their head says it, the way it was said
   const show = (w: StageWord): void => {
     showWord(spot, w.html);
     const shown = spot.word.querySelector<HTMLElement>(".w");
-    if (slot && shown) mouthWord(slot, w.d, Number(shown.style.getPropertyValue("--loud")) || 0, vowels(shown.textContent ?? "").length);
+    if (!slot || !shown) return;
+    const n = (v: string): number => Number(shown.style.getPropertyValue(v)) || 0;
+    sayWord(slot, {
+      seconds: w.d,
+      loud: n("--loud"),
+      pitch: n("--pitch"),
+      syllables: vowels(shown.textContent ?? "").length,
+      effect: /fx-(\w+)/.exec(shown.className)?.[1] ?? null,
+    });
   };
   // `at` is when each word goes up on the page; `due` is when it was said,
   // pauses shortened. A word goes up when it was said or once the last has
@@ -229,7 +241,7 @@ function arrive(p: Phrase & { draft?: number }): void {
   dropDraft(p.name, p.draft);
   remember(p);
   heardAloud.textContent = `${p.name}: ${p.text}`;
-  const spot = spotFor(p);
+  const spot = spotFor(p, p.look);
   addToThread(spot, p);
   spot.queue.push({ ...p, arrived: Date.now() });
   if (spot.state !== "playing") play(spot);
@@ -275,10 +287,10 @@ function addToThread(spot: Spot, p: Phrase): void {
 // The real phrase, when it comes, takes its place; one that never comes is
 // taken down after DRAFT_FOR.
 const DRAFT_FOR = 8000;
-type Draft = { name: string; hue: number; draft: number; words: StageWord[] };
+type Draft = { name: string; hue: number; look?: Look; draft: number; words: StageWord[] };
 const draftTimers = new Map<string, number>();
 function showDraft(d: Draft): void {
-  const spot = spotFor(d);
+  const spot = spotFor(d, d.look);
   const thread = spot.el.querySelector<HTMLOListElement>(".thread");
   if (!thread) return;
   let el = thread.querySelector<HTMLElement>(".draft");
@@ -385,6 +397,13 @@ function connect(): void {
     // your own avatar follows your face here, not the server's echo of it
     if (cardOf(name)?.classList.contains("mine") && faceOn) return;
     drawAvatar(name, expression, pose ?? null);
+  });
+  stream.addEventListener("voice", (e) => {
+    const { name, levels } = JSON.parse((e as MessageEvent<string>).data) as { name: string; levels: number[] };
+    // your own head moves with your voice here, as you talk
+    if (name === myName) return;
+    const slot = cardOf(name)?.querySelector<HTMLElement>(".spot-avatar");
+    if (slot) voiceLevels(slot, levels);
   });
   stream.addEventListener("look", (e) => {
     const { name, look } = JSON.parse((e as MessageEvent<string>).data) as { name: string; look: Look };
@@ -570,7 +589,33 @@ const showBehind = (): void => {
 function onAudio(samples: Float32Array): void {
   for (const phrase of phrases.push(samples)) send(phrase);
   talk!.style.setProperty("--level", phrases.level().toFixed(2));
+  sendVoice(phrases.mouth());
   maybeEarly();
+}
+
+// ---- your voice, on your avatar's mouth, as you talk ----
+
+// How loud you are, a microphone batch at a time (0 to 1, above the room),
+// moves your avatar's mouth here at once and on everyone else's page a
+// moment later, so heads talk as people do, before their words are heard.
+// Sent VOICE_EVERY in a batch, and only while there's something to send: a
+// loudness, never the sound.
+const VOICE_EVERY = 120; // ms
+let voiceBatch: number[] = [];
+let voiceSentAt = 0;
+let voiceQuiet = 0;
+function sendVoice(level: number): void {
+  const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
+  if (slot) voiceLevels(slot, [level], true);
+  voiceBatch.push(Math.round(level * 100) / 100);
+  if (Date.now() - voiceSentAt < VOICE_EVERY) return;
+  const levels = voiceBatch;
+  voiceBatch = [];
+  voiceSentAt = Date.now();
+  // silence goes once, then nothing until there's sound again
+  voiceQuiet = levels.every((l) => l < 0.08) ? voiceQuiet + 1 : 0;
+  if (voiceQuiet > 1) return;
+  void fetch("/voice", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ levels }) }).catch(() => {});
 }
 
 // ---- hearing a phrase early, while it's still being said ----
@@ -920,14 +965,16 @@ if (talk) {
 
 // ---- your face, on your avatar: only for someone who has joined, only if they ask ----
 
-// MediaPipe's face landmarker runs in this page on a small copy of the camera,
-// eight times a second; avatar.ts turns its expression scores into seven
-// numbers and its head position into three, which draw your avatar here and
-// go to everyone else's. Only those numbers leave the browser: no picture.
+// MediaPipe's face landmarker runs in this page on a small copy of the
+// camera, every frame it can keep up with; avatar.ts turns its expression
+// scores and head position into a few numbers, smoothed so they hold steady
+// without lagging, which draw your avatar here at once and go to everyone
+// else's up to SEND_EVERY. Only those numbers leave the browser: no picture.
 // The model (about 4 MB) loads the first time someone turns it on.
 const VISION = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1";
 const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
-const FACE_EVERY = 125; // ms between readings
+const READ_EVERY = 30; // ms: at most this often, slower if reading takes long
+const SEND_EVERY = 50; // ms
 
 type Landmarker = {
   detectForVideo(
@@ -942,15 +989,18 @@ let faceOn = false;
 let stopFace: (() => void) | undefined;
 let myName = document.querySelector<HTMLElement>(".spot.mine")?.dataset.name ?? "";
 
-// Sent as it changes, at most every FACE_EVERY, one at a time (a slow
+// Sent as it changes, at most every SEND_EVERY, one at a time (a slow
 // connection drops readings rather than queueing them), and again now and
 // then while still: the server puts back to rest a face it stops hearing of.
+// A change too small to see isn't sent.
 let sendingFace = false;
 let lastSent = "";
 let lastSentAt = 0;
+const coarse = (o: Record<string, number> | null): string => (o ? Object.values(o).map((v) => Math.round(v * 40)).join(",") : "-");
 async function sendFace(e: Expression | null, pose: Pose | null = null): Promise<void> {
-  const key = JSON.stringify([e, pose]);
-  if (sendingFace || (key === lastSent && Date.now() - lastSentAt < 2000)) return;
+  const key = coarse(e) + "|" + coarse(pose);
+  const since = Date.now() - lastSentAt;
+  if (sendingFace || since < SEND_EVERY || (key === lastSent && since < 2000)) return;
   sendingFace = true;
   lastSent = key;
   lastSentAt = Date.now();
@@ -962,9 +1012,13 @@ async function sendFace(e: Expression | null, pose: Pose | null = null): Promise
     sendingFace = false;
   }
 }
-// readings move in small steps; smoothing them stops the avatar jittering
-const ease = <O extends Record<string, number>>(from: O, to: O, k = 0.55): O =>
+// a face lost from view eases back to rest
+const ease = <O extends Record<string, number>>(from: O, to: O, k: number): O =>
   Object.fromEntries(Object.keys(to).map((key) => [key, Math.round((from[key] * (1 - k) + to[key] * k) * 100) / 100])) as O;
+// Where someone's head usually is, learned slowly (HOME_OVER seconds), so a
+// camera off to one side or below the screen reads as facing it, and a
+// lean or a turn that's held long enough becomes the new usual.
+const HOME_OVER = 15;
 
 async function faceStart(): Promise<void> {
   faceButton!.disabled = true;
@@ -984,7 +1038,9 @@ async function faceStart(): Promise<void> {
     // a stalled download mustn't leave the button stuck
     landmarker = await Promise.race([
       FaceLandmarker.createFromOptions(files, {
-        baseOptions: { modelAssetPath: FACE_MODEL },
+        // on the graphics card where there is one, which reads a face in a
+        // few milliseconds rather than tens; MediaPipe falls back itself
+        baseOptions: { modelAssetPath: FACE_MODEL, delegate: "GPU" },
         runningMode: "VIDEO",
         outputFaceBlendshapes: true,
         outputFacialTransformationMatrixes: true,
@@ -1016,39 +1072,75 @@ async function faceStart(): Promise<void> {
   let seenFace = false;
   let shown: Expression = REST;
   let turned: Pose = STILL;
-  const timer = setInterval(() => {
+  const steadyFace = smoother<Expression>(1.2, 0.6);
+  const steadyPose = smoother<Pose>(1, 0.8);
+  const rest = resting();
+  let restNow = rest.rest();
+  let home: Placed | undefined;
+  let readings = 0;
+  let lastAt = 0;
+  let wait = READ_EVERY;
+  let running = true;
+  let lastFrame = -1;
+  const read = (): void => {
+    if (!running) return;
+    schedule();
     // a hidden page (a phone put away) isn't reading anyone's face
     if (document.hidden) return void sendFace(null);
-    if (video.readyState < 2) return;
+    const now = performance.now();
+    if (video.readyState < 2 || now - lastAt < wait || video.currentTime === lastFrame) return;
+    lastFrame = video.currentTime;
+    const dt = now - lastAt;
+    lastAt = now;
     let shapes: { categoryName: string; score: number }[] | undefined;
     let matrix: number[] | undefined;
     try {
-      const seen = landmarker.detectForVideo(video, performance.now());
+      const seen = landmarker.detectForVideo(video, now);
       shapes = seen.faceBlendshapes?.[0]?.categories;
       matrix = seen.facialTransformationMatrixes?.[0]?.data;
     } catch (err) {
       console.error(err);
       return faceStop();
     }
+    // a slow device reads less often rather than falling behind: reading
+    // takes at most about half the page's time
+    const took = performance.now() - now;
+    wait = took > 25 ? took * 1.8 : READ_EVERY;
     if (!shapes) {
       if (Date.now() - started > 4000 && !seenFace) say("Can't see a face. Face the camera, in some light.");
-      shown = ease(shown, REST, 0.25);
-      turned = ease(turned, STILL, 0.25);
+      const k = 1 - Math.exp(-dt / 250);
+      shown = ease(shown, REST, k);
+      turned = ease(turned, STILL, k);
     } else {
       if (!seenFace) {
         seenFace = true;
-        say("Your avatar's following your face. Only its expression is sent, never a picture.");
+        say("Your avatar's following your face. Only numbers about it are sent, never a picture.");
       }
-      shown = ease(shown, fromShapes(Object.fromEntries(shapes.map((c) => [c.categoryName, c.score]))));
-      if (matrix) turned = ease(turned, poseFrom(matrix), 0.5);
+      const scores = Object.fromEntries(shapes.map((c) => [c.categoryName, c.score]));
+      rest.add(scores);
+      if (++readings % 15 === 0) restNow = rest.rest();
+      shown = steadyFace(fromShapes(scores, restNow), now / 1000);
+      if (matrix) {
+        const at = placed(matrix);
+        const k = home ? 1 - Math.exp(-dt / 1000 / HOME_OVER) : 1;
+        home = home ? ease(home, at, k) : { ...at };
+        turned = steadyPose(poseFrom(matrix, home), now / 1000);
+      }
     }
     drawAvatar(myName, shown, turned);
     void sendFace(shown, turned);
-  }, FACE_EVERY);
+  };
+  // each new camera frame where the browser says when there is one, the
+  // screen's frames where it doesn't
+  const schedule = (): void => {
+    if ("requestVideoFrameCallback" in video) video.requestVideoFrameCallback(read);
+    else requestAnimationFrame(read);
+  };
+  schedule();
   // the camera itself can stop (unplugged, taken by another app)
   for (const t of camera.getVideoTracks()) t.addEventListener("ended", () => faceOn && faceStop());
   stopFace = () => {
-    clearInterval(timer);
+    running = false;
     for (const t of camera.getTracks()) t.stop();
     landmarker.close();
     video.srcObject = null;
