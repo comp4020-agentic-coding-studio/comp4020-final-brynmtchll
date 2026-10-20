@@ -533,7 +533,10 @@ function pose(h: Head, e: Expression, p: Pose, gaze: { x: number; y: number }): 
 // lip dropping as the jaw opens, the whole mouth narrowing to a pucker. Each
 // lip is a tube along its curve, and the opening is filled between them.
 // Rebuilt only when the face has moved enough to see.
-function shapeMouth(h: Head, e: Expression): void {
+function shapeMouth(h: Head, given: Expression): void {
+  // a number that isn't one (from a bad reading, or arithmetic gone wrong)
+  // would take the lips' curve with it, and with it the frame
+  const e = Object.fromEntries(Object.entries(given).map(([k, v]) => [k, Number.isFinite(v) ? v : 0])) as Expression;
   const u = h.mouth.userData as { THREE: T; w: number; teeth: T; tongue: T; cat: boolean; full: boolean; key?: string };
   const key = [e.smile, e.frown, e.open, e.pucker, e.smirk, e.sneer, e.puff].map((v) => Math.round(v * 40)).join(",");
   if (u.key === key) return;
@@ -697,10 +700,11 @@ function frame(now: number): void {
     // its head's move on top of whatever else the head is doing
     let move = STILL;
     if (s.doing) {
-      const t = (now - s.doing.at) / EMOTE_FOR;
+      // (started by a click, its time can be a moment ahead of this frame's)
+      const t = Math.max(0, (now - s.doing.at) / EMOTE_FOR);
       if (t >= 1) s.doing = null;
       else {
-        const amount = Math.sin(Math.PI * Math.min(1, t * 1.6)) ** 0.7 * (t > 0.8 ? (1 - t) / 0.2 : 1);
+        const amount = Math.max(0, Math.sin(Math.PI * Math.min(1, t * 1.6))) ** 0.7 * (t > 0.8 ? (1 - t) / 0.2 : 1);
         for (const [key, v] of Object.entries(s.doing.face) as [keyof Expression, number][]) e[key] = e[key] + (v - e[key]) * amount;
         if (!calm) move = MOVES[s.doing.head]?.(t, amount) ?? STILL;
       }
