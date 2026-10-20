@@ -105,34 +105,32 @@ const messages = async (): Promise<Said[]> =>
 describe.skipIf(!writable)("the room", () => {
   it("remembers who you are when you come back", async () => {
     const p = await person();
-    expect(await p.page()).toContain(`${p.name} (you)`);
+    expect(await p.page()).toMatch(new RegExp(`class="spot mine" data-name="${p.name}"`));
   });
 
-  it("gives everyone a place of their own, the same on every page, each in their own colour", async () => {
+  it("gives everyone a card of their own in their own colour, yours apart from everyone else's", async () => {
     const [a, b] = [await person(), await person()];
-    await a.say({ words: [word("spot", 0)] });
-    const place = (page: string, name: string) =>
-      page.match(new RegExp(`data-name="${name}" style="--hue:(\\d+);--x:([\\d.]+);--y:([\\d.]+)"`))?.slice(1);
+    await a.say({ words: [word("card", 0)] });
+    const hue = (page: string, name: string) => page.match(new RegExp(`data-name="${name}" style="--hue:(\\d+)"`))?.[1];
     const [fromA, fromB] = [await a.page(), await b.page()];
     for (const [page, name] of [[fromA, a.name], [fromB, a.name], [fromB, b.name]]) {
-      expect(place(page, name), `${name}'s place`).toHaveLength(3);
+      expect(hue(page, name), `${name}'s card`).toBeDefined();
     }
-    expect(place(fromB, a.name)).toEqual(place(fromA, a.name));
-    // a different place and a different colour from the person before them
-    expect(place(fromB, b.name)!.slice(1)).not.toEqual(place(fromB, a.name)!.slice(1));
-    expect(place(fromB, b.name)![0]).not.toEqual(place(fromB, a.name)![0]);
+    // the same colour on every page, and a different one from the person before
+    expect(hue(fromB, a.name)).toEqual(hue(fromA, a.name));
+    expect(hue(fromB, b.name)).not.toEqual(hue(fromB, a.name));
+    // your own card is the one marked yours, and it isn't in everyone else's stack
+    expect(fromB).toMatch(new RegExp(`<ul class="mine-card"><li class="spot mine" data-name="${b.name}"`));
+    expect(fromB.slice(fromB.indexOf('id="stage"'))).not.toContain(`data-name="${b.name}"`);
   });
 
   it("gives someone a place on every open page the moment they join", async () => {
     const watcher = listen();
     await watcher.ready;
     const p = await person();
-    const e = (await watcher.waitFor(p.name)) as unknown as { type: string; name: string; hue: number; x: number; y: number };
+    const e = (await watcher.waitFor(p.name)) as unknown as { type: string; name: string; hue: number };
     expect(e).toMatchObject({ type: "joined", name: p.name });
-    for (const k of ["x", "y"] as const) {
-      expect(e[k]).toBeGreaterThanOrEqual(0);
-      expect(e[k]).toBeLessThanOrEqual(100);
-    }
+    expect(e.hue).toBeGreaterThanOrEqual(0);
     expect(e.hue).toBeLessThan(360);
     watcher.close();
   });
@@ -355,7 +353,7 @@ describe.skipIf(!writable)("the room", () => {
     });
     expect(res.status).toBe(403);
     expect(res.headers.get("set-cookie")).toBeNull();
-    expect(await p.page()).toContain(`${p.name} (you)`);
+    expect(await p.page()).toMatch(new RegExp(`class="spot mine" data-name="${p.name}"`));
   });
 
   it("won't let a new name pass as an existing one with invisible characters", async () => {

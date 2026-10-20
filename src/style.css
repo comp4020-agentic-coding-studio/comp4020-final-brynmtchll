@@ -1,278 +1,295 @@
+/* Said. A dark room by default, lit by the people in it: the surfaces stay
+   quiet so the only colour on screen is each person's, on their name and
+   their words. A light theme from the same palette for those who ask. */
+
 :root {
   /* every person's colour is a hue from their seat (voice.ts) at this
-     lightness and chroma, in OKLCH so every hue is equally light: chosen
-     per theme so the smallest text in any person's colour clears 4.5:1
-     against the background at every hue (hsl at a fixed lightness left
-     yellows at 2.6:1 on the light background) */
-  --person-l: 0.5;
+     lightness and chroma, in OKLCH so every hue is equally light: chosen per
+     theme so the smallest text in any person's colour clears 4.5:1 against
+     the cards at every hue (8.6:1 at worst on dark, 4.8:1 on light) */
+  --person-l: 0.8;
   --person-c: 0.13;
-  --bg: #f4f1ea;
-  --ink: #16140f;
-  --muted: #6b665b;
-  --rule: #d8d2c4;
-  --card: #fffdf8;
-  --live: #b3261e;
-  --accent: #1d4ed8;
-  color-scheme: light dark;
+
+  --bg: #0d1017;
+  --bg-glow: #182033;
+  --surface: #151a24;
+  --surface-2: #1c2230;
+  --line: #262d3d;
+  --ink: #eef1f7;
+  --muted: #8b93a7; /* 5.7:1 on surface */
+  --faint: #5d6579; /* 3:1: only for what doesn't need reading, like how long ago */
+  --accent: #8ab4ff;
+  --live: #ff6b6b;
+  --ok: #3ddc97;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -12px rgb(0 0 0 / 0.6);
+  --radius: 18px;
+  color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    --person-l: 0.78;
-    --person-c: 0.12;
-    --bg: #12110e;
-    --ink: #ece7dc;
-    --muted: #9c968a;
-    --rule: #2e2b25;
-    --card: #1b1a16;
-    --live: #f87171;
-    --accent: #93b4ff;
+    --person-l: 0.5;
+    --person-c: 0.14;
+    --bg: #eef1f6;
+    --bg-glow: #dfe6f3;
+    --surface: #ffffff;
+    --surface-2: #f5f7fb;
+    --line: #dde2ec;
+    --ink: #121621;
+    --muted: #5b6375;
+    --faint: #8b93a7;
+    --accent: #2f5fd0;
+    --live: #d33a3a;
+    --ok: #138a5a;
+    --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 12px 32px -16px rgb(16 24 40 / 0.18);
+    color-scheme: light;
   }
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
 body {
   margin: 0;
-  background: var(--bg);
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 70% -10%, var(--bg-glow), transparent 70%), var(--bg);
+  background-attachment: fixed;
   color: var(--ink);
-  font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 16px/1.5 "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 a { color: var(--accent); }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+h2 { margin: 0; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.fine { color: var(--muted); font-size: 0.875rem; margin: 8px 0 0; }
+kbd { font: 600 0.75rem ui-monospace, "SF Mono", Menlo, monospace; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--surface-2); color: var(--ink); }
 
-.top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--rule);
-}
-.name { font-weight: 800; font-size: 1.25rem; color: var(--ink); text-decoration: none; }
-.top nav { display: flex; gap: 16px; }
-
-main { max-width: 760px; margin: 0 auto; padding: 16px; display: grid; gap: 24px; }
-section { min-width: 0; }
-h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
-.intro h1 { margin: 0 0 4px; font-size: clamp(1.5rem, 5vw, 2.25rem); line-height: 1.15; }
-.lede { margin: 0; font-size: 1.125rem; }
-.fine { color: var(--muted); font-size: 0.875rem; margin: 12px 0 0; }
-.notice { background: color-mix(in srgb, var(--live) 12%, transparent); border-left: 3px solid var(--live); padding: 8px 12px; margin: 12px 0; }
+/* the bar along the top: the name, and the way to the README */
+.top { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; }
+.name { font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; color: var(--ink); text-decoration: none; }
+.name::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); vertical-align: 1px; }
+.top nav { display: flex; gap: 18px; font-size: 0.9375rem; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--ink); }
 
 button {
   font: inherit;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   padding: 10px 16px;
-  background: var(--bg);
+  min-height: 44px;
+  background: var(--surface-2);
   color: var(--ink);
   cursor: pointer;
-  min-height: 44px;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
 }
-button:disabled { opacity: 0.4; cursor: not-allowed; }
-button:not(:disabled):hover { background: var(--card); }
-button.quiet { border-color: transparent; color: var(--muted); }
+button:hover:not(:disabled) { border-color: var(--faint); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.speak { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; }
-.speak h2 { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 1.25rem; }
-.speak:not(section) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-.speak:not(section) .status { margin: 0; }
-.talk { font-weight: 700; padding: 14px 24px; border: 2px solid var(--ink); border-radius: 999px; }
-/* while on, the button's ring follows the live input level (0 to 1) */
-.talk.recording {
-  border-color: var(--live);
-  color: var(--live);
-  box-shadow: 0 0 0 calc(var(--level, 0) * 14px) color-mix(in srgb, var(--live) 25%, transparent);
-}
-.status { color: var(--muted); margin: 8px 0 0; min-height: 1.5em; }
+/* ---- the room: your queue | you | everyone else ---- */
 
-.join { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.join label { width: 100%; color: var(--muted); }
-.join input { flex: 1; min-width: 0; font: inherit; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); color: var(--ink); min-height: 44px; }
+main.room {
+  display: grid;
+  gap: 20px;
+  padding: 4px 20px 80px;
+  max-width: 1440px;
+  margin: 0 auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "me" "queue" "others" "record";
+}
+@media (min-width: 900px) {
+  main.room { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "me others" "queue others" "record record"; align-items: start; }
+}
+@media (min-width: 1200px) {
+  main.room.joined { grid-template-columns: 230px minmax(0, 1.3fr) minmax(0, 1fr); grid-template-areas: "queue me others" "record record record"; }
+}
+.queue { grid-area: queue; }
+.me { grid-area: me; }
+.others { grid-area: others; }
+.record-wrap { grid-area: record; }
+.queue, .join-card, .record-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 
-.room-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.live { margin: 0; font-size: 0.875rem; color: var(--muted); }
-.live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
-.live.on::before { background: #16a34a; }
-/* The stage: everyone scattered across it, each at the place their seat gives
-   them (--x, --y, 0-100, from voice.ts), in their colour, with no box around
-   them. Their words appear one at a time where they stand. It's tall enough
-   for a word to sit above each name without running into the next person's,
-   and on a phone it's taller than wide, as the screen is. */
-/* The stage breaks out of the page's reading column to the whole width of
-   the screen, so a room spreads out across it. */
-/* 100vw counts a classic scrollbar (Windows), which would scroll the page
-   sideways; the page's own width doesn't */
-html { overflow-x: clip; }
-.stage-wrap { width: 100vw; margin-inline: calc(50% - 50vw); padding-inline: 16px; }
-.stage-wrap > .room-head, .stage-wrap > #nobody, .stage-wrap > .speak { max-width: 728px; margin-inline: auto; }
-.stage-wrap > .speak { margin-block: 8px 0; }
+/* ---- a person's card: name, latest word large, the last few under it ---- */
 
-/* Once you've joined, your microphone and your queue sit in a dock along the
-   bottom of the screen, over the stage, so you can watch your words land
-   while you work on the next one; on a phone it's where your thumb is. The
-   page leaves room at its foot so nothing's hidden behind it. */
-.dock {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10;
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
-  border-top: 1px solid var(--rule);
-}
-.dock > * { max-width: 728px; margin-inline: auto; }
-.dock .speak { padding: 0; border: 0; background: none; }
-.dock .queue { margin: 0 auto 10px; }
-/* the stage ends above the dock, so nobody's place is behind it */
-body:has(.dock) .stage { height: clamp(360px, calc(100vh - 20rem), 900px); }
-body:has(.dock .queue:not([hidden])) .stage { height: clamp(300px, calc(100vh - 30rem), 900px); }
-body:has(.dock) main { padding-bottom: calc(var(--dock-h, 6rem) + 16px); }
-.stage {
-  position: relative;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  height: clamp(440px, 72vh, 900px);
-  overflow: hidden;
-}
-@media (max-width: 600px) {
-  .stage { height: clamp(520px, 75vh, 820px); }
-}
+.stage, .mine-card { list-style: none; margin: 0; padding: 0; }
+.stage { display: grid; gap: 12px; }
 .spot {
   --person: oklch(var(--person-l) var(--person-c) var(--hue));
-  position: absolute;
-  left: calc(var(--x) * 1%);
-  top: calc(var(--y) * 1%);
-  /* the point is where the name sits; the word rises above it, centred */
-  width: min(16rem, 46%);
-  translate: -50% -100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  text-align: center;
+  position: relative;
+  padding: 14px 18px 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: border-color 0.3s, box-shadow 0.3s;
 }
-/* placed within the part of the stage a word above the name can't hang off:
-   half a spot's width in from each side, a word's height down from the top */
-.spot {
-  --inset: min(8rem, 23%);
-  left: calc(var(--inset) + (100% - 2 * var(--inset)) * var(--x) / 100);
-  top: calc(5rem + (100% - 5.5rem) * var(--y) / 100);
-}
-.spot-name { font-size: 0.875rem; font-weight: 700; color: var(--person); opacity: 0.75; transition: opacity 0.3s; }
-.spot.speaking .spot-name { opacity: 1; }
-.spot-face { margin-right: 4px; font-size: 1.25em; }
+/* a thin bar of their colour down the side, bright while they speak */
+.spot::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--person); opacity: 0.3; transition: opacity 0.3s; }
+.spot.speaking { border-color: color-mix(in srgb, var(--person) 45%, var(--line)); box-shadow: var(--shadow), 0 0 40px -16px var(--person); }
+.spot.speaking::before { opacity: 1; }
+.spot-name { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.875rem; font-weight: 700; color: var(--person); }
+.spot-face { font-size: 1.375rem; line-height: 1; }
 .spot-face:empty { display: none; }
-.face-toggle { border-radius: 999px; padding: 10px 16px; }
-.face-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.spot-name .you { margin-left: auto; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .spot-word {
-  min-height: 1.4em;
+  margin: 6px 0 0;
+  min-height: 1.3em;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  font-size: clamp(1.75rem, 1.25rem + 2vw, 2.75rem);
+  align-items: center;
+  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.5rem);
   line-height: 1.2;
   color: var(--person);
   overflow-wrap: anywhere;
-  transition: opacity 0.6s;
+  transition: opacity 1.2s;
 }
-.spot-word .w { margin: 0; }
+.spot-word.arrive .w { animation: arrive 0.18s ease-out; }
+@keyframes arrive { from { opacity: 0; translate: 0 6px; } }
 /* the last word, once someone stops, lingers and then goes */
-.spot-word.fading { opacity: 0; transition: opacity 1.2s; }
+.spot-word.fading { opacity: 0; }
+/* someone who hasn't said anything yet */
+.spot-word:empty::before { content: "…"; color: var(--faint); font-weight: 300; }
+.spot-trail:empty { display: none; }
+/* the last few words before it, newest first, fading as they go back */
+.spot-trail { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 10px; min-height: 1.5em; font-size: 1rem; color: var(--muted); }
+.spot-trail li:nth-child(1) { opacity: 1; }
+.spot-trail li:nth-child(2) { opacity: 0.85; }
+.spot-trail li:nth-child(3) { opacity: 0.7; }
+.spot-trail li:nth-child(4) { opacity: 0.55; }
+.spot-trail li:nth-child(n+5) { opacity: 0.4; }
+.spot-trail .w { font-size: 1em; transform: none; animation: none; text-shadow: none; }
 
+/* yours, in the middle: bigger, with the controls under it */
+.me { display: grid; gap: 14px; align-content: start; }
+.mine-card .spot { padding: 22px 26px 24px 28px; min-height: 240px; display: flex; flex-direction: column; }
+.mine-card .spot-word { flex: 1; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
+.mine-card .spot-trail { font-size: 1.125rem; }
 
-/* How each word was said, drawn from the numbers voice.ts attaches to it (all
-   relative to the speaker's own voice in that phrase):
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.talk { display: inline-flex; align-items: center; gap: 10px; padding: 12px 22px; border-radius: 999px; background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.talk .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
+/* while on, the dot is live and the button's ring follows the input level */
+.talk.recording { background: var(--surface-2); color: var(--ink); border-color: var(--live); box-shadow: 0 0 0 calc(var(--level, 0) * 10px) color-mix(in srgb, var(--live) 22%, transparent); }
+.talk.recording .dot { background: var(--live); box-shadow: 0 0 10px var(--live); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+.face-toggle { border-radius: 999px; padding: 12px 18px; }
+.face-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.face-preview { width: 64px; height: 48px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); transform: scaleX(-1); }
+.face-preview[hidden] { display: none; }
+.status { margin: 0; color: var(--muted); font-size: 0.875rem; min-height: 1.4em; }
+
+/* the way in, for someone who hasn't joined */
+.join-card { padding: 24px; }
+.join-card h2 { font-size: 1.5rem; letter-spacing: -0.02em; text-transform: none; color: var(--ink); }
+.join { display: flex; gap: 8px; margin-top: 16px; }
+.join input { flex: 1; min-width: 0; font: inherit; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); min-height: 48px; }
+.join button { background: var(--accent); border-color: var(--accent); color: #0b1020; padding: 12px 22px; }
+.notice { background: color-mix(in srgb, var(--live) 14%, transparent); border-left: 3px solid var(--live); padding: 8px 12px; margin: 12px 0 0; border-radius: 8px; }
+
+/* everyone else, stacked */
+.others { display: grid; gap: 12px; align-content: start; }
+.others-head { display: flex; justify-content: space-between; align-items: center; padding: 0 2px; }
+.live { margin: 0; font-size: 0.8125rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.live.on::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+/* ---- your queue: what you've said that hasn't gone out, top first ---- */
+
+.queue {
+  --person: oklch(var(--person-l) var(--person-c) var(--hue, 250));
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (min-width: 1200px) {
+  .queue { position: sticky; top: 16px; max-height: calc(100vh - 32px); }
+}
+.queue-words { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; font-size: 1.0625rem; color: var(--muted); }
+/* below desktop the column becomes a strip, so it doesn't push the room off screen */
+@media (max-width: 1199px) {
+  .queue-words { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; max-height: 7em; }
+}
+.queue-words li { padding: 2px 4px; border-radius: 6px; }
+.queue-words li.next {
+  position: relative;
+  padding: 8px 12px 10px;
+  margin-bottom: 4px;
+  font-size: 1.75rem;
+  line-height: 1.15;
+  color: var(--person);
+  background: color-mix(in srgb, var(--person) 10%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--person) 30%, var(--line));
+  border-radius: 12px;
+  overflow: hidden;
+}
+/* a bar along its foot runs down to when it goes; it stops while you type */
+.queue-words li.next::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--person); transform-origin: left; animation: queue-wait var(--wait) linear forwards; }
+.queue-words li.next.held::after { animation: none; transform: scaleX(1); opacity: 0.4; }
+@keyframes queue-wait { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.queue .typing { font-style: normal; }
+.queue .caret { display: inline-block; width: 2px; height: 0.9em; margin-left: 2px; background: currentColor; vertical-align: -0.1em; animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.queue-empty { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.queue-empty[hidden] { display: none; }
+.queue-tools { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.queue-tools button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; min-height: 52px; font-size: 0.75rem; }
+@media (min-width: 1200px) {
+  .queue-tools { grid-template-columns: 1fr 1fr; margin-top: auto; }
+  .queue-tools button:last-child { grid-column: span 2; }
+  .queue-tools button { flex-direction: row; justify-content: flex-start; gap: 8px; padding: 8px 10px; min-height: 40px; font-size: 0.8125rem; }
+}
+
+/* ---- the brief record of what's been said lately ---- */
+
+.record-wrap { padding: 14px 18px; }
+.record-wrap summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.record-wrap summary::-webkit-details-marker { display: none; }
+.record-wrap summary::after { content: "▸"; color: var(--muted); transition: rotate 0.2s; }
+.record-wrap[open] summary::after { rotate: 90deg; }
+.record { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; font-size: 0.9375rem; }
+.record li { --person: oklch(var(--person-l) var(--person-c) var(--hue)); }
+.record strong { color: var(--person); margin-right: 6px; }
+.record time { color: var(--faint); font-size: 0.8125rem; margin-left: 6px; }
+
+/* ---- how it works, behind a "?" in the header ---- */
+
+.top nav { align-items: center; }
+.help { position: relative; }
+.help summary { list-style: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); font-weight: 700; font-size: 0.875rem; cursor: pointer; }
+.help summary::-webkit-details-marker { display: none; }
+.help[open] summary { color: var(--ink); border-color: var(--faint); }
+.help-body { position: absolute; right: 0; top: 42px; z-index: 20; width: min(360px, calc(100vw - 32px)); padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); font-size: 0.9375rem; color: var(--ink); }
+.help-body p { margin: 0 0 10px; }
+.help-body p:last-child { margin: 0; color: var(--muted); font-size: 0.875rem; }
+
+/* ---- how each word was said ----
+
+   From the numbers voice.ts attaches to it (all relative to the speaker's own
+   voice in that phrase):
      --loud     dB above or below their typical word: heavier, bigger, fainter
      --pitch    semitones above or below their typical pitch: sits higher or lower
      --gap      seconds of pause after it: more space
    A drawn-out word isn't styled here: voice.ts repeats one of its letters.
-
    How the whole phrase compared with how its speaker usually sounds (--u-loud,
-   --u-range, --u-pitch, each -1 to 1, unset until they've said a few things)
-   scales the lot: louder than usual is bigger, more animated spreads the
-   words' weights further apart. Higher than usual has no look of its own;
-   the note under it says so. */
-.words {
-  font-size: calc(clamp(1.25rem, 1rem + 1vw, 1.75rem) * (1 + var(--u-loud, 0) * 0.18));
-  line-height: 2.4;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
+   --u-range, each -1 to 1, unset until they've said a few things) scales the
+   lot: louder than usual is bigger, more animated spreads weights apart. */
+.words { font-size: calc(clamp(1.25rem, 1rem + 1vw, 1.75rem) * (1 + var(--u-loud, 0) * 0.18)); line-height: 2.4; margin: 0; overflow-wrap: anywhere; }
 .w {
   --spread: calc(1 + var(--u-range, 0) * 0.5);
   display: inline-block;
-  font-weight: clamp(200, calc(450 + var(--loud) * 40 * var(--spread)), 900);
+  font-weight: clamp(250, calc(500 + var(--loud) * 40 * var(--spread)), 900);
   font-size: clamp(0.8em, calc(1em + var(--loud) * 0.025em), 1.5em);
   /* no fainter than 0.6, which still reads at about 4.5:1 in both themes */
   opacity: clamp(0.6, calc(1 + var(--loud) * 0.05), 1);
   margin-right: min(calc(var(--gap) * 0.6em), 2em);
   transform: translateY(calc(var(--pitch) * -0.07em));
 }
-
-/* Your queue: the words you've said that haven't gone out yet, top first,
-   in your colour. The next one is big, with a bar under it that runs down
-   to when it goes; it stops while you're typing over it. */
-.queue {
-  max-width: 728px;
-  margin: 8px auto 0;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: var(--card);
-  border: 1px solid var(--rule);
-}
-.queue-words {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 14px;
-  font-size: 1.125rem;
-  color: var(--muted);
-}
-.queue { --person: oklch(var(--person-l) var(--person-c) var(--hue, 250)); }
-.queue-words li.next {
-  position: relative;
-  font-size: 2rem;
-  color: var(--person);
-  padding-bottom: 6px;
-}
-.queue-words li.next::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 3px;
-  width: 100%;
-  background: var(--person);
-  transform-origin: left;
-  animation: queue-wait var(--wait) linear forwards;
-}
-.queue-words li.next.held::after { animation: none; transform: scaleX(1); opacity: 0.4; }
-@keyframes queue-wait { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-.queue .typing { font-style: normal; }
-.queue .caret { display: inline-block; width: 2px; height: 0.9em; margin-left: 2px; background: currentColor; vertical-align: -0.1em; animation: caret 1s steps(1) infinite; }
-@keyframes caret { 50% { opacity: 0; } }
-.queue-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.queue-tools button { padding: 6px 10px; min-height: 40px; font-size: 0.875rem; }
-.queue-tools kbd { font: 600 0.75rem ui-monospace, Menlo, monospace; padding: 1px 5px; margin-right: 4px; border: 1px solid var(--rule); border-radius: 4px; }
-.queue .fine { margin-top: 8px; }
-@media (prefers-reduced-motion: reduce) {
-  .queue-words li.next::after, .queue .caret { animation: none; }
-}
+.spot-word .w { margin: 0; }
 
 /* Effects a speaker puts on a word in their queue (voice.ts EFFECTS). Each
    builds on how the word was said rather than replacing it. */
-.w.fx-impact {
-  font-weight: 900;
-  font-size: 1.5em;
-  letter-spacing: -0.01em;
-  animation: impact 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
-}
+.w.fx-impact { font-weight: 900; font-size: 1.5em; letter-spacing: -0.01em; animation: impact 0.45s cubic-bezier(0.2, 1.6, 0.4, 1); }
 @keyframes impact {
   0% { transform: scale(2.2); opacity: 0; }
   45% { transform: scale(0.94) translateX(-3px); opacity: 1; }
@@ -281,26 +298,20 @@ body:has(.dock) main { padding-bottom: calc(var(--dock-h, 6rem) + 16px); }
   100% { transform: none; }
 }
 .w.fx-whisper { font-weight: 300; font-size: 0.75em; font-style: italic; opacity: 0.6; letter-spacing: 0.04em; }
-.w.fx-glow {
-  text-shadow: 0 0 0.25em var(--person, currentColor), 0 0 0.6em var(--person, currentColor);
-  animation: glow 2.4s ease-in-out infinite alternate;
-}
+.w.fx-glow { text-shadow: 0 0 0.25em var(--person, currentColor), 0 0 0.6em var(--person, currentColor); animation: glow 2.4s ease-in-out infinite alternate; }
 @keyframes glow {
   from { text-shadow: 0 0 0.15em var(--person, currentColor), 0 0 0.4em var(--person, currentColor); }
   to { text-shadow: 0 0 0.3em var(--person, currentColor), 0 0 0.9em var(--person, currentColor); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow { animation: none; }
+  .w.fx-impact, .w.fx-glow, .spot-word.arrive .w, .talk.recording .dot, .queue-words li.next::after, .queue .caret { animation: none; }
 }
 
-/* The brief record under the stage: each person's lines in their colour,
-   small, newest last, so someone arriving can catch up at a glance. */
-.record { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.9375rem; }
-.record li { --person: oklch(var(--person-l) var(--person-c) var(--hue)); }
-.record strong { color: var(--person); margin-right: 4px; }
-.record time { color: var(--muted); font-size: 0.8125rem; margin-left: 4px; }
+/* ---- the README page ---- */
 
-.prose { max-width: 70ch; }
+main.prose { max-width: 70ch; margin: 0 auto; padding: 8px 20px 48px; }
+.prose h1 { font-size: 2.25rem; letter-spacing: -0.03em; line-height: 1.1; }
+.prose h2 { font-size: 1.25rem; letter-spacing: -0.01em; text-transform: none; color: var(--ink); margin: 2em 0 0.5em; }
 .prose img { max-width: 100%; }
-
-.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.prose blockquote { margin: 1em 0; padding: 10px 16px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 12px 12px 0; color: var(--muted); }
+.prose code { font: 0.875em ui-monospace, Menlo, monospace; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }

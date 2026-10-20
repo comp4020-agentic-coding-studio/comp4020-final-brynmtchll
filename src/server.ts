@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { marked } from "marked";
 import { openRoom, type Message } from "./db.ts";
 import { APP, readmePage, roomPage } from "./view.ts";
-import { clean, cleanVoice, hueOf, spotAt, wordHtml } from "./voice.ts";
+import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
 import { FACES, type Face } from "./face.ts";
 
 // Everyone's face as they last showed it, in memory: a face is for now, so
@@ -204,7 +204,6 @@ const event = (m: Message): string =>
     id: m.id,
     name: m.name,
     hue: hueOf(room.seatOf(m.name)),
-    ...spotAt(room.seatOf(m.name)),
     text: m.text,
     at: m.at,
     words: m.words.map((w, i) => ({
@@ -297,7 +296,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const joined = room.findPerson(id)!;
     log(joined, "joined", { seat: room.seatOf(joined.name) });
     const seat = room.seatOf(joined.name);
-    const arrival = `event: joined\ndata: ${JSON.stringify({ name: joined.name, hue: hueOf(seat), ...spotAt(seat) })}\n\n`;
+    const arrival = `event: joined\ndata: ${JSON.stringify({ name: joined.name, hue: hueOf(seat) })}\n\n`;
     for (const listener of listening) listener.write(arrival);
     // behind Fly's proxy the browser is on https, so the cookie can insist on it
     const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";

@@ -17,7 +17,7 @@ const heardAloud = document.getElementById("heard") as HTMLElement;
 // ---- the stage: each person's words, one at a time, in their spot ----
 
 type StageWord = { html: string; t: number; d: number; gap: number };
-type Phrase = { id: number; name: string; hue: number; x: number; y: number; text: string; at: number; words: StageWord[] };
+type Phrase = { id: number; name: string; hue: number; text: string; at: number; words: StageWord[] };
 
 // Each word appears when it was said, but stays up at least SHORTEST_WORD so
 // it can be read: fast speech has words a tenth of a second long, gone before
@@ -37,14 +37,25 @@ const still = matchMedia("(prefers-reduced-motion: reduce)");
 // A spot is "playing" while a phrase's words are going up, "lingering" while
 // its last word stays, and idle otherwise. A phrase that arrives while it
 // lingers starts at once, rather than waiting the linger out.
-type Spot = { el: HTMLElement; word: HTMLElement; queue: (Phrase & { arrived: number })[]; state: "idle" | "playing" | "lingering"; timers: number[] };
+type Spot = {
+  el: HTMLElement;
+  word: HTMLElement;
+  trail: HTMLOListElement;
+  queue: (Phrase & { arrived: number })[];
+  state: "idle" | "playing" | "lingering";
+  timers: number[];
+};
+// how many words before the latest each card keeps underneath it
+const TRAIL = 6;
 const spots = new Map<string, Spot>();
 
-// Someone who joined after the page loaded gets their place when they join.
+// Someone who joined after the page loaded gets a card when they join.
 // Past MOST_SPOTS, the one who's been quiet longest gives theirs up, so a
-// page never fills with names.
+// page never fills with names. Your own card is in the middle, not the stack.
 const MOST_SPOTS = 24;
-function spotFor(p: Pick<Phrase, "name" | "hue" | "x" | "y">): Spot {
+const cardOf = (name: string): HTMLElement | null =>
+  document.querySelector<HTMLElement>(`.spot[data-name="${CSS.escape(name)}"]`);
+function spotFor(p: Pick<Phrase, "name" | "hue">): Spot {
   const known = spots.get(p.name);
   if (known) {
     // most recently heard from last, so the quietest is first to go
@@ -52,9 +63,8 @@ function spotFor(p: Pick<Phrase, "name" | "hue" | "x" | "y">): Spot {
     spots.set(p.name, known);
     return known;
   }
-  let el = stage.querySelector<HTMLElement>(`.spot[data-name="${CSS.escape(p.name)}"]`);
+  let el = cardOf(p.name);
   if (!el) {
-    // the quietest idle place that isn't this page's own person's
     for (const [name, spot] of spots) {
       if (spots.size < MOST_SPOTS) break;
       if (spot.state !== "idle" || spot.el.classList.contains("mine")) continue;
@@ -65,23 +75,48 @@ function spotFor(p: Pick<Phrase, "name" | "hue" | "x" | "y">): Spot {
     el.className = "spot";
     el.dataset.name = p.name;
     el.style.setProperty("--hue", String(p.hue));
-    el.style.setProperty("--x", String(p.x));
-    el.style.setProperty("--y", String(p.y));
-    const word = document.createElement("span");
+    const head = document.createElement("p");
+    head.className = "spot-name";
+    const face = document.createElement("span");
+    face.className = "spot-face";
+    face.setAttribute("role", "img");
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = p.name;
+    head.append(face, who);
+    const word = document.createElement("p");
     word.className = "spot-word";
     word.setAttribute("aria-hidden", "true");
-    const label = document.createElement("span");
-    label.className = "spot-name";
-    label.textContent = p.name;
-    el.append(word, label);
+    const trail = document.createElement("ol");
+    trail.className = "spot-trail";
+    trail.setAttribute("aria-hidden", "true");
+    el.append(head, word, trail);
     stage.append(el);
     nobody.hidden = true;
   }
-  const spot: Spot = { el, word: el.querySelector(".spot-word")!, queue: [], state: "idle", timers: [] };
+  const spot: Spot = { el, word: el.querySelector(".spot-word")!, trail: el.querySelector(".spot-trail")!, queue: [], state: "idle", timers: [] };
   spots.set(p.name, spot);
   return spot;
 }
-for (const el of stage.querySelectorAll<HTMLElement>(".spot")) spotFor({ name: el.dataset.name!, hue: 0, x: 0, y: 0 });
+for (const el of document.querySelectorAll<HTMLElement>(".spot")) spotFor({ name: el.dataset.name!, hue: 0 });
+
+// The latest word goes up large; the one it replaces moves to the front of
+// the trail underneath, and the oldest falls off the end.
+function showWord(spot: Spot, html: string): void {
+  const before = spot.word.innerHTML.trim();
+  if (before && !spot.word.classList.contains("fading")) {
+    const li = document.createElement("li");
+    li.innerHTML = before;
+    spot.trail.prepend(li);
+    while (spot.trail.children.length > TRAIL) spot.trail.lastElementChild!.remove();
+  }
+  spot.word.classList.remove("fading");
+  spot.word.innerHTML = html;
+  // restart the arrival animation on the new word
+  spot.word.classList.remove("arrive");
+  void spot.word.offsetWidth;
+  spot.word.classList.add("arrive");
+}
 
 function play(spot: Spot): void {
   for (const t of spot.timers) clearTimeout(t);
@@ -96,10 +131,7 @@ function play(spot: Spot): void {
   spot.state = "playing";
   spot.el.classList.add("speaking");
   const later = (at: number, fn: () => void): void => void spot.timers.push(window.setTimeout(fn, at * 1000));
-  const show = (html: string): void => {
-    spot.word.classList.remove("fading");
-    spot.word.innerHTML = html;
-  };
+  const show = (html: string): void => showWord(spot, html);
   // `at` is when each word goes up on the page; `due` is when it was said,
   // pauses shortened. A word goes up when it was said or once the last has
   // had its SHORTEST_WORD, whichever is later. Someone who has asked for less
@@ -149,7 +181,7 @@ function remember(p: Phrase): void {
     li.dataset.until = String(p.at);
     li.style.setProperty("--hue", String(p.hue));
     const who = document.createElement("strong");
-    const face = stage.querySelector(`.spot[data-name="${CSS.escape(p.name)}"] .spot-face`)?.textContent;
+    const face = cardOf(p.name)?.querySelector(".spot-face")?.textContent;
     who.textContent = face ? `${face} ${p.name}` : p.name;
     const text = document.createElement("span");
     text.className = "said-text";
@@ -162,7 +194,14 @@ function remember(p: Phrase): void {
     while (lately.children.length > RECORD_LINES) lately.firstElementChild!.remove();
   }
   recordEmpty.hidden = true;
+  // a record that started empty (and so closed) opens once there's something in it
+  const wrap = lately.closest("details");
+  if (wrap && !wrap.dataset.touched) wrap.open = true;
 }
+// once someone opens or closes it themselves, it stays how they left it
+lately.closest("details")?.addEventListener("toggle", (e) => {
+  if (e.isTrusted) (e.currentTarget as HTMLElement).dataset.touched = "1";
+});
 setInterval(() => {
   for (const t of lately.querySelectorAll<HTMLTimeElement>("time[data-at]")) t.textContent = ago(Number(t.dataset.at));
 }, 15_000);
@@ -207,11 +246,11 @@ function connect(): void {
     wait = Math.min(wait * 2, 30_000);
   });
   stream.addEventListener("joined", (e) => {
-    spotFor(JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue" | "x" | "y">);
+    spotFor(JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue">);
   });
   stream.addEventListener("face", (e) => {
     const { name, face } = JSON.parse((e as MessageEvent<string>).data) as { name: string; face: Face | null };
-    const el = stage.querySelector(`.spot[data-name="${CSS.escape(name)}"] .spot-face`);
+    const el = cardOf(name)?.querySelector(".spot-face");
     if (el) {
       el.textContent = face ?? "";
       el.setAttribute("aria-label", face ? `${name}'s face` : "");
@@ -431,7 +470,7 @@ const queueEl = document.getElementById("queue") as HTMLElement | null;
 const queueWords = document.getElementById("queue-words") as HTMLOListElement | null;
 const mine = wordQueue();
 // the queue is in your colour, as your place is
-const myHue = stage.querySelector<HTMLElement>(".spot.mine")?.style.getPropertyValue("--hue");
+const myHue = document.querySelector<HTMLElement>(".spot.mine")?.style.getPropertyValue("--hue");
 if (queueEl && myHue) queueEl.style.setProperty("--hue", myHue);
 const voiceFor = new WeakMap<Word, Voice | null>();
 let hearing: Promise<void> = Promise.resolve(); // so phrases queue in order
@@ -446,7 +485,7 @@ if (dock) new ResizeObserver(() => document.body.style.setProperty("--dock-h", `
 function showQueue(): void {
   if (!queueEl || !queueWords) return;
   const ws = mine.words();
-  queueEl.hidden = ws.length === 0;
+  document.getElementById("queue-empty")!.hidden = ws.length > 0;
   const typing = mine.typing();
   queueWords.innerHTML = ws
     .map((w, i) => {
@@ -578,7 +617,7 @@ async function record(ctx: AudioContext): Promise<() => Promise<void>> {
 
 function showOn(state: boolean): void {
   talk!.disabled = false;
-  talk!.textContent = state ? "Turn off microphone" : "Turn on microphone";
+  talk!.querySelector(".label")!.textContent = state ? "Microphone on" : "Turn on microphone";
   talk!.setAttribute("aria-pressed", String(state));
   talk!.classList.toggle("recording", state);
 }
@@ -710,10 +749,12 @@ async function faceStart(): Promise<void> {
     faceButton!.disabled = false;
     return warn("Couldn't load the face reader. Check your connection and try again.");
   }
-  const video = document.createElement("video");
+  // the small preview by the controls, so you can see what it's reading
+  const video = (document.getElementById("face-preview") as HTMLVideoElement | null) ?? document.createElement("video");
   video.muted = true;
   video.playsInline = true;
   video.srcObject = camera;
+  video.hidden = false;
   try {
     await video.play();
   } catch {
@@ -723,6 +764,8 @@ async function faceStart(): Promise<void> {
     return warn("Couldn't start the camera. Try again.");
   }
   const read = faceReader();
+  const started = Date.now();
+  let seenFace = false;
   const timer = setInterval(() => {
     // a hidden page (a phone put away) isn't reading anyone's face
     if (document.hidden) {
@@ -734,16 +777,23 @@ async function faceStart(): Promise<void> {
     }
     if (video.readyState < 2) return;
     let face: Face | null;
+    let shapesSeen = false;
     try {
       const shapes = landmarker.detectForVideo(video, performance.now()).faceBlendshapes?.[0]?.categories;
+      shapesSeen = !!shapes;
+      if (!shapes && Date.now() - started > 4000 && !seenFace) say("Can't see a face. Face the camera, in some light.");
       face = read(shapes ? Object.fromEntries(shapes.map((c) => [c.categoryName, c.score])) : {});
     } catch (err) {
       console.error(err);
       return faceStop();
     }
+    if (!seenFace && shapesSeen) {
+      seenFace = true;
+      say("Face found. Smile, laugh, frown or look surprised; a neutral face shows nothing.");
+    }
     if (face !== currentFace) {
       currentFace = face;
-      const mine = stage.querySelector(".spot.mine .spot-face");
+      const mine = document.querySelector(".spot.mine .spot-face");
       if (mine) mine.textContent = face ?? "";
       void sendFace(face);
     } else if (face !== null && Date.now() - faceSentAt > FACE_AGAIN) {
@@ -757,11 +807,12 @@ async function faceStart(): Promise<void> {
     for (const t of camera.getTracks()) t.stop();
     landmarker.close();
     video.srcObject = null;
+    video.hidden = true;
   };
   faceOn = true;
   faceButton!.disabled = false;
   faceButton!.setAttribute("aria-pressed", "true");
-  faceButton!.textContent = "Stop showing my face";
+  faceButton!.querySelector(".label")!.textContent = "Face on";
 }
 
 function faceStop(): void {
@@ -769,11 +820,11 @@ function faceStop(): void {
   stopFace = undefined;
   faceOn = false;
   currentFace = null;
-  const mine = stage.querySelector(".spot.mine .spot-face");
+  const mine = document.querySelector(".spot.mine .spot-face");
   if (mine) mine.textContent = "";
   void sendFace(null);
   faceButton!.setAttribute("aria-pressed", "false");
-  faceButton!.textContent = "Show my face as an emoji";
+  faceButton!.querySelector(".label")!.textContent = "Show my face";
 }
 
 if (faceButton && "mediaDevices" in navigator) {
