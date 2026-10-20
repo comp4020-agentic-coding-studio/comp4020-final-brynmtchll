@@ -1270,6 +1270,46 @@ lookForm?.addEventListener("input", (e) => {
   radio.checked = true;
   changeLook();
 });
+// Saved looks: wear one (the form takes its choices and it's sent like any
+// change), or save how you look now to a slot.
+function wearLook(look: Record<string, string>): void {
+  for (const [k, v] of Object.entries(look)) {
+    let radio = lookForm?.querySelector<HTMLInputElement>(`input[name="${k}"][value="${CSS.escape(v)}"]`);
+    // a colour from the picker rather than a swatch
+    if (!radio) {
+      radio = lookForm?.querySelector<HTMLInputElement>(`input[name="${k}"][data-custom]`) ?? null;
+      if (radio) {
+        radio.value = v;
+        const picker = radio.closest("label")?.querySelector<HTMLInputElement>("input[type=color]");
+        if (picker) picker.value = v;
+      }
+    }
+    if (radio) radio.checked = true;
+  }
+  changeLook();
+}
+document.querySelector(".saved-looks")?.addEventListener("click", async (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-slot]");
+  if (!btn) return;
+  if (btn.classList.contains("wear") && btn.dataset.look) return wearLook(JSON.parse(btn.dataset.look));
+  if (!btn.classList.contains("keep")) return;
+  try {
+    const res = await fetch("/looks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slot: Number(btn.dataset.slot) }) });
+    if (!res.ok) return warn("Couldn't save that look. Try again.");
+    const { looks } = (await res.json()) as { looks: (Record<string, string> | null)[] };
+    const wear = btn.parentElement?.querySelector<HTMLButtonElement>(".wear");
+    const look = looks[Number(btn.dataset.slot)];
+    if (wear && look) {
+      wear.disabled = false;
+      wear.dataset.look = JSON.stringify(look);
+      wear.setAttribute("aria-label", `Wear saved look ${Number(btn.dataset.slot) + 1}`);
+      wear.innerHTML = avatarSvg(look as unknown as Look, REST, "");
+    }
+    say("Saved. Tap it to wear it again.");
+  } catch {
+    warn("Couldn't save that look. Check your connection.");
+  }
+});
 document.getElementById("surprise")?.addEventListener("click", () => {
   const look = randomLook();
   for (const [k, v] of Object.entries(look)) {

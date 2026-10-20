@@ -104,7 +104,7 @@ const SECTIONS: { label: string; parts: (Part | ColourPart)[] }[] = [
   { label: "Extras", parts: ["extra", "extraColour"] },
 ];
 const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing" };
-function lookPicker(look: Look): string {
+function lookPicker(look: Look, saved: (Look | null)[] = []): string {
   const isColour = (k: string): k is ColourPart => k in COLOURS;
   const row = (k: Part | ColourPart): string => {
     if (isColour(k)) {
@@ -118,8 +118,14 @@ function lookPicker(look: Look): string {
       .map((c) => `<label><input type="radio" name="${k}" value="${c.id}"${look[k] === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
       .join("")}</fieldset>`;
   };
+  // looks they've saved, to wear again in a tap (a flat face of each, from
+  // the look alone)
+  const slots = saved.map((l, i) =>
+    `<div class="saved-look"><button type="button" class="wear" data-slot="${i}"${l ? ` data-look="${esc(JSON.stringify(l))}"` : " disabled"} aria-label="${l ? `Wear saved look ${i + 1}` : `Slot ${i + 1} is empty`}">${l ? avatarSvg(l, REST, "") : `<span class="empty">${i + 1}</span>`}</button><button type="button" class="keep" data-slot="${i}" title="Save how you look now to slot ${i + 1}">Save</button></div>`,
+  ).join("");
   return `<details class="customise">
     <summary>Customise your avatar</summary>
+    ${slots ? `<div class="saved-looks" aria-label="Saved looks">${slots}</div>` : ""}
     <form id="look" class="look-form">
       <div class="look-tabs" role="tablist">${SECTIONS.map((sec, i) => `<label class="look-tab"><input type="radio" name="look-tab" value="${i}"${i === 0 ? " checked" : ""}><span>${sec.label}</span></label>`).join("")}<button type="button" class="surprise" id="surprise">Surprise me</button></div>
       ${SECTIONS.map((sec, i) => `<div class="look-section" data-section="${i}">${sec.parts.map(row).join("")}</div>`).join("")}
@@ -138,7 +144,8 @@ export function roomPage(
   lines: { name: string; seat: number; text: string; until: number; face?: string | null }[] = [],
   expressions: Map<string, Expression> = new Map(),
   lookOf: (name: string) => Look = () => lookFor(0),
-  threads: Map<string, { id: number; words: Word[]; at: number }[]> = new Map(),
+  threads: Map<string, Said[]> = new Map(),
+  saved: (Look | null)[] = [],
 ): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
   const myLook = me ? lookOf(me.name) : null;
@@ -171,7 +178,7 @@ export function roomPage(
           ${EFFECTS.map((fx) => `<button type="button" data-key="${fx.key}" title="${fx.label}" class="fx-button"><kbd>${fx.key}</kbd><span class="w fx-${fx.id}">${fx.label}</span></button>`).join("")}
           <button type="button" data-key="Backspace" title="Delete"><kbd>⌫</kbd><span>Delete</span></button>
         </div>
-        ${lookPicker(myLook!)}
+        ${lookPicker(myLook!, saved)}
       </section>`
     : `<section class="me join-card" aria-labelledby="join-h">
         <h2 id="join-h">Join the room</h2>

@@ -324,6 +324,28 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   }, 16_000);
 
+  it("keeps looks someone saves to wear again, theirs alone, shown to nobody else", async () => {
+    const [a, b] = [await person(), await person()];
+    const post = (cookie: string, path: string, body: unknown) =>
+      fetch(new URL(path, baseUrl), { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    await post(a.cookie, "/look", { look: { hair: "mohawk", hairColour: "#5aa9ff" } });
+    const saved = (await (await post(a.cookie, "/looks", { slot: 2, name: b.name })).json()) as { looks: ({ hair: string } | null)[] };
+    expect(saved.looks[2]).toMatchObject({ hair: "mohawk", hairColour: "#5aa9ff" });
+    expect(saved.looks[0]).toBeNull();
+    // their saved looks are on their own page, and not on anyone else's
+    // (what they're wearing is, as it always is)
+    expect(await a.page()).toContain('data-slot="2" data-look="');
+    expect(await b.page()).not.toMatch(/class="wear" data-slot="\d" data-look="[^"]*mohawk/);
+    // (and once they're wearing something else, nothing of the saved one
+    // shows anywhere but their own page: "mohawk" there is only the picker's)
+    await post(a.cookie, "/look", { look: { hair: "bob" } });
+    expect(await b.page()).not.toContain('&quot;hair&quot;:&quot;mohawk');
+    // a slot that isn't one
+    for (const slot of [4, -1, "1", 1.5]) expect((await post(a.cookie, "/looks", { slot })).status).toBe(400);
+    expect((await (await post(a.cookie, "/looks", { slot: 2, clear: true })).json()).looks[2]).toBeNull();
+    expect((await fetch(new URL("/looks", baseUrl), { method: "POST", body: JSON.stringify({ slot: 0 }) })).status).toBe(401);
+  });
+
   it("sends each phrase with its speaker's look, so a page that had no card for them can draw them as they are", async () => {
     const watcher = listen();
     await watcher.ready;

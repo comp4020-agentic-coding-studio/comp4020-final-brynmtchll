@@ -290,7 +290,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
-    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads()));
+    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads(), seated ? room.savedLooks(seated.id) : []));
   }
   if (req.method === "GET" && (url.pathname === "/readme/" || url.pathname === "/readme")) {
     return send(res, 200, "text/html; charset=utf-8", readme);
@@ -427,6 +427,23 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const payload = `event: look\ndata: ${JSON.stringify({ name: me.name, look })}\n\n`;
     for (const listener of listening) listener.write(payload);
     return json(res, 200, { look });
+  }
+
+  // A look someone saves to wear again, in one of their slots: the look
+  // they're wearing now, or none to clear it. Only their own slots (from the
+  // cookie); never shown to anyone else until they wear one.
+  if (req.method === "POST" && url.pathname === "/looks") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    let raw: { slot?: unknown; clear?: unknown } = {};
+    try {
+      raw = JSON.parse((await body(req, 256)) ?? "{}");
+    } catch {
+      return json(res, 400, { error: "not-a-slot" });
+    }
+    const looks = room.saveLook(me.id, raw.slot as number, raw.clear === true ? null : room.lookOf(me.name));
+    if (!looks) return json(res, 400, { error: "not-a-slot" });
+    log(me, raw.clear === true ? "unsaved" : "saved", { slot: raw.slot as number });
+    return json(res, 200, { looks });
   }
 
   // An emote (packs.ts EMOTES): someone's head does it, for everyone, for a

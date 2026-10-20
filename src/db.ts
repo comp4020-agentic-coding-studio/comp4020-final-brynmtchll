@@ -51,6 +51,22 @@ export function openRoom(file: string, now: () => number = Date.now) {
   const peopleColumns = (db.prepare("PRAGMA table_info(people)").all() as { name: string }[]).map((c) => c.name);
   if (!peopleColumns.includes("look")) db.exec("ALTER TABLE people ADD COLUMN look TEXT");
   const setLook = (id: string, look: Look): void => void db.prepare("UPDATE people SET look = ? WHERE id = ?").run(JSON.stringify(look), id);
+  // Looks someone has saved to wear again: SAVED_LOOKS slots, each a whole
+  // look or empty, as JSON. Only ever read or written for them.
+  const SAVED_LOOKS = 4;
+  if (!peopleColumns.includes("looks")) db.exec("ALTER TABLE people ADD COLUMN looks TEXT");
+  const savedLooks = (id: string): (Look | null)[] => {
+    const r = db.prepare("SELECT looks FROM people WHERE id = ?").get(id) as { looks: string | null } | undefined;
+    const kept = r?.looks ? (JSON.parse(r.looks) as unknown[]) : [];
+    return Array.from({ length: SAVED_LOOKS }, (_, i) => (kept[i] ? fullLook(kept[i]) : null));
+  };
+  const saveLook = (id: string, slot: number, look: Look | null): (Look | null)[] | null => {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= SAVED_LOOKS) return null;
+    const looks = savedLooks(id);
+    looks[slot] = look;
+    db.prepare("UPDATE people SET looks = ? WHERE id = ?").run(JSON.stringify(looks), id);
+    return looks;
+  };
   // someone who hasn't chosen has one from their seat
   const lookOf = (name: string): Look => {
     const r = db.prepare("SELECT look, rowid AS seat FROM people WHERE name = ?").get(name) as { look: string | null; seat: number } | undefined;
@@ -247,7 +263,7 @@ export function openRoom(file: string, now: () => number = Date.now) {
     return out.slice(-lines);
   }
 
-  return { findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, close: () => db.close() };
+  return { findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, savedLooks, saveLook, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;
