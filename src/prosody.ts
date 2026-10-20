@@ -286,6 +286,32 @@ export function holds(fs: Frame[]): Phrase[] {
   return out;
 }
 
+// Whisper sometimes gets stuck, writing the same few words over and over
+// until it runs out of room: from one short phrase on the live site it wrote
+// "a little bit of" twenty-five times, and a hundred words went out in three
+// seconds. Any run of one to six words repeated more than twice in a row is
+// cut back to one, and a phrase can't have more words than anyone could say
+// in it (MOST_PER_SECOND, with a little slack for a short one).
+const MOST_PER_SECOND = 6;
+export function unloop(ws: Timed[], seconds: number): Timed[] {
+  const key = (w: Timed): string => w.w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+  const out: Timed[] = [];
+  for (const w of ws) {
+    out.push(w);
+    for (let n = 1; n <= 6; n++) {
+      // the last n words, and the n before them, and the n before those
+      if (out.length < 3 * n) continue;
+      const tail = out.slice(-n).map(key).join(" ");
+      if (out.slice(-2 * n, -n).map(key).join(" ") === tail && out.slice(-3 * n, -2 * n).map(key).join(" ") === tail) {
+        // a third copy: drop the last two, and keep dropping copies as they come
+        out.splice(-2 * n);
+        break;
+      }
+    }
+  }
+  return out.slice(0, Math.ceil(Math.max(1, seconds) * MOST_PER_SECOND) + 2);
+}
+
 // What Whisper heard, as timed words. It labels sounds it can't make words of
 // ("[BLANK_AUDIO]", "(upbeat music)", "♪", "*laughs*") and those aren't
 // anything anyone said, so they're dropped, along with anything left with no
@@ -320,7 +346,7 @@ export function words(chunks: Heard[], seconds: number): Timed[] {
       out.push({ w, start: c.timestamp[0], end });
     }
   }
-  return out;
+  return unloop(out, seconds);
 }
 
 // The words with how each was said, or none at all if the clip has almost

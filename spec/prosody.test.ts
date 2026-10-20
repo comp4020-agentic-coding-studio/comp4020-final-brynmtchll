@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invented, measure, spoke, words as heard } from "../src/prosody.ts";
+import { invented, measure, spoke, unloop, words as heard } from "../src/prosody.ts";
 import { renderWords, type Word } from "../src/voice.ts";
 
 // What the app hears in a voice, checked on made-up audio whose loudness,
@@ -138,6 +138,17 @@ describe("hearing how a word was said", () => {
       c[i] = ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.0006 * flicker;
     }
     expect(spoke(c, RATE)).toBe(false);
+  });
+
+  it("cuts Whisper's loops back to one, so a stuck phrase doesn't flood the room", () => {
+    // what it wrote on the live site: "a little bit of" over and over
+    const said = (text: string) => text.split(" ").map((w, i) => ({ w, start: i * 0.1, end: i * 0.1 + 0.1 }));
+    const loop = said(`I said ${"a little bit of ".repeat(25)}more`);
+    expect(unloop(loop, 3).map((w) => w.w).join(" ")).toBe("I said a little bit of more");
+    // a word said twice, or a phrase repeated once, is how people talk
+    expect(unloop(said("no no I mean it, I mean it"), 3).map((w) => w.w).join(" ")).toBe("no no I mean it, I mean it");
+    // and no phrase has more words than anyone could say in it
+    expect(unloop(said(Array.from({ length: 80 }, (_, i) => `w${i}`).join(" ")), 2).length).toBeLessThanOrEqual(14);
   });
 
   it("drops Whisper's usual inventions when there's no voice under them, and keeps them said aloud", () => {
