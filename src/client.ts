@@ -3,8 +3,9 @@
 // speaker's spot, and, while someone's microphone is on, hears them a phrase
 // at a time and sends each phrase as it's heard.
 import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
-import { head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
-import { EFFECTS, randomLook, STYLES, type Look as PackLook } from "./packs.ts";
+import { emote as headEmote, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
+import { EFFECTS, emoteOf, EMOTES, randomLook, STYLES, type Look as PackLook } from "./packs.ts";
+import { reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
 import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
@@ -18,7 +19,7 @@ const heardAloud = document.getElementById("heard") as HTMLElement;
 // ---- the stage: each person's words, one at a time, in their spot ----
 
 type StageWord = { html: string; t: number; d: number; gap: number };
-type Phrase = { id: number; name: string; hue: number; look?: Look; text: string; at: number; words: StageWord[] };
+type Phrase = { id: number; name: string; hue: number; look?: Look; text: string; at: number; words: StageWord[]; reactions?: Record<number, Record<string, number>> };
 
 // Each word appears when it was said, but stays up at least SHORTEST_WORD so
 // it can be read: fast speech has words a tenth of a second long, gone before
@@ -269,7 +270,7 @@ const NEW_BUBBLE = 4000;
 const NEW_LINE = 0.7;
 const THREAD_BUBBLES = 40;
 const phraseHtml = (p: Phrase): string =>
-  `<span class="phrase" data-id="${p.id}">${p.words.map((w, i) => `<span class="tw" data-i="${i}">${w.html}</span>${w.gap > NEW_LINE && i + 1 < p.words.length ? "<br>" : " "}`).join("")}</span>`;
+  `<span class="phrase" data-id="${p.id}">${p.words.map((w, i) => `<span class="tw" data-i="${i}">${w.html}${reactionsHtml(p.reactions?.[i])}</span>${w.gap > NEW_LINE && i + 1 < p.words.length ? "<br>" : " "}`).join("")}</span>`;
 const said = new Map<number, Phrase>(); // each phrase on the page, by id, for redrawing
 
 function addToThread(spot: Spot, p: Phrase): void {
@@ -428,6 +429,15 @@ function connect(): void {
     arrive(p);
   });
   stream.addEventListener("edited", (e) => edited(JSON.parse((e as MessageEvent<string>).data)));
+  stream.addEventListener("emote", (e) => {
+    const { name, emote } = JSON.parse((e as MessageEvent<string>).data) as { name: string; emote: string };
+    // your own went off here already, as you asked for it
+    if (name !== myName) showEmote(name, emote);
+  });
+  stream.addEventListener("reacted", (e) => {
+    const { id, index, counts } = JSON.parse((e as MessageEvent<string>).data) as { id: number; index: number; counts: Record<string, number> };
+    showReactions(id, index, counts);
+  });
   stream.addEventListener("early", (e) => showDraft(JSON.parse((e as MessageEvent<string>).data) as Draft));
 }
 connect();
@@ -1171,6 +1181,7 @@ async function faceStart(): Promise<void> {
     }
     drawAvatar(myName, shown, turned);
     void sendFace(shown, turned);
+    if (shapes) faceEmotes(shown);
   };
   // each new camera frame where the browser says when there is one, the
   // screen's frames where it doesn't
@@ -1266,4 +1277,125 @@ document.getElementById("surprise")?.addEventListener("click", () => {
     if (radio) radio.checked = true;
   }
   changeLook();
+});
+
+// ---- emotes: your head does something, for everyone, for a moment ----
+
+// From the buttons, from Shift and a letter (packs.ts EMOTES says which),
+// and of its own accord when your face does one hard enough for long enough
+// (a big laugh). Shown here at once; everyone else's page hears of it.
+function showEmote(name: string, id: string): void {
+  const em = emoteOf(id);
+  const card = cardOf(name);
+  const slot = card?.querySelector<HTMLElement>(".spot-avatar");
+  if (!em || !card || !slot) return;
+  headEmote(slot, em);
+  if (!em.burst || still.matches) return;
+  // what rises from their head: a few of its emoji, floating up and away
+  for (let i = 0; i < 3; i++) {
+    const b = document.createElement("span");
+    b.className = "burst";
+    b.textContent = em.burst;
+    b.setAttribute("aria-hidden", "true");
+    b.style.setProperty("--dx", `${(i - 1) * 26 + (Math.random() - 0.5) * 14}px`);
+    b.style.animationDelay = `${i * 120}ms`;
+    slot.append(b);
+    b.addEventListener("animationend", () => b.remove());
+  }
+}
+let emotedAt = 0;
+async function sendEmote(id: string): Promise<void> {
+  if (!myName || Date.now() - emotedAt < 700) return;
+  emotedAt = Date.now();
+  showEmote(myName, id);
+  heardAloud.textContent = `You: ${emoteOf(id)?.label ?? id}`;
+  try {
+    const res = await fetch("/emote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ emote: id }) });
+    if (res.status === 429) warn("That's a lot of emotes. Give it a moment.");
+  } catch {
+    // a missed emote is no loss
+  }
+}
+document.querySelector(".emotes")?.addEventListener("click", (e) => {
+  const id = (e.target as HTMLElement).closest<HTMLElement>("[data-emote]")?.dataset.emote;
+  if (id) void sendEmote(id);
+});
+addEventListener("keydown", (e) => {
+  if (!myName || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || typing !== null) return;
+  if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]")) return;
+  const em = EMOTES.find((x) => x.key === e.key.toUpperCase());
+  if (!em) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  void sendEmote(em.id);
+}, { capture: true });
+// an emote your face does by itself: held for FACE_HOLD, then not again for
+// a while
+const FACE_HOLD = 500; // ms
+const autoEmotes = EMOTES.filter((em) => "when" in em);
+const heldSince = new Map<string, number>();
+function faceEmotes(e: Expression): void {
+  for (const em of autoEmotes) {
+    const when = (em as { when: Record<string, number> }).when;
+    const doing = Object.entries(when).every(([k, v]) => (e[k as keyof Expression] ?? 0) >= v);
+    if (!doing) {
+      heldSince.delete(em.id);
+      continue;
+    }
+    const since = heldSince.get(em.id) ?? Date.now();
+    heldSince.set(em.id, since);
+    if (Date.now() - since >= FACE_HOLD && Date.now() - emotedAt > 4000) {
+      heldSince.set(em.id, Infinity);
+      void sendEmote(em.id);
+    }
+  }
+}
+
+// ---- reactions: tap a word someone else said to react to it ----
+
+const picker = document.getElementById("react-picker");
+let reactingTo: { id: number; index: number } | null = null;
+function showReactions(id: number, index: number, counts: Record<string, number>): void {
+  const p = said.get(id);
+  if (p) (p.reactions ??= {})[index] = counts;
+  for (const w of document.querySelectorAll<HTMLElement>(`.phrase[data-id="${id}"] .tw[data-i="${index}"]`)) {
+    w.querySelector(".reacts")?.remove();
+    w.insertAdjacentHTML("beforeend", reactionsHtml(counts));
+    w.querySelector(".reacts")?.classList.add("pop");
+  }
+}
+function closePicker(): void {
+  picker?.setAttribute("hidden", "");
+  reactingTo = null;
+}
+stage.addEventListener("click", (e) => {
+  const w = (e.target as HTMLElement).closest<HTMLElement>(".tw");
+  const ph = w?.closest<HTMLElement>(".phrase");
+  if (!picker || !myName || !w || !ph || w.closest(".spot.mine")) return;
+  reactingTo = { id: Number(ph.dataset.id), index: Number(w.dataset.i) };
+  const r = w.getBoundingClientRect();
+  picker.hidden = false;
+  picker.style.left = `${Math.max(8, Math.min(innerWidth - picker.offsetWidth - 8, r.left + r.width / 2 - picker.offsetWidth / 2))}px`;
+  picker.style.top = `${r.top + scrollY - picker.offsetHeight - 8}px`;
+  (picker.querySelector("button") as HTMLButtonElement | null)?.focus();
+  e.stopPropagation();
+});
+picker?.addEventListener("click", async (e) => {
+  const reaction = (e.target as HTMLElement).closest<HTMLElement>("[data-reaction]")?.dataset.reaction;
+  const to = reactingTo;
+  closePicker();
+  if (!reaction || !to) return;
+  try {
+    const res = await fetch("/react", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...to, reaction }) });
+    if (res.ok) showReactions(to.id, to.index, ((await res.json()) as { counts: Record<string, number> }).counts);
+    else if (res.status === 429) warn("That's a lot of reactions. Give it a moment.");
+  } catch {
+    warn("Couldn't react. Check your connection.");
+  }
+});
+addEventListener("click", (e) => {
+  if (picker && !picker.hidden && !(e.target as HTMLElement).closest("#react-picker")) closePicker();
+});
+addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && picker && !picker.hidden) closePicker();
 });

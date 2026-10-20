@@ -1,7 +1,7 @@
 import type { Message, Person } from "./db.ts";
-import { ago, esc, hueOf, wordHtml, type Word } from "./voice.ts";
+import { ago, esc, hueOf, reactionsHtml, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
-import { COLOURS, EFFECTS, lookFor, PARTS, STYLES, type ColourPart, type Look, type Part } from "./packs.ts";
+import { COLOURS, EFFECTS, EMOTES, lookFor, PARTS, REACTIONS, STYLES, type ColourPart, type Look, type Part } from "./packs.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
@@ -48,18 +48,19 @@ const MESSAGES: Record<string, string> = {
 // message and its place in it) so its speaker can change it, live.
 const NEW_BUBBLE = 4000; // ms of silence between phrases that starts a new bubble
 const NEW_LINE = 0.7; // seconds of pause inside a phrase that starts a new line
-export function phraseHtml(m: { id: number; words: Word[] }): string {
+type Said = { id: number; words: Word[]; at: number; reactions?: Record<number, Record<string, number>> };
+export function phraseHtml(m: Said): string {
   return `<span class="phrase" data-id="${m.id}">${m.words
     .map((w, i) => {
       const gap = i + 1 < m.words.length ? m.words[i + 1].start - w.end : 0;
-      return `<span class="tw" data-i="${i}">${wordHtml(w)}</span>${gap > NEW_LINE ? "<br>" : " "}`;
+      return `<span class="tw" data-i="${i}">${wordHtml(w)}${reactionsHtml(m.reactions?.[i])}</span>${gap > NEW_LINE ? "<br>" : " "}`;
     })
     .join("")}</span>`;
 }
 // Newest first, top down: the latest bubble at the top, and in each bubble
 // the latest phrase at the top, so what was just said is always where the
 // eye lands, under the word being said.
-export function threadHtml(messages: { id: number; words: Word[]; at: number }[]): string {
+export function threadHtml(messages: Said[]): string {
   const bubbles: { at: number; phrases: string[] }[] = [];
   for (const m of messages) {
     const last = bubbles.at(-1);
@@ -147,6 +148,9 @@ export function roomPage(
     .map((p) => spotHtml(p.name, p.seat, lookOf(p.name), false, expressions.get(p.name), threads.get(p.name)))
     .join("");
 
+  // a word of someone else's, tapped, offers these
+  const picker = me ? `<div id="react-picker" class="react-picker" role="menu" hidden>${REACTIONS.map((r) => `<button type="button" role="menuitem" data-reaction="${r.id}" title="${r.label}">${r.emoji}</button>`).join("")}</div>` : "";
+
   // Joined: you on the left (your card, your controls, your avatar), everyone
   // else on the right, and what you've said that's about to go out along the
   // bottom. Not joined: a way in, and the room to watch.
@@ -159,6 +163,9 @@ export function roomPage(
           <video id="face-preview" class="face-preview" muted playsinline hidden></video>
         </div>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
+        <div class="emotes" role="toolbar" aria-label="Emotes: your head does it, for everyone">
+          ${EMOTES.map((em) => `<button type="button" data-emote="${em.id}" title="${em.label} (Shift+${em.key})"><span aria-hidden="true">${em.burst || (em.head === "nod" ? "🙂" : "🙅")}</span><span class="emote-label">${em.label}</span></button>`).join("")}
+        </div>
         <div class="edit-tools" role="toolbar" aria-label="Change the chosen word">
           <p class="edit-hint">Your latest word is chosen; tap any of yours to choose it instead. Type to change it, live, for everyone.</p>
           ${EFFECTS.map((fx) => `<button type="button" data-key="${fx.key}" title="${fx.label}" class="fx-button"><kbd>${fx.key}</kbd><span class="w fx-${fx.id}">${fx.label}</span></button>`).join("")}
@@ -182,7 +189,7 @@ export function roomPage(
     `${APP}: say it how you mean it`,
     `<main class="room${me ? " joined" : ""}">
   <h1 class="visually-hidden">${APP}: say it how you mean it</h1>
-  ${centre}
+  ${centre}${picker}
   <section class="others" aria-labelledby="others-h">
     <div class="others-head"><h2 id="others-h">In the room</h2><p id="live" class="live" role="status" hidden></p></div>
     <ul id="stage" class="stage">${others}</ul>

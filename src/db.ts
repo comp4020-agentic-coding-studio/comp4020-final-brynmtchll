@@ -87,6 +87,41 @@ export function openRoom(file: string, now: () => number = Date.now) {
     return { ok: true };
   }
 
+  // Reactions people put on words someone said: one each per word, whose
+  // reaction it is by person (never shown by id), which word, and which
+  // reaction (packs.ts REACTIONS). Gone with their message.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reactions (
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      word INTEGER NOT NULL,
+      person_id TEXT NOT NULL REFERENCES people(id),
+      reaction TEXT NOT NULL,
+      PRIMARY KEY (message_id, word, person_id)
+    );
+  `);
+  // A reaction from someone to a word, on, or off if it's the one they'd
+  // already put there; anyone who's joined may react to anyone's word (it's
+  // theirs, not a change to the word). Returns the word's reactions after,
+  // as counts, or null if there's no such word.
+  type Counts = Record<string, number>;
+  function react(personId: string, messageId: number, index: number, reaction: string): { counts: Counts; on: boolean; owner: string } | null {
+    const row = db.prepare("SELECT m.words, p.name FROM messages m JOIN people p ON p.id = m.person_id WHERE m.id = ?").get(messageId) as { words: string; name: string } | undefined;
+    if (!row || !Number.isInteger(index) || index < 0 || index >= (JSON.parse(row.words) as Word[]).length) return null;
+    const had = db.prepare("SELECT reaction FROM reactions WHERE message_id = ? AND word = ? AND person_id = ?").get(messageId, index, personId) as { reaction: string } | undefined;
+    const on = had?.reaction !== reaction;
+    if (on) db.prepare("INSERT OR REPLACE INTO reactions (message_id, word, person_id, reaction) VALUES (?, ?, ?, ?)").run(messageId, index, personId, reaction);
+    else db.prepare("DELETE FROM reactions WHERE message_id = ? AND word = ? AND person_id = ?").run(messageId, index, personId);
+    return { counts: reactionsOn(messageId)[index] ?? {}, on, owner: row.name };
+  }
+  // every word of a message's reactions, as counts, by word
+  function reactionsOn(messageId: number): Record<number, Counts> {
+    const out: Record<number, Counts> = {};
+    for (const r of db.prepare("SELECT word, reaction, COUNT(*) AS n FROM reactions WHERE message_id = ? GROUP BY word, reaction").all(messageId) as { word: number; reaction: string; n: number }[]) {
+      (out[r.word] ??= {})[r.reaction] = Number(r.n);
+    }
+    return out;
+  }
+
   // the voices of someone's last few messages, oldest first
   const voices = (personId: string): Voice[] =>
     (
@@ -116,8 +151,12 @@ export function openRoom(file: string, now: () => number = Date.now) {
     if (!row || row.person_id !== personId) return null;
     const words = JSON.parse(row.words) as Word[];
     if (!Number.isInteger(index) || index < 0 || index >= words.length) return null;
-    if (change.remove) words.splice(index, 1);
-    else {
+    if (change.remove) {
+      words.splice(index, 1);
+      // its reactions go with it, and the ones after it move up a word
+      db.prepare("DELETE FROM reactions WHERE message_id = ? AND word = ?").run(messageId, index);
+      db.prepare("UPDATE reactions SET word = word - 1 WHERE message_id = ? AND word > ?").run(messageId, index);
+    } else {
       const w = { ...words[index] };
       if (change.text !== undefined) {
         w.w = change.text;
@@ -139,9 +178,10 @@ export function openRoom(file: string, now: () => number = Date.now) {
   }
 
   // each person's last few messages, oldest first: what their thread shows
-  const threads = (perPerson = 30): Map<string, Message[]> => {
-    const out = new Map<string, Message[]>();
-    for (const m of (db.prepare(`${SELECT} ORDER BY m.id DESC LIMIT 600`).all() as MessageRow[]).map(toMessage)) {
+  // (with the reactions on each word)
+  const threads = (perPerson = 30): Map<string, (Message & { reactions: Record<number, Counts> })[]> => {
+    const out = new Map<string, (Message & { reactions: Record<number, Counts> })[]>();
+    for (const m of (db.prepare(`${SELECT} ORDER BY m.id DESC LIMIT 600`).all() as MessageRow[]).map((r) => ({ ...toMessage(r), reactions: reactionsOn(Number(r.id)) }))) {
       const list = out.get(m.name) ?? [];
       if (list.length < perPerson) list.unshift(m);
       out.set(m.name, list);
@@ -207,7 +247,7 @@ export function openRoom(file: string, now: () => number = Date.now) {
     return out.slice(-lines);
   }
 
-  return { findPerson, join, say, edit, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, close: () => db.close() };
+  return { findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;

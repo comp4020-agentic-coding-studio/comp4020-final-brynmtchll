@@ -32,6 +32,16 @@ A room where you speak instead of type, and everyone sees how you said it.
   one. Your face and voice are read in your browser and only numbers about
   them are sent: no picture, no sound. Where a browser can't draw 3D, it's
   a flat face instead.
+- Make it yours: build your avatar from face shapes, hair styles, brows,
+  eyes, noses, ears, beards and things to wear, in any colours (or "Surprise
+  me"); choose how your words are drawn (Comic, Neon, Handwritten,
+  Typewriter, Big feelings...); put one of eight effects on any of your
+  words (keys 1 to 8).
+- Emote: your head nods, laughs, sends hearts or a rain cloud, for everyone
+  (buttons, or Shift and a letter); a big laugh or a held gasp emotes by
+  itself. Tap someone else's word to react to it.
+- What's on offer is data, in `src/packs.ts`: adding a hair style, an
+  effect, a word style, an emote or a reaction is adding an entry there.
 - Under the stage, a short record of what's been said lately, each person's
   words joined into lines in their colour, so someone arriving can catch up.
 

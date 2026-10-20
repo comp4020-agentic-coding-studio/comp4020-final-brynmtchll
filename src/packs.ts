@@ -50,6 +50,43 @@ export type Style = (typeof STYLES)[number];
 export const stylesCss = (): string =>
   STYLES.map((st) => `.spot[data-words="${st.id}"]{--style-loud:${st.loud};--style-pitch:${st.pitch};--style-motion:${st.motion}}`).join("\n");
 
+// ---- moments ----
+
+// Emotes: something someone's head does, for everyone, for a moment, by the
+// key shown (with Shift, so they don't take a word's keys) or a button.
+// `head` is how head3d.ts moves the head, `burst` what rises from it (an
+// emoji, drawn by the page), `face` the expression it pulls meanwhile. Some
+// go off by themselves when the face does (`when`: an expression held).
+export const EMOTES = [
+  { id: "nod", label: "Nod", key: "N", head: "nod", burst: "", face: { smile: 0.3 } },
+  { id: "shake", label: "No", key: "X", head: "shake", burst: "", face: { frown: 0.5 } },
+  { id: "laugh", label: "Laugh", key: "L", head: "bounce", burst: "😂", face: { smile: 1, open: 0.7 }, when: { smile: 0.85, open: 0.5 } },
+  { id: "love", label: "Love", key: "H", head: "tilt", burst: "❤️", face: { smile: 0.8 } },
+  { id: "wow", label: "Wow", key: "W", head: "back", burst: "❗", face: { browUp: 1, open: 0.6, wide: 1 }, when: { browUp: 0.8, open: 0.55 } },
+  { id: "think", label: "Hmm", key: "T", head: "tilt", burst: "💭", face: { brow: 1, smirk: -0.4, lookY: 0.7, lookX: 0.5 } },
+  { id: "idea", label: "Idea", key: "I", head: "back", burst: "💡", face: { browUp: 0.7, smile: 0.6, wide: 0.6 } },
+  { id: "sad", label: "Sad", key: "S", head: "droop", burst: "🌧️", face: { frown: 1, browUp: 0.6 } },
+  { id: "angry", label: "Grr", key: "G", head: "shake", burst: "💢", face: { browDown: 1, frown: 0.7, sneer: 0.6 } },
+  { id: "party", label: "Party", key: "P", head: "bounce", burst: "🎉", face: { smile: 1, open: 0.4, wide: 0.5 } },
+  { id: "sleep", label: "Zzz", key: "Z", head: "droop", burst: "💤", face: { blink: 1 } },
+  { id: "cool", label: "Cool", key: "C", head: "tilt", burst: "😎", face: { smirk: 0.8, smile: 0.4 } },
+] as const satisfies readonly (Choice & { key: string; head: string; burst: string; face: Record<string, number>; when?: Record<string, number> })[];
+export type Emote = (typeof EMOTES)[number];
+export const emoteOf = (id: unknown): Emote | undefined => EMOTES.find((e) => e.id === id);
+
+// Reactions someone can put on someone else's word: one each per word,
+// shown on the word for everyone, kept with it.
+export const REACTIONS = [
+  { id: "love", label: "Love it", emoji: "❤️" },
+  { id: "laugh", label: "Funny", emoji: "😂" },
+  { id: "wow", label: "Wow", emoji: "😮" },
+  { id: "yes", label: "Agree", emoji: "👍" },
+  { id: "sad", label: "Aw", emoji: "😢" },
+  { id: "fire", label: "Fire", emoji: "🔥" },
+] as const satisfies readonly (Choice & { emoji: string })[];
+export type Reaction = (typeof REACTIONS)[number];
+export const reactionOf = (id: unknown): Reaction | undefined => REACTIONS.find((r) => r.id === id);
+
 // ---- the avatar ----
 
 // Parts that are one of a set of shapes. head3d.ts draws each by its id

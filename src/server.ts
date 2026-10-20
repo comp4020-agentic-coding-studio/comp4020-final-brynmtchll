@@ -9,7 +9,7 @@ import { APP, readmePage, roomPage } from "./view.ts";
 import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
 import { readExpression, type Face } from "./face.ts";
 import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./avatar.ts";
-import { cleanLook, isEffect, stylesCss, type Look } from "./packs.ts";
+import { cleanLook, emoteOf, isEffect, reactionOf, stylesCss, type Look } from "./packs.ts";
 
 // Everyone's expression as they last showed it, in memory: a face is for now,
 // so a restart forgetting it is right. A page showing a face sends it several
@@ -56,6 +56,8 @@ function limiter(most: number, over = 10_000): (personId: string) => boolean {
 const faceTooFast = limiter(300);
 const voiceTooFast = limiter(150);
 const earlyTooFast = limiter(120);
+const emoteTooFast = limiter(20);
+const reactTooFast = limiter(60);
 
 // style.css, and after it how each word style in packs.ts is drawn
 const css = Buffer.concat([readFileSync(new URL("./style.css", import.meta.url)), Buffer.from(`\n/* word styles, from packs.ts */\n${stylesCss()}\n`)]);
@@ -227,6 +229,7 @@ const phraseOf = (m: Message) => ({
     d: tenths(w.end - w.start),
     gap: tenths((m.words[i + 1]?.start ?? w.end) - w.end),
   })),
+  reactions: room.reactionsOn(m.id),
 });
 const event = (m: Message, draft?: number): string =>
   `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({
@@ -424,6 +427,51 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const payload = `event: look\ndata: ${JSON.stringify({ name: me.name, look })}\n\n`;
     for (const listener of listening) listener.write(payload);
     return json(res, 200, { look });
+  }
+
+  // An emote (packs.ts EMOTES): someone's head does it, for everyone, for a
+  // moment. Only one on offer, only their own head (who's doing it comes
+  // from the cookie), and not too often. Logged, not stored.
+  if (req.method === "POST" && url.pathname === "/emote") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (emoteTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let emote;
+    try {
+      emote = emoteOf((JSON.parse((await body(req, 256)) ?? "{}") as { emote?: unknown }).emote);
+    } catch {
+      emote = undefined;
+    }
+    if (!emote) {
+      log(me, "refused", { why: "not-an-emote" });
+      return json(res, 400, { error: "not-an-emote" });
+    }
+    log(me, "emote", { emote: emote.id });
+    const payload = `event: emote\ndata: ${JSON.stringify({ name: me.name, emote: emote.id })}\n\n`;
+    for (const listener of listening) listener.write(payload);
+    return json(res, 200, {});
+  }
+
+  // A reaction to a word (packs.ts REACTIONS), anyone's word: on, or off if
+  // it's the one this person already put there. The reaction is theirs (from
+  // the cookie), so it isn't a change to the word, and anyone who's joined
+  // may; only one on offer. Kept with the word, shown on it for everyone.
+  if (req.method === "POST" && url.pathname === "/react") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (reactTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let raw: { id?: unknown; index?: unknown; reaction?: unknown } = {};
+    try {
+      raw = JSON.parse((await body(req, 256)) ?? "{}");
+    } catch {
+      return json(res, 400, { error: "not-a-reaction" });
+    }
+    const reaction = reactionOf(raw.reaction);
+    if (!reaction || !Number.isSafeInteger(raw.id) || !Number.isSafeInteger(raw.index)) return json(res, 400, { error: "not-a-reaction" });
+    const result = room.react(me.id, raw.id as number, raw.index as number, reaction.id);
+    if (!result) return json(res, 404, { error: "no-such-word" });
+    log(me, result.on ? "reacted" : "unreacted", { to: result.owner, message: raw.id as number, word: raw.index as number, reaction: reaction.id });
+    const payload = `event: reacted\ndata: ${JSON.stringify({ id: raw.id, index: raw.index, counts: result.counts })}\n\n`;
+    for (const listener of listening) listener.write(payload);
+    return json(res, 200, { counts: result.counts, on: result.on });
   }
 
   // How loud someone is talking, as it happens: a few levels, 0 to 1, a

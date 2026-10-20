@@ -73,6 +73,9 @@ type Shown = {
   gaze: { x: number; y: number };
   glance: { x: number; y: number; at: number };
   blinkAt: number;
+  // an emote it's doing (packs.ts EMOTES): how its head moves, the face it
+  // pulls meanwhile, and since when
+  doing: { head: string; face: Partial<Expression>; at: number } | null;
   // what it was last drawn as, so a head that hasn't moved isn't drawn again
   drawn: string;
   open: number; // how open its mouth was last drawn
@@ -690,17 +693,30 @@ function frame(now: number): void {
       e.wide = Math.min(1, e.wide + s.accent.wide * a);
       e.smile = Math.min(1, e.smile + s.accent.smile * a);
     }
+    // an emote: its face blended in, rising and falling over EMOTE_FOR, and
+    // its head's move on top of whatever else the head is doing
+    let move = STILL;
+    if (s.doing) {
+      const t = (now - s.doing.at) / EMOTE_FOR;
+      if (t >= 1) s.doing = null;
+      else {
+        const amount = Math.sin(Math.PI * Math.min(1, t * 1.6)) ** 0.7 * (t > 0.8 ? (1 - t) / 0.2 : 1);
+        for (const [key, v] of Object.entries(s.doing.face) as [keyof Expression, number][]) e[key] = e[key] + (v - e[key]) * amount;
+        if (!calm) move = MOVES[s.doing.head]?.(t, amount) ?? STILL;
+      }
+    }
     // and a blink every few seconds, BLINK long
     if (!calm && now >= s.blinkAt) {
       if (now < s.blinkAt + BLINK) e.blink = 1;
       else s.blinkAt = now + 2200 + Math.random() * 4000;
     }
+    const moved = { ...s.pose, pitch: s.pose.pitch + move.pitch, yaw: s.pose.yaw + move.yaw, roll: s.pose.roll + move.roll, y: s.pose.y + move.y, z: s.pose.z + move.z };
     // drawn only if it's moved enough to see
-    const looks = [...Object.values(e), ...Object.values(s.pose), s.gaze.x, s.gaze.y].map((v) => Math.round(v * 200)).join(",");
+    const looks = [...Object.values(e), ...Object.values(moved), s.gaze.x, s.gaze.y].map((v) => Math.round(v * 200)).join(",");
     if (looks === s.drawn) continue;
     s.drawn = looks;
     s.open = e.open;
-    pose(s.head, e, s.pose, s.gaze);
+    pose(s.head, e, moved, s.gaze);
     // drawn at this card's size, in the corner of the shared canvas, and
     // copied from there
     const size = sizeFor(s.canvas);
@@ -764,6 +780,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       gaze: known?.gaze ?? { x: 0, y: 0 },
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
+      doing: known?.doing ?? null,
       drawn: "",
       open: 0,
     });
@@ -823,6 +840,24 @@ export function voiceLevels(slot: HTMLElement, levels: number[], now = false): v
     return;
   }
   s.voice.queue.push(...levels);
+}
+
+// How a head moves for each kind of emote, at time t (0 to 1 through it),
+// as much as `amount` (0 to 1, rising and falling).
+const EMOTE_FOR = 1600; // ms
+const MOVES: Record<string, (t: number, amount: number) => Pose> = {
+  nod: (t, a) => ({ ...STILL, pitch: Math.sin(t * Math.PI * 6) * 0.22 * a }),
+  shake: (t, a) => ({ ...STILL, yaw: Math.sin(t * Math.PI * 7) * 0.32 * a }),
+  bounce: (t, a) => ({ ...STILL, y: Math.abs(Math.sin(t * Math.PI * 5)) * 0.5 * a, roll: Math.sin(t * Math.PI * 5) * 0.08 * a }),
+  tilt: (_t, a) => ({ ...STILL, roll: 0.3 * a, pitch: -0.05 * a }),
+  back: (_t, a) => ({ ...STILL, pitch: -0.25 * a, z: -0.4 * a }),
+  droop: (_t, a) => ({ ...STILL, pitch: 0.32 * a, y: -0.25 * a, roll: 0.08 * a }),
+};
+
+// An emote, for a head: its head moves and its face is pulled for a moment.
+export function emote(slot: HTMLElement, e: { head: string; face: Partial<Expression> }): void {
+  const s = heads.get(slot);
+  if (s) s.doing = { head: e.head, face: e.face, at: performance.now() };
 }
 
 // Who's speaking now, so every other head can look at them; the last to

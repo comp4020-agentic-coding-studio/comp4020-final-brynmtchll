@@ -26,7 +26,7 @@ export type Word = {
 // What a speaker can do to a word while it waits in their queue, each on a
 // number key. style.css says what each looks like.
 // what effects there are lives in packs.ts
-import { isEffect, type Effect } from "./packs.ts";
+import { isEffect, REACTIONS, type Effect } from "./packs.ts";
 export type { Effect };
 
 // the whole message's voice, on absolute scales so messages can be compared
@@ -246,6 +246,15 @@ export function wordHtml(x: Word, gap = 0): string {
       ? esc(x.w)
       : `${esc(cs.slice(0, at + 1).join(""))}<span class="held" aria-hidden="true">${esc(cs[at].repeat(n))}</span>${esc(cs.slice(at + 1).join(""))}`;
   return `<span class="w${x.effect ? ` fx-${x.effect}` : ""}" style="${vars}">${shown}</span>`;
+}
+
+// The reactions on a word (packs.ts REACTIONS), as counts, as a little row
+// of emoji under it; nothing if there are none. Shared by the server's
+// drawing and the page's.
+export function reactionsHtml(counts: Record<string, number> | undefined): string {
+  const shown = REACTIONS.filter((r) => (counts?.[r.id] ?? 0) > 0);
+  if (!shown.length) return "";
+  return `<span class="reacts">${shown.map((r) => `<span class="react" title="${r.label}">${r.emoji}${counts![r.id] > 1 ? `<b>${counts![r.id]}</b>` : ""}</span>`).join("")}</span>`;
 }
 
 // A message's words as HTML, a pause hanging off the end of the word before

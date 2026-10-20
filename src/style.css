@@ -438,3 +438,36 @@ main.prose { max-width: 70ch; margin: 0 auto; padding: 8px 20px 48px; }
 .prose img { max-width: 100%; }
 .prose blockquote { margin: 1em 0; padding: 10px 16px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 12px 12px 0; color: var(--muted); }
 .prose code { font: 0.875em ui-monospace, Menlo, monospace; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+
+/* ---- emotes and reactions ---- */
+
+/* what rises from someone's head when they emote */
+.spot-avatar { position: relative; }
+.burst { position: absolute; left: 50%; top: 10%; font-size: 1.6em; pointer-events: none; animation: burst 1.5s ease-out forwards; z-index: 2; }
+.mine-card .burst { font-size: 2.2em; }
+@keyframes burst {
+  0% { transform: translate(-50%, 0) scale(0.4); opacity: 0; }
+  15% { transform: translate(calc(-50% + var(--dx) * 0.3), -10px) scale(1.15); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), -80px) scale(0.9); opacity: 0; }
+}
+.emotes { display: flex; flex-wrap: wrap; gap: 6px; }
+.emotes button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 0.8125rem; }
+.emotes button span:first-child { font-size: 1.1em; }
+@media (max-width: 600px) { .emote-label { display: none; } }
+
+/* reactions on a word: a little row of emoji just under it */
+.tw { position: relative; }
+.reacts { position: absolute; left: 50%; bottom: -1.05em; translate: -50% 0; display: inline-flex; gap: 2px; padding: 1px 5px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 0.78rem; line-height: 1.3; white-space: nowrap; pointer-events: none; z-index: 1; box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); }
+.reacts b { font-size: 0.9em; margin-left: 1px; color: var(--muted); }
+.reacts.pop { animation: pop 0.35s cubic-bezier(0.2, 1.8, 0.4, 1); }
+@keyframes pop { from { scale: 0.3; opacity: 0; } }
+/* a bubble with reactions in it leaves room for them */
+.bubble:has(.reacts) { padding-bottom: 14px; line-height: 2; }
+/* someone else's words can be tapped to react */
+.spot:not(.mine) .tw { cursor: pointer; border-radius: 4px; }
+.spot:not(.mine) .tw:hover { background: color-mix(in srgb, var(--person) 14%, transparent); }
+.react-picker { position: absolute; z-index: 20; display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.react-picker[hidden] { display: none; }
+.react-picker button { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; font-size: 1.25rem; cursor: pointer; transition: scale 0.12s; }
+.react-picker button:hover, .react-picker button:focus-visible { scale: 1.25; background: var(--surface-2); }
+@media (prefers-reduced-motion: reduce) { .burst, .reacts.pop { animation: none; } .burst { display: none; } }

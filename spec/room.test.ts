@@ -266,6 +266,54 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   });
 
+  it("shows someone's emote on every open page, only one on offer, and only as their own", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const [a, b] = [await person(), await person()];
+    const emote = (cookie: string, body: unknown) =>
+      fetch(new URL("/emote", baseUrl), { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect((await emote(a.cookie, { emote: "party", name: b.name })).status).toBe(200);
+    expect(await watcher.waitFor(`"emote":"party"`)).toMatchObject({ type: "emote", name: a.name });
+    for (const bad of [{ emote: "<script>" }, { emote: "explode" }, {}]) expect((await emote(a.cookie, bad)).status).toBe(400);
+    expect((await fetch(new URL("/emote", baseUrl), { method: "POST", body: JSON.stringify({ emote: "nod" }) })).status).toBe(401);
+    watcher.close();
+  });
+
+  it("lets anyone react to anyone's word, once each, and keeps it with the word, but doesn't change the word", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const [speaker, fan, other] = [await person(), await person(), await person()];
+    const stamp = `react${Date.now()}`;
+    await speaker.say({ words: [word("so", 0), word(stamp, 0.4)] });
+    const id = (await messages()).find((m) => m.text === `so ${stamp}`)!.id;
+    const react = (cookie: string, body: unknown) =>
+      fetch(new URL("/react", baseUrl), { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect((await react(fan.cookie, { id, index: 1, reaction: "fire" })).status).toBe(200);
+    expect(await watcher.waitFor(`"id":${id},"index":1,"counts":{"fire":1}`)).toMatchObject({ type: "reacted" });
+    expect((await react(other.cookie, { id, index: 1, reaction: "fire" })).status).toBe(200);
+    await watcher.waitFor(`"counts":{"fire":2}`);
+    // the same again takes it off; another swaps it
+    expect(await (await react(fan.cookie, { id, index: 1, reaction: "fire" })).json()).toMatchObject({ on: false, counts: { fire: 1 } });
+    expect(await (await react(fan.cookie, { id, index: 1, reaction: "love" })).json()).toMatchObject({ on: true, counts: { fire: 1, love: 1 } });
+    // the word is as it was
+    expect((await messages()).find((m) => m.id === id)?.text).toBe(`so ${stamp}`);
+    // and a page drawn later shows them
+    expect(await (await fetch(new URL("/", baseUrl))).text()).toMatch(new RegExp(`data-id="${id}"[\\s\\S]*?class="reacts"`));
+    // nothing not on offer, no word that isn't there, nobody who hasn't joined
+    expect((await react(fan.cookie, { id, index: 1, reaction: "poop" })).status).toBe(400);
+    expect((await react(fan.cookie, { id, index: 7, reaction: "love" })).status).toBe(404);
+    expect((await react(fan.cookie, { id: 99999999, index: 0, reaction: "love" })).status).toBe(404);
+    expect((await fetch(new URL("/react", baseUrl), { method: "POST", body: JSON.stringify({ id, index: 1, reaction: "love" }) })).status).toBe(401);
+    // a word deleted takes its reactions, and the ones after it move up: the
+    // reacted-to word is now the first, with its reactions (and the other's
+    // reaction, changed, still one each)
+    await react(other.cookie, { id, index: 0, reaction: "sad" });
+    await fetch(new URL("/edit", baseUrl), { method: "POST", headers: { cookie: speaker.cookie, "content-type": "application/json" }, body: JSON.stringify({ id, index: 0, remove: true }) });
+    const after = (await (await react(other.cookie, { id, index: 0, reaction: "wow" })).json()) as { counts: Record<string, number> };
+    expect(after.counts).toEqual({ love: 1, wow: 1 });
+    watcher.close();
+  });
+
   it("puts an avatar back to rest when its page stops sending, so nobody's left frozen mid-face", async () => {
     const watcher = listen();
     await watcher.ready;
