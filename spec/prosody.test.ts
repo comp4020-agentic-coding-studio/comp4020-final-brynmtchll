@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { measure, words as heard } from "../src/prosody.ts";
+import { invented, measure, spoke, words as heard } from "../src/prosody.ts";
 import { renderWords, type Word } from "../src/voice.ts";
 
 // What the app hears in a voice, checked on made-up audio whose loudness,
@@ -127,6 +127,23 @@ describe("hearing how a word was said", () => {
     const [x] = measure(c, RATE, [{ w: "secret", start: 0.1, end: 1.8 }]);
     expect(x.w).toBe("secret");
     expect(x.pitch).toBeNull();
+  });
+
+  it("doesn't send near-silence to Whisper, which writes \"Thank you.\" for it", () => {
+    // what the live site got for those: -70 dB, flickering, no voice
+    let seed = 9;
+    const c = new Float32Array(RATE * 2);
+    for (let i = 0; i < c.length; i++) {
+      const flicker = Math.max(0, Math.sin(2 * Math.PI * 4 * (i / RATE))) ** 2;
+      c[i] = ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.0006 * flicker;
+    }
+    expect(spoke(c, RATE)).toBe(false);
+  });
+
+  it("drops Whisper's usual inventions when there's no voice under them, and keeps them said aloud", () => {
+    for (const t of ["Thank you.", "you", "Thanks for watching!", "Mmm-hmm-hmm.", "Hmm."]) expect(invented(t, false), t).toBe(true);
+    expect(invented("Thank you.", true)).toBe(false);
+    expect(invented("thank you so much", false)).toBe(false);
   });
 
   it("hears nothing in a room's background noise either, hum and all", () => {

@@ -362,10 +362,28 @@ function contourOf(span: Frame[], n: number): (number | null)[] {
 // sentences nobody said ("My name is Bernoulli.", "We'll see you next
 // time."). A phrase needs ENOUGH_VOICE of clear voice, or a whisper's
 // syllable rhythm across most of it.
+// A whisper (no voice to find) is let through on its syllable rhythm, but
+// only if it's loud enough to be someone whispering into the microphone:
+// above WHISPER_FLOOR. Whisper wrote "Thank you." for phrases at -70 dB with
+// no pitch in them, digital near-silence whose flicker passed for rhythm;
+// a real whisper at a laptop measured -55 dB and up.
 const ENOUGH_VOICE = 30; // frames
+const WHISPER_FLOOR = -58; // dB, the phrase's loudest tenth
 export function spoke(pcm: Float32Array, rate: number): boolean {
   const fs = frames(pcm, rate);
-  return fs.filter((f) => f.clear).length >= ENOUGH_VOICE || (fs.length >= 50 && wobble(fs) >= SYLLABIC * 1.5);
+  if (fs.filter((f) => f.clear).length >= ENOUGH_VOICE) return true;
+  const loudest = percentile(fs.map((f) => f.db), 0.9);
+  return fs.length >= 50 && loudest > WHISPER_FLOOR && wobble(fs) >= SYLLABIC * 1.5;
+}
+
+// What Whisper writes for audio it can't make words of, when there's nothing
+// else in the phrase: its best-known inventions ("Thank you.", "Thanks for
+// watching!", "you"), and humming written as words ("Mmm-hmm-hmm."). A phrase
+// that's only these, with no voice under it, is dropped; said with a voice
+// ("thank you" in the middle of a sentence, or clearly voiced), it stays.
+const INVENTED = /^(thank you|thanks|thank you for watching|thanks for watching|you|bye|so|okay|mm+(-?h?m+)*|uh+|um+|hmm+)[.!?]*$/i;
+export function invented(text: string, voiced: boolean): boolean {
+  return !voiced && INVENTED.test(text.trim().replace(/\s+/g, " "));
 }
 
 export function hear(pcm: Float32Array, rate: number, timed: Timed[]): { words: Word[]; voice: Voice | null } {

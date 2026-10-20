@@ -4,7 +4,7 @@
 // at a time and sends each phrase as it's heard.
 import { faceReader, type Face } from "./face.ts";
 import { phraser, type Phraser } from "./phrases.ts";
-import { hear, spoke, words, type Heard } from "./prosody.ts";
+import { hear, invented, spoke, words, type Heard } from "./prosody.ts";
 import { queue as wordQueue } from "./queue.ts";
 import { ago, wordHtml, type Voice, type Word } from "./voice.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
@@ -406,6 +406,10 @@ function send(pcm: Float32Array): void {
     try {
       const result = hear(pcm, RATE, words(await heard, pcm.length / RATE));
       if (result.words.length === 0) return;
+      // Whisper's inventions for a breath or the room ("Thank you."): a
+      // phrase that's only that, with no voice under it, is dropped
+      const voiced = result.voice?.pitch != null && result.words.some((w) => w.pitch !== null);
+      if (invented(result.words.map((w) => w.w).join(" "), voiced)) return;
       // the phrase's voice goes with its first word, for the usual-voice
       // comparison; the words keep their own timing within it
       voiceFor.set(result.words[0], result.voice);
