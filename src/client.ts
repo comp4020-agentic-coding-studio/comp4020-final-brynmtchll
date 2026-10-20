@@ -221,10 +221,11 @@ function arrive(p: Phrase): void {
 
 // ---- each person's thread: what they've said lately, as text messages ----
 
-// A phrase joins its speaker's last bubble if it came soon after it, or
+// A phrase joins its speaker's latest bubble if it came soon after it, or
 // starts a new one; a pause inside it breaks the line, as in the server's
-// drawing (view.ts threadHtml). The thread keeps to the bottom as it grows,
-// unless someone has scrolled back to read.
+// drawing (view.ts threadHtml). Newest first: a new bubble goes at the top,
+// and a new phrase at the top of its bubble. The thread keeps to the top as
+// it grows, unless someone has scrolled down to read back.
 const NEW_BUBBLE = 4000;
 const NEW_LINE = 0.7;
 const THREAD_BUBBLES = 40;
@@ -236,19 +237,19 @@ function addToThread(spot: Spot, p: Phrase): void {
   const thread = spot.el.querySelector<HTMLOListElement>(".thread");
   if (!thread || thread.querySelector(`.phrase[data-id="${p.id}"]`)) return;
   said.set(p.id, p);
-  const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
-  const last = thread.lastElementChild as HTMLElement | null;
-  if (last && p.at - Number(last.dataset.at) < NEW_BUBBLE) {
-    last.insertAdjacentHTML("beforeend", `<br>${phraseHtml(p)}`);
+  const atTop = thread.scrollTop < 40;
+  const latest = thread.firstElementChild as HTMLElement | null;
+  if (latest && p.at - Number(latest.dataset.at) < NEW_BUBBLE) {
+    latest.insertAdjacentHTML("afterbegin", `${phraseHtml(p)}<br>`);
   } else {
     const li = document.createElement("li");
     li.className = "bubble";
     li.innerHTML = phraseHtml(p);
-    thread.append(li);
-    while (thread.children.length > THREAD_BUBBLES) thread.firstElementChild!.remove();
+    thread.prepend(li);
+    while (thread.children.length > THREAD_BUBBLES) thread.lastElementChild!.remove();
   }
-  (thread.lastElementChild as HTMLElement).dataset.at = String(p.at);
-  if (atBottom) thread.scrollTop = thread.scrollHeight;
+  (thread.firstElementChild as HTMLElement).dataset.at = String(p.at);
+  if (atTop) thread.scrollTop = 0;
 }
 
 // a phrase changed by its speaker, drawn again in place, everywhere it is
@@ -262,8 +263,10 @@ function redrawPhrase(id: number): void {
 function edited(p: Phrase | { id: number; removed: true }): void {
   if ("removed" in p) {
     const el = document.querySelector(`.phrase[data-id="${p.id}"]`);
+    const next = el?.nextSibling;
     const prev = el?.previousSibling;
-    if (prev?.nodeName === "BR") prev.remove();
+    if (next?.nodeName === "BR") next.remove();
+    else if (prev?.nodeName === "BR") prev.remove();
     const bubble = el?.closest(".bubble");
     el?.remove();
     if (bubble && !bubble.querySelector(".phrase")) bubble.remove();
@@ -290,7 +293,7 @@ for (const el of document.querySelectorAll<HTMLElement>(".thread .phrase")) {
     words: tws.map((t) => ({ html: t.innerHTML, t: 0, d: 0, gap: t.nextElementSibling?.nodeName === "BR" ? 1 : 0 })),
   });
 }
-for (const thread of document.querySelectorAll<HTMLOListElement>(".thread")) thread.scrollTop = thread.scrollHeight;
+for (const thread of document.querySelectorAll<HTMLOListElement>(".thread")) thread.scrollTop = 0;
 
 
 // ---- live: every phrase, as it's said ----
@@ -673,7 +676,7 @@ document.querySelector(".edit-tools")?.addEventListener("click", (e) => {
 });
 // your latest word starts out chosen
 {
-  const last = myThread()?.querySelector<HTMLElement>(".bubble:last-child .phrase:last-of-type");
+  const last = myThread()?.querySelector<HTMLElement>(".bubble:first-child .phrase");
   const n = last?.querySelectorAll(".tw").length ?? 0;
   if (last && n) choose(Number(last.dataset.id), n - 1, true);
 }
@@ -685,7 +688,7 @@ myThread()?.addEventListener("click", (e) => {
   if (!w || !ph) return;
   const [id, index] = [Number(ph.dataset.id), Number(w.dataset.i)];
   if (chosen?.id === id && chosen.index === index && !followLatest) {
-    const last = myThread()?.querySelector<HTMLElement>(".phrase:last-of-type");
+    const last = myThread()?.querySelector<HTMLElement>(".bubble:first-child .phrase");
     const lastIndex = last ? last.querySelectorAll(".tw").length - 1 : -1;
     if (last && lastIndex >= 0) choose(Number(last.dataset.id), lastIndex, true);
   } else choose(id, index);

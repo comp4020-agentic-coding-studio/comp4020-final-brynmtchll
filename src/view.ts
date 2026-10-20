@@ -55,16 +55,22 @@ export function phraseHtml(m: { id: number; words: Word[] }): string {
     })
     .join("")}</span>`;
 }
+// Newest first, top down: the latest bubble at the top, and in each bubble
+// the latest phrase at the top, so what was just said is always where the
+// eye lands, under the word being said.
 export function threadHtml(messages: { id: number; words: Word[]; at: number }[]): string {
-  let out = "";
-  let last = -Infinity;
+  const bubbles: { at: number; phrases: string[] }[] = [];
   for (const m of messages) {
-    if (m.at - last > NEW_BUBBLE) out += `${out ? "</li>" : ""}<li class="bubble" data-at="${m.at}">`;
-    else out += "<br>";
-    out += phraseHtml(m);
-    last = m.at;
+    const last = bubbles.at(-1);
+    if (last && m.at - last.at <= NEW_BUBBLE) {
+      last.phrases.unshift(phraseHtml(m));
+      last.at = m.at;
+    } else bubbles.push({ at: m.at, phrases: [phraseHtml(m)] });
   }
-  return out ? `${out}</li>` : "";
+  return bubbles
+    .reverse()
+    .map((b) => `<li class="bubble" data-at="${b.at}">${b.phrases.join("<br>")}</li>`)
+    .join("");
 }
 
 // A person's card: their avatar (pulling the expression they're pulling, if
