@@ -4,7 +4,9 @@
 // what's sent) and the browser (which redraws it as expressions arrive).
 //
 // Nothing about a face leaves its owner's browser but the seven numbers in
-// Expression, a few times a second while they've asked for it: no picture.
+// Expression and the three in Pose, a few times a second while they've asked
+// for it: no picture. head3d.ts draws the same face as a 3D head; this flat
+// one is what the server draws into the page, and stays where there's no WebGL.
 
 // How the face is set, each 0 to 1, from MediaPipe's expression scores.
 export type Expression = {
@@ -55,6 +57,31 @@ export function cleanLook(input: unknown): Look | null {
     if (!(LOOKS[k] as readonly unknown[]).includes(l[k])) return null;
   }
   return { skin: l.skin, eyes: l.eyes, mouth: l.mouth, extra: l.extra } as Look;
+}
+
+// Which way someone's head is turned, in radians, as drawn: nodding (pitch,
+// + is chin down), shaking (yaw, + turns the nose to the right of the screen)
+// and tilting (roll, + is anticlockwise). Drawn as in a mirror, the way the
+// camera preview shows you, so your avatar turns the way you see yourself
+// turn. Three numbers, sent with an expression, kept within a head's reach.
+export type Pose = { pitch: number; yaw: number; roll: number };
+export const STILL: Pose = { pitch: 0, yaw: 0, roll: 0 };
+const REACH: Pose = { pitch: 0.5, yaw: 0.7, roll: 0.5 };
+const within = (n: unknown, reach: number): number => (typeof n === "number" && Number.isFinite(n) ? Math.min(reach, Math.max(-reach, n)) : 0);
+
+// a head turn as sent, as three numbers and nothing else, or null if it isn't one
+export function cleanPose(input: unknown): Pose | null {
+  if (typeof input !== "object" || input === null) return null;
+  const p = input as Record<string, unknown>;
+  return { pitch: round2(within(p.pitch, REACH.pitch)), yaw: round2(within(p.yaw, REACH.yaw)), roll: round2(within(p.roll, REACH.roll)) };
+}
+
+// MediaPipe's facial transformation matrix (4 by 4, a column at a time) as a
+// Pose: its rotation taken apart in the order three.js puts one back
+// together (x, then y, then z), then mirrored (a mirror leaves a nod as it
+// is and turns a shake or a tilt the other way).
+export function poseFrom(m: ArrayLike<number>): Pose {
+  return cleanPose({ pitch: Math.atan2(-m[9], m[10]), yaw: -Math.asin(Math.min(1, Math.max(-1, m[8]))), roll: -Math.atan2(-m[4], m[0]) })!;
 }
 
 // MediaPipe's expression scores (blend shapes) as an Expression. Its scores

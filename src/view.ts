@@ -11,8 +11,8 @@ const HELP = `<details class="help">
   <summary aria-label="How it works">?</summary>
   <div class="help-body">
     <p>Turn your microphone on and talk. Your words appear for everyone as you say them: louder is heavier, higher sits higher, drawn-out sounds repeat (sooo).</p>
-    <p>Before each word goes out you can type over it, delete it, or press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for Impact, Whisper or Glow.</p>
-    <p>Show your face and it's an emoji by your name. Your voice and face are read in this browser; only words, how they were said, and an emoji leave it. No recording or picture is kept anywhere.</p>
+    <p>Tap any of your words (your latest is chosen already) to type over it, delete it, or press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for Impact, Whisper or Glow, live, for everyone.</p>
+    <p>Show your face and your avatar pulls the faces you pull and turns as you turn. Your voice and face are read in this browser; only words, how they were said, and a handful of numbers about your face leave it. No recording or picture is kept anywhere.</p>
   </div>
 </details>`;
 

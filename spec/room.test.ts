@@ -233,6 +233,20 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   });
 
+  it("turns someone's avatar the way their head is turned, as three numbers within a head's reach", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    expect((await sendFace(p.cookie, { e: grin, pose: { pitch: 0.1, yaw: -4, roll: 0.2, picture: "data:image/png;base64,AAAA" } })).status).toBe(200);
+    const turned = (await watcher.waitFor(`"name":"${p.name}","e":{"smile":0.9`)) as unknown as { pose: unknown };
+    expect(turned.pose).toEqual({ pitch: 0.1, yaw: -0.7, roll: 0.2 });
+    expect((await sendFace(p.cookie, { e: grin, pose: "a picture" })).status).toBe(400);
+    // a face put away isn't left turned
+    await sendFace(p.cookie, { e: null, pose: { pitch: 0.3, yaw: 0, roll: 0 } });
+    expect((await watcher.waitFor(`"name":"${p.name}","e":{"smile":0,`)) as unknown as { pose: unknown }).toMatchObject({ pose: null });
+    watcher.close();
+  });
+
   it("puts an avatar back to rest when its page stops sending, so nobody's left frozen mid-face", async () => {
     const watcher = listen();
     await watcher.ready;

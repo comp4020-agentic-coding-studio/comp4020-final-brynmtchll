@@ -134,6 +134,10 @@ main.room {
 .spot-head { display: flex; align-items: center; gap: 10px; }
 .spot-avatar { flex: none; width: 52px; height: 52px; display: block; }
 .spot-avatar .avatar { width: 100%; height: 100%; display: block; filter: drop-shadow(0 3px 6px rgb(0 0 0 / 0.3)); }
+/* a 3D head fills its frame (a hat's brim reaches the edges), so it's given
+   a little more room than the flat face */
+.spot:has(.head3d) .spot-avatar { width: 68px; height: 68px; margin: -6px 0 -4px -6px; }
+.mine-card .spot:has(.head3d) .spot-avatar { width: 120px; height: 120px; margin: -14px 0 -10px -12px; }
 .spot-name { flex: 1; display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.9375rem; font-weight: 700; color: var(--person); }
 .spot-name .you { margin-left: auto; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .spot-word {

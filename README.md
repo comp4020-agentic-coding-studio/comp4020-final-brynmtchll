@@ -11,16 +11,23 @@ A room where you speak instead of type, and everyone sees how you said it.
   colour, which stays put for everyone.
 - Turn your microphone on and talk, for as long as you like. Your speech is
   turned into words in your own browser. No audio is sent or kept anywhere.
-- Your words wait briefly in a queue on your own screen, then go out at the
-  pace you said them. While they wait you can type over the next one (it
-  keeps how you said it), delete it, or press 1, 2 or 3 to make it Impact,
-  Whisper or Glow.
 - Everyone sees your words appear one at a time in your place, as you said
-  them. Louder words are heavier, higher ones sit higher, and drawn-out sounds
-  repeat their letters ("sooo"). Your last word lingers, then fades.
-- Turn on "Show my face as an emoji" and your expression is read in your
-  browser and shown as one of six emoji by your name (😀 😂 😮 😠 😢 😏). Only
-  the emoji is sent; no picture is.
+  them, and the rest of what you've said as a thread of text messages
+  underneath, newest first. Louder words are heavier, higher ones sit higher,
+  and drawn-out sounds repeat their letters ("sooo"). While you're still
+  talking, a faded draft of the phrase shows first, then the final words
+  replace it.
+- Your words go out straight away, and you can change them live: tap one of
+  yours (your latest is chosen already) to type over it, delete it, or press
+  1, 2 or 3 to make it Impact, Whisper or Glow. Only your own words can be
+  changed.
+- Everyone has an avatar, a 3D head in a look they choose (colour, eyes,
+  mouth, and glasses, shades, a hat, headphones or blush). Its mouth moves
+  with each word as it goes up, and its eyes turn to whoever is speaking.
+  Turn on "Show my face" and it pulls the faces you pull and turns as your
+  head turns. Your face is read in your browser and only numbers about it
+  are sent, no picture. Where a browser can't draw 3D, it's a flat face
+  instead.
 - Under the stage, a short record of what's been said lately, each person's
   words joined into lines in their colour, so someone arriving can catch up.
 
@@ -39,7 +46,9 @@ Checked automatically in `spec/`:
 - What one person says reaches every other open page within a second, without
   a reload, and several people speaking at once each stay in their own place.
 - Only words and numbers about how they were said are stored; nothing else
-  (audio included) can be sent along.
+  (audio included) can be sent along. A face is only ever seven numbers for
+  its expression and three for which way the head is turned, read off
+  MediaPipe's own sample portrait in the checks.
 - A word is never split between two phrases, and the room's background noise,
   breaths and silence are never sent to be transcribed.
 - How loud, high and drawn-out words were is measured on made-up tones whose

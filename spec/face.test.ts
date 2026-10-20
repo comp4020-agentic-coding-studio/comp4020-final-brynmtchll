@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { faceReader, readFace } from "../src/face.ts";
-import { fromShapes } from "../src/avatar.ts";
+import { cleanPose, fromShapes, poseFrom } from "../src/avatar.ts";
 
 // Reading an emoji off a face's expression scores, checked on made-up scores.
 // Whether those rules match real faces is judged by people trying it.
@@ -52,5 +52,29 @@ describe("an avatar following a face", () => {
   it("rests at rest", () => {
     const rest = fromShapes({ mouthSmileLeft: 0.05, mouthSmileRight: 0.05, jawOpen: 0.03, browInnerUp: 0.08, eyeBlinkLeft: 0.1 });
     for (const v of Object.values(rest)) expect(v).toBe(0);
+  });
+});
+
+describe("a head turning", () => {
+  // MediaPipe's matrices for its own sample portrait, as it is and turned
+  // 0.35 radians clockwise in the picture
+  const upright = [0.999, 0.015, -0.031, 0, -0.013, 0.998, 0.068, 0, 0.032, -0.067, 0.997, 0, -0.412, 22.464, -65.446, 1];
+  const tilted = [0.946, -0.322, -0.04, 0, 0.324, 0.944, 0.057, 0, 0.019, -0.066, 0.998, 0, 7.401, 21.625, -66.753, 1];
+
+  it("reads a face looking at the camera as near enough still", () => {
+    for (const v of Object.values(poseFrom(upright))) expect(Math.abs(v)).toBeLessThan(0.1);
+  });
+
+  it("reads a head tilted in the picture as that tilt, mirrored, and nothing else", () => {
+    const p = poseFrom(tilted);
+    // clockwise as the camera sees it, so anticlockwise in the mirror
+    expect(p.roll).toBeCloseTo(0.33, 1);
+    expect(Math.abs(p.pitch)).toBeLessThan(0.1);
+    expect(Math.abs(p.yaw)).toBeLessThan(0.1);
+  });
+
+  it("keeps a turn within a head's reach, as three numbers and nothing else", () => {
+    expect(cleanPose({ pitch: 3, yaw: -9, roll: "left", picture: "data:image/png;base64,AAAA" })).toEqual({ pitch: 0.5, yaw: -0.7, roll: 0 });
+    expect(cleanPose("a picture")).toBeNull();
   });
 });
