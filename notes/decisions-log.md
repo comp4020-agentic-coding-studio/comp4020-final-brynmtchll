@@ -117,6 +117,47 @@ led to. Claude chose how to build each; what to build was yours.
 - What would you cut if a user found it too much? The brief rewards
   defending choices, including what you said no to.
 
+## Since crit 10 (from 22 October): your directions, in your words
+
+1. **The big tickets for the last weeks.** "i want big visions on
+   interactivity and customiseability for avatars, im talking hugely
+   customiseable with a whole preview option (currently you have to scroll
+   back up to the top to see your avatar) i think customising should be its
+   whole own screen, look into whole body avatars, with hand gesture
+   recognition, following that lets look at making the space more like a
+   real space, even 3d with what feels like a real room with avatars in it,
+   also i want to look at text to speech so that theres speech accompanying
+   'subtitles' with customiseable voice as well". Then: "ok get to work".
+   - Customising on its own screen: [`d6827db`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d6827db)
+     (`/studio`: the head large and always in view, turn and zoom, sixteen
+     sliders, up to two more things to wear, undo).
+
+### What the three spikes measured (22 October, for the next decisions)
+
+Half-day tests before building, each on Bryn's M4 Pro in headless Chrome.
+None of them was run on a phone yet; that's the open half of each.
+
+- **Hands and body beside the face.** MediaPipe 1.0.1 on the CPU, one
+  640x480 frame: face 8 ms, gesture recognition (hands, with names like
+  `Thumb_Up`) 26 ms, body (pose lite) 10 ms, all three in one "holistic"
+  model 41 ms. All three every frame is 45 ms, too slow for 30 a second and
+  it would slow the face. In a background worker instead, the face kept its
+  speed (8.6 ms a read, frames on time) and hands and body ran about 15 times
+  a second; a thumbs up in a test photo was named at 0.61. (The worker has
+  to be a classic one: MediaPipe's loader fails in a module worker.)
+- **A voice for the words (Kokoro, 28 voices).** Only fast enough on the
+  GPU (WebGPU) with the 163 MB half-size model: about 0.2 s to make a
+  phrase once loaded, 8 to 10 times faster than speaking it; 15 s to load
+  the first time. Every other way tried was slower than speaking (2.4 s for
+  1.7 s of speech). So the browser's own voices first, for everyone, and
+  Kokoro as an opt-in better voice where WebGPU exists.
+- **Eight people in one 3D room, phone-sized.** A floor, walls, a table,
+  shadows, eight heads on simple bodies all moving: 170,000 triangles, 517
+  draw calls; the CPU side kept well over 60 frames a second slowed four
+  times. It drew on the Mac's GPU, so a phone's GPU is untested. At phone
+  width eight people round a table are small: faces read, words would need
+  to sit elsewhere.
+
 ## What Claude did (so you can say so accurately)
 
 - Built everything above, and made the implementation calls inside it:
