@@ -327,7 +327,8 @@ main.room {
 .look-form:has(.look-tab input[value="1"]:checked) .look-section:not([data-section="1"]),
 .look-form:has(.look-tab input[value="2"]:checked) .look-section:not([data-section="2"]),
 .look-form:has(.look-tab input[value="3"]:checked) .look-section:not([data-section="3"]),
-.look-form:has(.look-tab input[value="4"]:checked) .look-section:not([data-section="4"]) { display: none; }
+.look-form:has(.look-tab input[value="4"]:checked) .look-section:not([data-section="4"]),
+.look-form:has(.look-tab input[value="5"]:checked) .look-section:not([data-section="5"]) { display: none; }
 
 /* ---- the brief record of what's been said lately ---- */
 
@@ -480,3 +481,58 @@ main.prose { max-width: 70ch; margin: 0 auto; padding: 8px 20px 48px; }
 .saved-look .wear .avatar { width: 100%; height: 100%; }
 .saved-look .wear .empty { color: var(--faint); font-weight: 600; }
 .saved-look .keep { padding: 2px 10px; font-size: 0.75rem; border-radius: 999px; }
+
+/* ---- the studio: making your avatar, on a screen of its own ---- */
+
+/* your head on one side, large, staying in view however far down the
+   choices you go; the choices on the other. On a phone the head sits at
+   the top of the screen, smaller, and stays there as you scroll. */
+main.studio { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 480px); gap: 24px; align-items: start; max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
+.stage-3d { position: sticky; top: 12px; display: grid; gap: 10px; justify-items: center; padding: 16px; background: radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--surface-2) 90%, var(--accent) 10%), var(--surface) 70%); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+/* the preview is a card (.spot, for its colour and word style) but none of
+   a room card's layout: scoped so it outranks .spot:has(.head3d) */
+.stage-3d .preview { all: unset; display: grid; justify-items: center; gap: 4px; width: 100%; }
+.stage-3d .preview::before { display: none; }
+.stage-3d .preview .preview-head { width: min(100%, calc(100svh - 300px), 640px); height: auto; aspect-ratio: 1; margin: 0; cursor: grab; touch-action: none; display: block; }
+.preview-head:active { cursor: grabbing; }
+.preview-head .avatar { width: 100%; height: 100%; }
+.preview-name { margin: 0; font-weight: 700; color: var(--person); }
+.preview-words { margin: 0; min-height: 2.4em; text-align: center; color: var(--person); font-size: clamp(1.25rem, 1rem + 1vw, 1.75rem); }
+.preview-help { margin: 0; font-size: 0.8125rem; color: var(--muted); }
+.preview-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.preview-tools button, .preview-tools select { padding: 8px 14px; border-radius: 999px; font: inherit; font-size: 0.875rem; }
+.preview-tools select { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+#studio-face[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.editor { display: grid; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+.editor-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.editor-head .done { padding: 8px 18px; border-radius: 999px; background: var(--ink); color: var(--bg); font-weight: 700; text-decoration: none; }
+.editor-head .history { display: flex; gap: 4px; }
+.editor-head .history button { padding: 8px 12px; border-radius: 999px; font-size: 0.8125rem; }
+.editor-head .history button:disabled { opacity: 0.4; }
+.editor .surprise { margin-left: auto; }
+.editor .status { margin: 0; min-height: 1.2em; font-size: 0.8125rem; color: var(--muted); }
+/* the sliders: a label, the track, and a way back to the middle */
+.sliders { border: 0; margin: 0; padding: 10px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 6px; }
+.sliders legend { padding: 0; font-size: 0.8125rem; color: var(--muted); }
+.slider { display: grid; grid-template-columns: 110px minmax(0, 1fr) 28px; align-items: center; gap: 8px; font-size: 0.8125rem; }
+.slider input[type="range"] { width: 100%; accent-color: var(--accent); }
+.slider .reset { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 0.875rem; color: var(--muted); }
+.pick.more .hint { width: 100%; margin: 2px 0 0; font-size: 0.75rem; color: var(--faint); }
+.pick input[type="checkbox"] { position: absolute; opacity: 0; pointer-events: none; }
+.pick input[type="checkbox"]:checked + span { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pick input[type="checkbox"]:disabled + span { opacity: 0.4; cursor: not-allowed; }
+.pick input[type="checkbox"]:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* the way there, from the room */
+.customise-link { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 12px 20px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font-weight: 600; text-decoration: none; }
+.customise-link:hover { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 860px) {
+  main.studio { grid-template-columns: minmax(0, 1fr); padding: 0 12px 32px; gap: 12px; }
+  .stage-3d { top: 0; z-index: 5; padding: 8px; border-radius: 0 0 var(--radius) var(--radius); }
+  /* head beside the name and words, so the part that stays put is short */
+  .stage-3d .preview { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; justify-items: start; align-items: center; column-gap: 12px; row-gap: 2px; }
+  .stage-3d .preview .preview-head { width: min(38vw, 22vh); grid-row: 1 / 3; }
+  .preview-name { align-self: end; }
+  .preview-words { align-self: start; text-align: left; min-height: 1.6em; font-size: 1.125rem; }
+  .preview-help { display: none; }
+  .preview-tools button, .preview-tools select { padding: 6px 10px; font-size: 0.8125rem; }
+}

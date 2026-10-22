@@ -1,7 +1,7 @@
 import type { Message, Person } from "./db.ts";
 import { ago, esc, hueOf, reactionsHtml, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
-import { COLOURS, EFFECTS, EMOTES, lookFor, PARTS, REACTIONS, STYLES, type ColourPart, type Look, type Part } from "./packs.ts";
+import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SLIDERS, STYLES, type ColourPart, type Look, type Part } from "./packs.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
@@ -95,16 +95,22 @@ export function spotHtml(name: string, seat: number, look: Look, mine = false, e
 // choices for each part, grouped into tabs, and for each colour a row of
 // swatches and a picker for any colour at all. Plain radio buttons, so it
 // works and reads the same to a screen reader without the page's script.
-const SECTIONS: { label: string; parts: (Part | ColourPart)[] }[] = [
+const SECTIONS: { label: string; parts: (Part | ColourPart)[]; sliders?: string }[] = [
+  { label: "Face", parts: ["face", "skin", "ears", "nose"], sliders: "Face" },
+  { label: "Hair", parts: ["hair", "hairColour", "brows", "beard"], sliders: "Hair" },
+  { label: "Eyes", parts: ["eyes", "eyeColour"], sliders: "Eyes" },
+  { label: "Mouth", parts: ["mouth"], sliders: "Mouth" },
+  { label: "Wearing", parts: ["extra", "extraColour"] },
   { label: "Words", parts: ["words"] },
-  { label: "Face", parts: ["face", "skin", "ears", "nose"] },
-  { label: "Hair", parts: ["hair", "hairColour", "brows", "beard"] },
-  { label: "Eyes", parts: ["eyes", "eyeColour"] },
-  { label: "Mouth", parts: ["mouth"] },
-  { label: "Extras", parts: ["extra", "extraColour"] },
 ];
 const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing" };
-function lookPicker(look: Look, saved: (Look | null)[] = []): string {
+
+// Everything someone can choose about how they look, in tabs: for each
+// part a row of choices, for each colour a row of swatches and a picker for
+// any colour, the part's sliders, and what else to wear. Plain inputs in a
+// form, so it works and reads the same to a screen reader without script;
+// the studio's script makes it live.
+function lookEditor(look: Look): string {
   const isColour = (k: string): k is ColourPart => k in COLOURS;
   const row = (k: Part | ColourPart): string => {
     if (isColour(k)) {
@@ -118,19 +124,71 @@ function lookPicker(look: Look, saved: (Look | null)[] = []): string {
       .map((c) => `<label><input type="radio" name="${k}" value="${c.id}"${look[k] === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
       .join("")}</fieldset>`;
   };
-  // looks they've saved, to wear again in a tap (a flat face of each, from
-  // the look alone)
-  const slots = saved.map((l, i) =>
-    `<div class="saved-look"><button type="button" class="wear" data-slot="${i}"${l ? ` data-look="${esc(JSON.stringify(l))}"` : " disabled"} aria-label="${l ? `Wear saved look ${i + 1}` : `Slot ${i + 1} is empty`}">${l ? avatarSvg(l, REST, "") : `<span class="empty">${i + 1}</span>`}</button><button type="button" class="keep" data-slot="${i}" title="Save how you look now to slot ${i + 1}">Save</button></div>`,
-  ).join("");
-  return `<details class="customise">
-    <summary>Customise your avatar</summary>
-    ${slots ? `<div class="saved-looks" aria-label="Saved looks">${slots}</div>` : ""}
-    <form id="look" class="look-form">
-      <div class="look-tabs" role="tablist">${SECTIONS.map((sec, i) => `<label class="look-tab"><input type="radio" name="look-tab" value="${i}"${i === 0 ? " checked" : ""}><span>${sec.label}</span></label>`).join("")}<button type="button" class="surprise" id="surprise">Surprise me</button></div>
-      ${SECTIONS.map((sec, i) => `<div class="look-section" data-section="${i}">${sec.parts.map(row).join("")}</div>`).join("")}
-    </form>
-  </details>`;
+  const tune = (look.tune ?? {}) as Record<string, number>;
+  const sliders = (group: string): string => {
+    const these = SLIDERS.filter((sl) => sl.group === group);
+    return these.length
+      ? `<fieldset class="sliders"><legend>Shape</legend>${these
+          .map((sl) => `<label class="slider"><span>${esc(sl.label)}</span><input type="range" name="tune.${sl.id}" min="-1" max="1" step="0.05" value="${tune[sl.id] ?? 0}"><button type="button" class="reset" data-reset="${sl.id}" aria-label="Reset ${esc(sl.label.toLowerCase())}">↺</button></label>`)
+          .join("")}</fieldset>`
+      : "";
+  };
+  const more = new Set(look.more ?? []);
+  const wearMore = `<fieldset class="pick more"><legend>As well</legend>${PARTS.extra
+    .filter((c) => c.id !== "none")
+    .map((c) => `<label><input type="checkbox" name="more" value="${c.id}"${more.has(c.id) ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
+    .join("")}<p class="hint">Up to ${MORE_EXTRAS} besides the one above.</p></fieldset>`;
+  return `<form id="look" class="look-form">
+      <div class="look-tabs" role="tablist">${SECTIONS.map((sec, i) => `<label class="look-tab"><input type="radio" name="look-tab" value="${i}"${i === 0 ? " checked" : ""}><span>${sec.label}</span></label>`).join("")}</div>
+      ${SECTIONS.map((sec, i) => `<div class="look-section" data-section="${i}">${sec.parts.map(row).join("")}${sec.sliders ? sliders(sec.sliders) : ""}${sec.label === "Wearing" ? wearMore : ""}</div>`).join("")}
+    </form>`;
+}
+
+// looks someone has saved, to wear again in a tap (a flat face of each)
+const savedSlots = (saved: (Look | null)[]): string =>
+  saved
+    .map(
+      (l, i) =>
+        `<div class="saved-look"><button type="button" class="wear" data-slot="${i}"${l ? ` data-look="${esc(JSON.stringify(l))}"` : " disabled"} aria-label="${l ? `Wear saved look ${i + 1}` : `Slot ${i + 1} is empty`}">${l ? avatarSvg(l, REST, "") : `<span class="empty">${i + 1}</span>`}</button><button type="button" class="keep" data-slot="${i}" title="Save how you look now to slot ${i + 1}">Save</button></div>`,
+    )
+    .join("");
+
+// The studio: making your avatar, on a screen of its own. Your head large,
+// live (turn it, zoom it, have it follow your face, try an emote), and
+// everything about it beside it. Each change shows at once and is saved
+// for everyone a moment later.
+export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: number): string {
+  const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
+  return layout(
+    `${APP}: your avatar`,
+    `<main class="studio">
+  <h1 class="visually-hidden">Your avatar</h1>
+  <section class="stage-3d" aria-label="Preview">
+    <div class="preview spot mine" data-name="${esc(me.name)}" style="--hue:${hue}" data-words="${st.id}" data-font="${st.font}" data-look="${esc(JSON.stringify(look))}">
+      <span class="spot-avatar preview-head">${avatarSvg(look, REST, `${esc(me.name)}'s avatar`)}</span>
+      <p class="preview-name"><span class="who">${esc(me.name)}</span></p>
+      <p class="preview-words words" aria-hidden="true"></p>
+    </div>
+    <p class="preview-help">Drag to turn · scroll or pinch to zoom</p>
+    <div class="preview-tools">
+      <button type="button" id="studio-face" aria-pressed="false">Follow my face</button>
+      <button type="button" id="studio-front">Face front</button>
+      <select id="studio-emote" aria-label="Try an emote"><option value="">Try an emote…</option>${EMOTES.map((em) => `<option value="${em.id}">${em.burst ? em.burst + " " : ""}${esc(em.label)}</option>`).join("")}</select>
+    </div>
+  </section>
+  <section class="editor" aria-label="Choose how you look">
+    <div class="editor-head">
+      <a href="/" class="done">Done</a>
+      <div class="history"><button type="button" id="undo" disabled aria-label="Undo">↶ Undo</button><button type="button" id="redo" disabled aria-label="Redo">Redo ↷</button></div>
+      <button type="button" class="surprise" id="surprise">Surprise me</button>
+    </div>
+    <p id="status" class="status" aria-live="polite"></p>
+    <div class="saved-looks" aria-label="Saved looks">${savedSlots(saved)}</div>
+    ${lookEditor(look)}
+  </section>
+</main>`,
+    `<script type="module" src="/js/studio.ts"></script>`,
+  );
 }
 
 // One line of the brief record: who, in their colour, what they said, when.
@@ -178,7 +236,7 @@ export function roomPage(
           ${EFFECTS.map((fx) => `<button type="button" data-key="${fx.key}" title="${fx.label}" class="fx-button"><kbd>${fx.key}</kbd><span class="w fx-${fx.id}">${fx.label}</span></button>`).join("")}
           <button type="button" data-key="Backspace" title="Delete"><kbd>⌫</kbd><span>Delete</span></button>
         </div>
-        ${lookPicker(myLook!, saved)}
+        <a class="customise-link" href="/studio">Customise your avatar <span aria-hidden="true">→</span></a>
       </section>`
     : `<section class="me join-card" aria-labelledby="join-h">
         <h2 id="join-h">Join the room</h2>

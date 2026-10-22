@@ -324,6 +324,22 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   }, 16_000);
 
+  it("gives someone who's joined a studio of their own to make their avatar in, and sends anyone else to join", async () => {
+    const p = await person();
+    const page = await (await fetch(new URL("/studio", baseUrl), { headers: { cookie: p.cookie } })).text();
+    expect(page).toContain('class="studio"');
+    expect(page).toContain(`data-name="${p.name}"`);
+    // every slider and every tab of choices is there, as a form that works without script
+    expect(page).toMatch(/type="range" name="tune\.eyeSize"/);
+    expect(page).toMatch(/name="more" value="glasses"/);
+    // nobody else's: not joined, sent to join
+    const anon = await fetch(new URL("/studio", baseUrl), { redirect: "manual" });
+    expect(anon.status).toBe(303);
+    expect(anon.headers.get("location")).toBe("/?m=no-person");
+    // and the room points there
+    expect(await p.page()).toContain('href="/studio"');
+  });
+
   it("keeps looks someone saves to wear again, theirs alone, shown to nobody else", async () => {
     const [a, b] = [await person(), await person()];
     const post = (cookie: string, path: string, body: unknown) =>
@@ -334,7 +350,9 @@ describe.skipIf(!writable)("the room", () => {
     expect(saved.looks[0]).toBeNull();
     // their saved looks are on their own page, and not on anyone else's
     // (what they're wearing is, as it always is)
-    expect(await a.page()).toContain('data-slot="2" data-look="');
+    const studio = async (cookie: string) => (await fetch(new URL("/studio", baseUrl), { headers: { cookie } })).text();
+    expect(await studio(a.cookie)).toContain('data-slot="2" data-look="');
+    expect(await studio(b.cookie)).not.toMatch(/class="wear" data-slot="\d" data-look="[^"]*mohawk/);
     expect(await b.page()).not.toMatch(/class="wear" data-slot="\d" data-look="[^"]*mohawk/);
     // (and once they're wearing something else, nothing of the saved one
     // shows anywhere but their own page: "mohawk" there is only the picker's)

@@ -4,7 +4,7 @@
 // at a time and sends each phrase as it's heard.
 import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { emote as headEmote, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
-import { EFFECTS, emoteOf, EMOTES, randomLook, STYLES, type Look as PackLook } from "./packs.ts";
+import { EFFECTS, emoteOf, EMOTES, STYLES, type Look as PackLook } from "./packs.ts";
 import { reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
@@ -1227,97 +1227,8 @@ if (faceButton && "mediaDevices" in navigator) {
 
 // ---- your avatar's look ----
 
-// Each change is saved as it's made, and shows on every open page: drawn
-// here at once, sent at most every LOOK_EVERY (a colour picker sends a
-// change for every step of a drag).
-const LOOK_EVERY = 250; // ms
-const lookForm = document.getElementById("look") as HTMLFormElement | null;
-let lookTimer: number | undefined;
-function lookNow(): Record<string, string> {
-  const data = new FormData(lookForm!);
-  const look: Record<string, string> = {};
-  for (const [k, v] of data) if (k !== "look-tab" && typeof v === "string") look[k] = v;
-  return look;
-}
-function changeLook(): void {
-  const look = lookNow();
-  const card = cardOf(myName);
-  if (card) {
-    card.dataset.look = JSON.stringify({ ...(card.dataset.look ? JSON.parse(card.dataset.look) : {}), ...look });
-    drawAvatar(myName, expressionOf.get(myName) ?? REST);
-  }
-  clearTimeout(lookTimer);
-  lookTimer = window.setTimeout(async () => {
-    try {
-      const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look }) });
-      if (!res.ok) warn("Couldn't save your avatar. Try again.");
-    } catch {
-      warn("Couldn't save your avatar. Check your connection.");
-    }
-  }, LOOK_EVERY);
-}
-lookForm?.addEventListener("change", (e) => {
-  if ((e.target as HTMLInputElement).name === "look-tab") return;
-  changeLook();
-});
-// a colour from the picker becomes its row's choice
-lookForm?.addEventListener("input", (e) => {
-  const picker = e.target as HTMLInputElement;
-  if (picker.type !== "color") return;
-  const radio = picker.closest("label")?.querySelector<HTMLInputElement>("input[type=radio]");
-  if (!radio) return;
-  radio.value = picker.value;
-  radio.checked = true;
-  changeLook();
-});
-// Saved looks: wear one (the form takes its choices and it's sent like any
-// change), or save how you look now to a slot.
-function wearLook(look: Record<string, string>): void {
-  for (const [k, v] of Object.entries(look)) {
-    let radio = lookForm?.querySelector<HTMLInputElement>(`input[name="${k}"][value="${CSS.escape(v)}"]`);
-    // a colour from the picker rather than a swatch
-    if (!radio) {
-      radio = lookForm?.querySelector<HTMLInputElement>(`input[name="${k}"][data-custom]`) ?? null;
-      if (radio) {
-        radio.value = v;
-        const picker = radio.closest("label")?.querySelector<HTMLInputElement>("input[type=color]");
-        if (picker) picker.value = v;
-      }
-    }
-    if (radio) radio.checked = true;
-  }
-  changeLook();
-}
-document.querySelector(".saved-looks")?.addEventListener("click", async (e) => {
-  const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-slot]");
-  if (!btn) return;
-  if (btn.classList.contains("wear") && btn.dataset.look) return wearLook(JSON.parse(btn.dataset.look));
-  if (!btn.classList.contains("keep")) return;
-  try {
-    const res = await fetch("/looks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slot: Number(btn.dataset.slot) }) });
-    if (!res.ok) return warn("Couldn't save that look. Try again.");
-    const { looks } = (await res.json()) as { looks: (Record<string, string> | null)[] };
-    const wear = btn.parentElement?.querySelector<HTMLButtonElement>(".wear");
-    const look = looks[Number(btn.dataset.slot)];
-    if (wear && look) {
-      wear.disabled = false;
-      wear.dataset.look = JSON.stringify(look);
-      wear.setAttribute("aria-label", `Wear saved look ${Number(btn.dataset.slot) + 1}`);
-      wear.innerHTML = avatarSvg(look as unknown as Look, REST, "");
-    }
-    say("Saved. Tap it to wear it again.");
-  } catch {
-    warn("Couldn't save that look. Check your connection.");
-  }
-});
-document.getElementById("surprise")?.addEventListener("click", () => {
-  const look = randomLook();
-  for (const [k, v] of Object.entries(look)) {
-    const radio = lookForm?.querySelector<HTMLInputElement>(`input[name="${k}"][value="${v}"]`);
-    if (radio) radio.checked = true;
-  }
-  changeLook();
-});
+// Made in the studio (studio.ts), on a screen of its own; a change there
+// comes back here, as to every page, as a "look" event.
 
 // ---- emotes: your head does something, for everyone, for a moment ----
 

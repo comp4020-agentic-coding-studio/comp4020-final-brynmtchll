@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECTS, fullLook, isEffect, lookFor, PARTS, randomLook, STYLES, stylesCss } from "../src/packs.ts";
+import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECTS, fullLook, isEffect, lookFor, MORE_EXTRAS, PARTS, randomLook, SLIDERS, STYLES, stylesCss } from "../src/packs.ts";
 
 // What someone can choose about how they look, checked as data: every
 // choice is somewhere the checks on what's sent will accept, and nothing
@@ -68,5 +68,36 @@ describe("how someone's words are drawn, and what they can put on one", () => {
     // and a word style is part of a look, checked like the rest
     expect(cleanLook({ words: "comic" })!.words).toBe("comic");
     expect(cleanLook({ words: "wingdings" })).toBeNull();
+  });
+});
+
+describe("shaping a look finer, and wearing more than one thing", () => {
+  it("takes any slider on offer, pulled into -1..1, and keeps the ones not mentioned", () => {
+    const shaped = cleanLook({ tune: { eyeSize: 0.5, noseSize: 7 } })!;
+    expect(shaped.tune).toEqual({ eyeSize: 0.5, noseSize: 1 });
+    // a later change to one slider leaves the others; back to 0 is dropped
+    expect(cleanLook({ tune: { eyeSize: 0 } }, shaped)!.tune).toEqual({ noseSize: 1 });
+    expect(SLIDERS.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("refuses sliders that aren't on offer and values that aren't numbers", () => {
+    for (const bad of [{ tune: { tailLength: 1 } }, { tune: { eyeSize: "big" } }, { tune: { eyeSize: NaN } }, { tune: [1, 2] }, { tune: "wide" }]) {
+      expect(cleanLook(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("wears up to a couple more things, each on offer, none twice and not the main one again", () => {
+    const l = cleanLook({ extra: "hat", more: ["glasses", "flower", "glasses"] })!;
+    expect(l.more).toEqual(["glasses", "flower"]);
+    expect(cleanLook({ extra: "hat", more: ["hat", "glasses"] })!.more).toEqual(["glasses"]);
+    expect(cleanLook({ more: ["glasses", "flower", "crown"].slice(0, MORE_EXTRAS + 1) })).toBeNull();
+    expect(cleanLook({ more: ["jetpack"] })).toBeNull();
+    expect(cleanLook({ more: "glasses" })).toBeNull();
+  });
+
+  it("surprises within reach of usual, never off the ends", () => {
+    let seed = 3;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 30; i++) for (const v of Object.values(randomLook(rnd).tune ?? {})) expect(Math.abs(v)).toBeLessThanOrEqual(0.6);
   });
 });

@@ -5,7 +5,7 @@ import { join as joinPath } from "node:path";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { marked } from "marked";
 import { openRoom, type Message } from "./db.ts";
-import { APP, readmePage, roomPage } from "./view.ts";
+import { APP, readmePage, roomPage, studioPage } from "./view.ts";
 import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
 import { readExpression, type Face } from "./face.ts";
 import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./avatar.ts";
@@ -68,7 +68,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "packs.ts", "head3d.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "packs.ts", "head3d.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),
@@ -291,6 +291,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
     return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads(), seated ? room.savedLooks(seated.id) : []));
+  }
+  // the studio, for making your avatar: only for someone who's joined (a
+  // look is someone's), so anyone else is sent to join first
+  if (req.method === "GET" && url.pathname === "/studio") {
+    if (!me) return back(res, "no-person");
+    return send(res, 200, "text/html; charset=utf-8", studioPage(me, room.lookOf(me.name), room.savedLooks(me.id), hueOf(room.seatOf(me.name))));
   }
   if (req.method === "GET" && (url.pathname === "/readme/" || url.pathname === "/readme")) {
     return send(res, 200, "text/html; charset=utf-8", readme);

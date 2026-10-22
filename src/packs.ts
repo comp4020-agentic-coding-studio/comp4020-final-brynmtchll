@@ -188,7 +188,33 @@ export const COLOURS = {
 } as const;
 export type ColourPart = keyof typeof COLOURS;
 
-export type Look = { [P in Part]: PartId<P> } & { [C in ColourPart]: string };
+// Sliders: how a part is shaped, finer than which part it is. Each is -1
+// to 1, 0 as the part is drawn by default; head3d.ts reads each by its id.
+export const SLIDERS = [
+  { id: "headWidth", label: "Head width", group: "Face" },
+  { id: "headHeight", label: "Head height", group: "Face" },
+  { id: "jaw", label: "Jaw", group: "Face" },
+  { id: "earSize", label: "Ears", group: "Face" },
+  { id: "noseSize", label: "Nose size", group: "Face" },
+  { id: "noseHeight", label: "Nose height", group: "Face" },
+  { id: "eyeSize", label: "Eye size", group: "Eyes" },
+  { id: "eyeSpacing", label: "Eye spacing", group: "Eyes" },
+  { id: "eyeHeight", label: "Eye height", group: "Eyes" },
+  { id: "eyeTilt", label: "Eye tilt", group: "Eyes" },
+  { id: "browHeight", label: "Brow height", group: "Hair" },
+  { id: "browThickness", label: "Brow thickness", group: "Hair" },
+  { id: "hairSize", label: "Hair volume", group: "Hair" },
+  { id: "mouthWidth", label: "Mouth width", group: "Mouth" },
+  { id: "mouthHeight", label: "Mouth height", group: "Mouth" },
+  { id: "lipSize", label: "Lips", group: "Mouth" },
+] as const satisfies readonly (Choice & { group: string })[];
+export type Slider = (typeof SLIDERS)[number]["id"];
+export type Tune = Partial<Record<Slider, number>>;
+
+// More things to wear than the one: this many besides it
+export const MORE_EXTRAS = 2;
+
+export type Look = { [P in Part]: PartId<P> } & { [C in ColourPart]: string } & { tune?: Tune; more?: PartId<"extra">[] };
 
 // What a part is when someone hasn't chosen it, so a look saved before the
 // part existed still draws.
@@ -217,7 +243,7 @@ const HEX = /^#[0-9a-f]{6}$/;
 export function cleanLook(input: unknown, base: Look = DEFAULT_LOOK): Look | null {
   if (typeof input !== "object" || input === null) return null;
   const l = input as Record<string, unknown>;
-  const out = { ...DEFAULT_LOOK, ...base } as Record<string, string>;
+  const out = { ...DEFAULT_LOOK, ...base } as unknown as Record<string, string>;
   for (const k of Object.keys(PARTS) as Part[]) {
     if (l[k] === undefined) continue;
     if (!(PARTS[k] as readonly Choice[]).some((c) => c.id === l[k])) return null;
@@ -228,7 +254,30 @@ export function cleanLook(input: unknown, base: Look = DEFAULT_LOOK): Look | nul
     if (typeof l[k] !== "string" || !HEX.test((l[k] as string).toLowerCase())) return null;
     out[k] = (l[k] as string).toLowerCase();
   }
-  return out as Look;
+  const look = out as unknown as Look;
+  // sliders: only those on offer, each a number pulled into -1..1 (two
+  // places is plenty); unmentioned ones as they were
+  if (l.tune !== undefined) {
+    if (typeof l.tune !== "object" || l.tune === null || Array.isArray(l.tune)) return null;
+    const tune: Tune = { ...(base.tune ?? {}) };
+    for (const [k, v] of Object.entries(l.tune as Record<string, unknown>)) {
+      if (!SLIDERS.some((sl) => sl.id === k) || typeof v !== "number" || !Number.isFinite(v)) return null;
+      const n = Math.round(Math.min(1, Math.max(-1, v)) * 100) / 100;
+      if (n === 0) delete tune[k as Slider];
+      else tune[k as Slider] = n;
+    }
+    look.tune = tune;
+  }
+  // more to wear: each one on offer, none twice, none the main one, at most MORE_EXTRAS
+  if (l.more !== undefined) {
+    if (!Array.isArray(l.more) || l.more.length > MORE_EXTRAS * 2) return null;
+    const ids = PARTS.extra.map((c) => c.id) as readonly string[];
+    if (!l.more.every((m) => typeof m === "string" && ids.includes(m))) return null;
+    const more = [...new Set(l.more as PartId<"extra">[])].filter((m) => m !== look.extra && m !== "none");
+    if (more.length > MORE_EXTRAS) return null;
+    look.more = more;
+  }
+  return look;
 }
 
 // a look as stored, whatever it was saved with, as a whole look today
@@ -251,10 +300,13 @@ export function lookFor(seat: number): Look {
 
 // A random look from everything on offer, for "surprise me".
 export function randomLook(rnd: () => number = Math.random): Look {
-  const out = { ...DEFAULT_LOOK } as Record<string, string>;
+  const out = { ...DEFAULT_LOOK } as unknown as Record<string, string>;
   for (const k of Object.keys(PARTS) as Part[]) out[k] = PARTS[k][Math.floor(rnd() * PARTS[k].length)].id;
   for (const k of Object.keys(COLOURS) as ColourPart[]) out[k] = COLOURS[k].swatches[Math.floor(rnd() * COLOURS[k].swatches.length)];
   // a beard on half of them, accessories on most
   if (rnd() < 0.5) out.beard = "none";
-  return out as Look;
+  // and shaped a little, not far from usual
+  const tune: Tune = {};
+  for (const sl of SLIDERS) if (rnd() < 0.5) tune[sl.id] = Math.round((rnd() * 2 - 1) * 0.6 * 100) / 100;
+  return { ...(out as unknown as Look), tune };
 }
