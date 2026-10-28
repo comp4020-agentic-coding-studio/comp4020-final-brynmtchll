@@ -89,7 +89,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "packs.ts", "head3d.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),

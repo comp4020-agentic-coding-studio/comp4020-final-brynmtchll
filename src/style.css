@@ -305,7 +305,32 @@ main.room {
 
 /* everyone else, stacked */
 .others { display: grid; gap: 12px; align-content: start; }
-.others-head { display: flex; justify-content: space-between; align-items: center; padding: 0 2px; }
+.others-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 2px; }
+/* cards, or everyone in a room */
+.view-switch { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); margin-left: auto; }
+.view-switch[hidden] { display: none; }
+.view-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.view-switch span { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+.view-switch input:checked + span { background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.view-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The room: one scene, as wide as the room's column and most of the
+   screen's height, with names and words over the heads. The cards are still
+   there, out of sight, for a screen reader. */
+.room3d { position: relative; height: min(68vh, 720px); min-height: 360px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: #1d2230; }
+.room3d[hidden] { display: none; }
+.room3d canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
+.room-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.room-label { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px; max-width: 46%; will-change: transform;
+  --person: oklch(var(--person-l) var(--person-c) var(--hue)); }
+.room-name { padding: 1px 8px; border-radius: 999px; background: rgb(13 16 23 / 0.72); color: var(--person); font-size: 0.75rem; font-weight: 700; white-space: nowrap; max-width: 10em; overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(4px); }
+.room-label.speaking, .room-label:has(.room-word:not(:empty)) { z-index: 2; }
+.room-label.quiet { opacity: 0; }
+.room-label { transition: opacity 0.3s; }
+.room-label.speaking .room-name { box-shadow: 0 0 0 2px var(--person); }
+.room-name[data-hand]::after { content: " ✋ " attr(data-hand); color: var(--hand); }
+.room-word { color: var(--person); font-size: clamp(1.25rem, 0.9rem + 1.6vw, 2.25rem); line-height: 1.1; text-align: center; text-shadow: 0 2px 10px rgb(0 0 0 / 0.65); }
+.room-word:empty { display: none; }
+main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .live { margin: 0; font-size: 0.8125rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 .live.on::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }

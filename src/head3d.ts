@@ -873,10 +873,30 @@ function drop(h: Head): void {
 
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
 const ease = (a: number, b: number, k: number): number => a + (b - a) * k;
-const centre = (el: Element): { x: number; y: number } => {
+// where a head is on the screen: its card's middle, or in the room (when
+// that's showing) where the room drew it
+const centre = (el: HTMLElement): { x: number; y: number } => {
+  const there = roomDraw?.at(el);
+  if (there) return there;
   const r = el.getBoundingClientRect();
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 };
+
+// ---- the room: everyone in one place ----
+
+// A head as the room draws it: its slot (the card it belongs to), its
+// meshes, posed for this frame, and its shoulders and arms.
+export type RoomHead = { slot: HTMLElement; root: T; body: T | null; fitY: number; speaking: boolean; mine: boolean };
+// When the room is showing (room3d.ts), heads aren't drawn into their cards:
+// each frame, every head is eased and posed as ever, and then handed to the
+// room to draw all at once, in its own scene. `at` says where it drew each.
+let roomDraw: { draw: (heads: RoomHead[], THREE: T) => void; at: (slot: HTMLElement) => { x: number; y: number } | null } | null = null;
+export async function roomView(view: typeof roomDraw): Promise<T> {
+  roomDraw = view;
+  // every head is drawn again next frame, wherever it's going
+  for (const s of heads.values()) s.drawn = "";
+  return setUp();
+}
 
 // Heads are drawn at most FPS times a second, and only those that have
 // moved since they were last drawn: drawing one and copying it into its
@@ -899,6 +919,7 @@ function frame(now: number): void {
   for (const [slot, s] of heads) if (now - s.voice.loudAt < VOICE_FOR && (!voiced || s.voice.since > voiced[1])) voiced = [slot, s.voice.since];
   const speakerNow = voiced?.[0] ?? speaker;
   const talker = speakerNow && heads.has(speakerNow) ? centre(speakerNow) : null;
+  const inRoom: RoomHead[] = [];
   for (const [slot, s] of heads) {
     if (!s.canvas.isConnected) {
       heads.delete(slot);
@@ -906,8 +927,9 @@ function frame(now: number): void {
       drop(s.head);
       continue;
     }
-    const r = s.canvas.getBoundingClientRect();
-    if (r.width === 0 || r.bottom < 0 || r.top > innerHeight) continue;
+    // (in the room, everyone shows, whatever their card's doing)
+    const r = roomDraw ? { left: 0, top: 0, width: 1, height: 1, bottom: 1 } : s.canvas.getBoundingClientRect();
+    if (!roomDraw && (r.width === 0 || r.bottom < 0 || r.top > innerHeight)) continue;
     // A head its owner's camera steers follows it closely: what's sent is
     // already smoothed, so easing much more only adds lag. One left to
     // itself eases more gently.
@@ -934,7 +956,7 @@ function frame(now: number): void {
     s.voice.level = ease(s.voice.level, s.voice.to, k(s.voice.to > s.voice.level ? 40 : 22));
     // eyes: where their owner looks, if their camera's on; otherwise on
     // whoever's speaking, or (nobody, or it's them) a glance now and then
-    const me = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    const me = roomDraw ? centre(slot) : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     let look = { x: s.glance.x, y: s.glance.y };
     if (live) look = { x: s.e.lookX, y: s.e.lookY };
     else if (talker && speakerNow !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
@@ -1019,13 +1041,28 @@ function frame(now: number): void {
       s.arms.tilt = ease(s.arms.tilt, want.tilt, kk);
       s.arms.turn = ease(s.arms.turn, want.turn, kk);
     }
-    s.arms.shown = ease(s.arms.shown, body && (armsBusy || always.has(slot)) ? 1 : 0, k(5));
+    s.arms.shown = ease(s.arms.shown, body && (armsBusy || always.has(slot) || roomDraw) ? 1 : 0, k(5));
     // the card makes more room for them meanwhile (style.css [data-arms])
     const roomy = body !== null && armsBusy && !always.has(slot);
     if (slot.hasAttribute("data-arms") !== roomy) slot.toggleAttribute("data-arms", roomy);
     // drawn only if it's moved enough to see
     const armKey = body && s.arms.shown > 0.01 ? [s.arms.shown, s.arms.tilt, s.arms.turn, ...armNumbers(s.arms.left), ...armNumbers(s.arms.right)] : [];
     const looks = [...Object.values(e), ...Object.values(moved), s.gaze.x, s.gaze.y, ...armKey].map((v) => Math.round(v * 200)).join(",");
+    if (roomDraw) {
+      // posed in place, and drawn with everyone after
+      if (looks !== s.drawn) {
+        s.drawn = looks;
+        s.open = e.open;
+        pose(s.head, e, moved, s.gaze);
+        if (body) {
+          body.root.rotation.set(0, s.arms.turn, s.arms.tilt);
+          poseArm(THREE_, body.left, s.arms.left);
+          poseArm(THREE_, body.right, s.arms.right);
+        }
+      }
+      inRoom.push({ slot, root: s.head.root, body: body?.root ?? null, fitY: s.head.fit.y, speaking: slot === speakerNow && now - s.voice.loudAt < VOICE_FOR + 400, mine: slot.closest(".mine") !== null });
+      continue;
+    }
     if (looks === s.drawn) continue;
     s.drawn = looks;
     s.open = e.open;
@@ -1065,6 +1102,7 @@ function frame(now: number): void {
     ctx?.clearRect(0, 0, size, size);
     ctx?.drawImage(renderer.domElement, 0, 0, size, size, 0, 0, size, size);
   }
+  roomDraw?.draw(inRoom, THREE_);
 }
 
 // how a head is turned, and its mouth open, as drawn: for the checks that

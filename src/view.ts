@@ -262,8 +262,9 @@ export function roomPage(
   <h1 class="visually-hidden">${APP}: say it how you mean it</h1>
   ${centre}${picker}
   <section class="others" aria-labelledby="others-h">
-    <div class="others-head"><h2 id="others-h">In the room</h2><p id="live" class="live" role="status" hidden></p></div>
+    <div class="others-head"><h2 id="others-h">In the room</h2><div class="view-switch" role="radiogroup" aria-label="How to see everyone" hidden><label><input type="radio" name="view" value="cards" checked><span>Cards</span></label><label><input type="radio" name="view" value="room"><span>Room</span></label></div><p id="live" class="live" role="status" hidden></p></div>
     <p id="queue" class="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
+    <div id="room3d" class="room3d" hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div></div>
     <ul id="stage" class="stage">${others}</ul>
     <p id="nobody" class="fine" ${others ? "hidden" : ""}>Nobody else is here yet.</p>
   </section>

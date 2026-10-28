@@ -5,6 +5,7 @@
 import { avatarSvg, fromShapes, oneEuro, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import { bodyFrom, type Body } from "./body.ts";
+import { showRoom } from "./room3d.ts";
 import type { FromHands, ToHands } from "./hands.ts";
 import { EFFECTS, emoteOf, EMOTES, STYLES, type Look as PackLook } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
@@ -1420,6 +1421,44 @@ function faceEmotes(e: Expression): void {
       void sendEmote(em.id);
     }
   }
+}
+
+// ---- seeing everyone as cards, or together in a room ----
+
+// The room (room3d.ts) draws everyone at once, around a table, with what
+// they're saying over their heads; the cards stay underneath for a screen
+// reader, and come back with "Cards". Remembered for next time, on this
+// browser only. Offered only where 3D heads are drawn at all.
+const viewSwitch = document.querySelector<HTMLElement>(".view-switch");
+const roomBox = document.getElementById("room3d");
+const VIEW_KEY = "said-view";
+async function seeAs(view: string): Promise<void> {
+  const inRoom = view === "room" && !!roomBox;
+  document.querySelector("main")?.classList.toggle("in-room", inRoom);
+  if (roomBox) roomBox.hidden = !inRoom;
+  const on = inRoom && (await showRoom(roomBox!.querySelector("canvas"), roomBox!.querySelector(".room-labels")));
+  if (inRoom && !on) {
+    warn("Couldn't draw the room here. Showing everyone as cards.");
+    return void seeAs("cards");
+  }
+  if (!inRoom) await showRoom(null, null);
+  for (const r of viewSwitch?.querySelectorAll<HTMLInputElement>("input") ?? []) r.checked = r.value === (on ? "room" : "cards");
+  try {
+    localStorage.setItem(VIEW_KEY, on ? "room" : "cards");
+  } catch {
+    // (a private window: it just isn't remembered)
+  }
+}
+if (viewSwitch && roomBox && webgl) {
+  viewSwitch.hidden = false;
+  viewSwitch.addEventListener("change", (e) => void seeAs((e.target as HTMLInputElement).value));
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem(VIEW_KEY);
+  } catch {
+    saved = null;
+  }
+  if (saved === "room") void seeAs("room");
 }
 
 // ---- a hand up to speak next ----
