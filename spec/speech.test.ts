@@ -71,8 +71,13 @@ describe("not taking what was spoken for what the listener said", () => {
     const now = Date.now();
     remember("did you see the match last night", now);
     expect(echoOf("you see the match last night", now + 2000)).toBe(true);
-    // the listener's own words get through, even on the same subject
+    // heard a little wrong, still an echo
+    expect(echoOf("did you see the match last nite", now + 2000)).toBe(true);
+    // the listener's own words get through, even on the same subject, even
+    // a reply that says much of it back
     expect(echoOf("no I missed it what happened", now + 2000)).toBe(false);
+    remember("do you want to get lunch", now);
+    expect(echoOf("yes I want to get lunch", now + 2000)).toBe(false);
     // and a while after, nothing is taken for an echo
     expect(echoOf("did you see the match last night", now + 20_000)).toBe(false);
   });

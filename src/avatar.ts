@@ -223,6 +223,9 @@ const n = (v: number): string => (Math.round(v * 10) / 10).toString();
 
 // The avatar as SVG, 100 by 100, in a look, pulling an expression. Each
 // feature is drawn from the numbers, so it moves smoothly between any two.
+// (a label is someone's name: never markup)
+const attr = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
 export function avatarSvg(look: Look, e: Expression = REST, label = ""): string {
   const ink = "#1b1f2a";
   // eyes: open height shrinks with a blink (or a wink, on its side), and
@@ -278,5 +281,5 @@ export function avatarSvg(look: Look, e: Expression = REST, label = ""): string 
   // hair, as a cap of its colour over the top of the head (the 3D head has
   // the shapes; this is the fallback)
   const hair = look.hair === "none" ? "" : `<path d="M14 46 Q14 12 50 12 Q86 12 86 46 Q72 26 50 26 Q28 26 14 46 Z" fill="${look.hairColour}"/>`;
-  return `<svg class="avatar" viewBox="0 -4 100 104" role="img" aria-label="${label}"><circle cx="50" cy="52" r="38" fill="${look.skin}" stroke="${ink}" stroke-width="2.5"/>${hair}${blush}${look.brows === "none" ? "" : brow(36, 1) + brow(64, -1)}${eye(36)}${eye(64)}${mouth}${extra}</svg>`;
+  return `<svg class="avatar" viewBox="0 -4 100 104" role="img" aria-label="${attr(label)}"><circle cx="50" cy="52" r="38" fill="${look.skin}" stroke="${ink}" stroke-width="2.5"/>${hair}${blush}${look.brows === "none" ? "" : brow(36, 1) + brow(64, -1)}${eye(36)}${eye(64)}${mouth}${extra}</svg>`;
 }

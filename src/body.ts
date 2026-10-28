@@ -48,7 +48,7 @@ const angle = (a: Vec, b: Vec): number => Math.acos(Math.min(1, Math.max(-1, dot
 function cleanVec(v: unknown): Vec | null {
   if (!Array.isArray(v) || v.length !== 3 || !v.every(finite)) return null;
   const n = Math.hypot(v[0], v[1], v[2]);
-  if (n < 1e-3) return null;
+  if (n < 1e-3 || !Number.isFinite(n)) return null;
   return [round2(v[0] / n), round2(v[1] / n), round2(v[2] / n)];
 }
 

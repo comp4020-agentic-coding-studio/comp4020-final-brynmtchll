@@ -87,7 +87,7 @@ export function spotHtml(name: string, seat: number, look: Look, mine = false, e
   // how their words are drawn: their word style (packs.ts), which the CSS
   // the server makes from it reads off data-words, and its lettering
   return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)}" data-words="${st.id}" data-font="${st.font}"${"glow" in st ? " data-glow" : ""} data-look="${esc(JSON.stringify(look))}"${place ? ` data-hand="${place}"` : ""}>
-    <div class="spot-head"><span class="spot-avatar">${avatarSvg(look, e, `${esc(name)}'s avatar`)}</span><p class="spot-name"><span class="who">${esc(name)}</span>${handBadge(place)}${mine ? '<span class="you">you</span>' : ""}</p></div>
+    <div class="spot-head"><span class="spot-avatar">${avatarSvg(look, e, `${name}'s avatar`)}</span><p class="spot-name"><span class="who">${esc(name)}</span>${handBadge(place)}${mine ? '<span class="you">you</span>' : ""}</p></div>
     <p class="spot-word" aria-hidden="true"></p>
     <ol class="thread" aria-label="What ${esc(name)} said lately">${threadHtml(thread)}</ol>
   </li>`;
@@ -172,7 +172,7 @@ export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: 
   <h1 class="visually-hidden">Your avatar</h1>
   <section class="stage-3d" aria-label="Preview">
     <div class="preview spot mine" data-name="${esc(me.name)}" style="--hue:${hue}" data-words="${st.id}" data-font="${st.font}" data-look="${esc(JSON.stringify(look))}">
-      <span class="spot-avatar preview-head">${avatarSvg(look, REST, `${esc(me.name)}'s avatar`)}</span>
+      <span class="spot-avatar preview-head">${avatarSvg(look, REST, `${me.name}'s avatar`)}</span>
       <p class="preview-name"><span class="who">${esc(me.name)}</span></p>
       <p class="preview-words words" aria-hidden="true"></p>
     </div>

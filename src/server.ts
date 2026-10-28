@@ -34,12 +34,17 @@ const showExpression = (name: string, e: Expression | null, pose: Pose | null = 
   for (const listener of listening) listener.write(payload);
 };
 // Who has a hand up to speak next, in the order they raised it: for now,
-// like a face, so in memory. A hand goes down when its owner says something,
-// puts it down, or after HAND_FOR (a hand left up after someone's gone
-// shouldn't keep its place). Every page hears the whole queue each time it
-// changes, so they all show it in the same order.
-const HAND_FOR = 3 * 60_000;
+// like a face, so in memory. A hand goes down when its owner says something
+// (unless they raised it a moment ago: what arrives then was said before),
+// puts it down, or has had no page open for GONE_FOR (a hand left up after
+// someone's gone shouldn't keep its place; one waiting a long turn should).
+// Every page hears the whole queue each time it changes, so they all show it
+// in the same order.
+const GONE_FOR = 60_000;
+const JUST_RAISED = 3_000; // ms: about how late a phrase can arrive after its last word
 const hands = new Map<string, number>(); // name, when raised (oldest first)
+const pagesOf = new Map<string, number>(); // name, how many pages it has listening
+const goneSince = new Map<string, number>(); // name, since when it's had none
 const handQueue = (): string[] => [...hands.keys()];
 const showHands = (): void => {
   const payload = `event: hand\ndata: ${JSON.stringify({ queue: handQueue() })}\n\n`;
@@ -50,7 +55,8 @@ const handDown = (name: string): void => {
 };
 setInterval(() => {
   const now = Date.now();
-  for (const [name, at] of hands) if (now - at > HAND_FOR) handDown(name);
+  for (const name of hands.keys()) if (!pagesOf.get(name) && now - (goneSince.get(name) ?? hands.get(name)!) > GONE_FOR) handDown(name);
+  for (const [name, since] of goneSince) if (now - since > GONE_FOR) goneSince.delete(name);
 }, 10_000).unref();
 setInterval(() => {
   const now = Date.now();
@@ -79,6 +85,7 @@ const earlyTooFast = limiter(120);
 const emoteTooFast = limiter(20);
 const reactTooFast = limiter(60);
 const handTooFast = limiter(30);
+const looksTooFast = limiter(30);
 
 // style.css, and after it how each word style in packs.ts is drawn
 const css = Buffer.concat([readFileSync(new URL("./style.css", import.meta.url)), Buffer.from(`\n/* word styles, from packs.ts */\n${stylesCss()}\n`)]);
@@ -295,9 +302,21 @@ function listen(req: IncomingMessage, res: ServerResponse, after: string | null)
   res.write(`id: ${Number.isSafeInteger(last) ? Math.max(last, 0) : room.newest()}\n: listening\n\n`);
   listening.add(res);
   const who = room.findPerson(cookieId(req));
+  if (who) {
+    pagesOf.set(who.name, (pagesOf.get(who.name) ?? 0) + 1);
+    goneSince.delete(who.name);
+  }
   log(who, "watching", { pages: listening.size });
   req.on("close", () => {
     listening.delete(res);
+    if (who) {
+      const left = (pagesOf.get(who.name) ?? 1) - 1;
+      if (left > 0) pagesOf.set(who.name, left);
+      else {
+        pagesOf.delete(who.name);
+        goneSince.set(who.name, Date.now());
+      }
+    }
     log(who, "left", { pages: listening.size });
   });
 }
@@ -467,12 +486,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   // cookie); never shown to anyone else until they wear one.
   if (req.method === "POST" && url.pathname === "/looks") {
     if (!me) return json(res, 401, { error: "no-person" });
+    if (looksTooFast(me.id)) return json(res, 429, { error: "too-fast" });
     let raw: { slot?: unknown; clear?: unknown } = {};
     try {
-      raw = JSON.parse((await body(req, 256)) ?? "{}");
+      raw = JSON.parse((await body(req, 256)) ?? "{}") ?? {};
     } catch {
       return json(res, 400, { error: "not-a-slot" });
     }
+    if (typeof raw !== "object") return json(res, 400, { error: "not-a-slot" });
     const looks = room.saveLook(me.id, raw.slot as number, raw.clear === true ? null : room.lookOf(me.name));
     if (!looks) return json(res, 400, { error: "not-a-slot" });
     log(me, raw.clear === true ? "unsaved" : "saved", { slot: raw.slot as number });
@@ -641,7 +662,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
     if (payload) for (const listener of listening) listener.write(payload);
     // they've had their turn
-    handDown(me.name);
+    if (Date.now() - (hands.get(me.name) ?? 0) > JUST_RAISED) handDown(me.name);
     return json(res, 201, { id: m.id });
   }
 

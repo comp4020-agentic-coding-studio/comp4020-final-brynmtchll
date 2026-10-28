@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECTS, fullLook, isEffect, lookFor, MORE_EXTRAS, PARTS, randomLook, SLIDERS, STYLES, stylesCss } from "../src/packs.ts";
+import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECTS, fullLook, isEffect, lookFor, MORE_EXTRAS, PARTS, randomLook, SLIDERS, STYLES, stylesCss, VOICES } from "../src/packs.ts";
 
 // What someone can choose about how they look, checked as data: every
 // choice is somewhere the checks on what's sent will accept, and nothing
@@ -82,6 +82,12 @@ describe("what someone wears below the head", () => {
     let seed = 3;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let i = 0; i < 200; i++) expect(randomLook(rnd).top).not.toBe("none");
+  });
+
+  it("gives newcomers every voice there is between them, and never silence", () => {
+    const voices = new Set(Array.from({ length: 30 }, (_, seat) => lookFor(seat).voice));
+    expect(voices.has("silent")).toBe(false);
+    expect(voices.size).toBe(VOICES.length - 1);
   });
 });
 

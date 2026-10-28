@@ -289,7 +289,12 @@ describe.skipIf(!writable)("the room", () => {
     expect(page).toMatch(new RegExp(`data-name="${a.name}"[^>]*data-hand="\\d+"`));
     expect(page).toMatch(/id="queue" class="queue" aria-live="polite">/);
     expect(page).toMatch(/aria-pressed="true"[^>]*><span aria-hidden="true">✋<\/span> <span class="label">Lower hand/);
-    // having your say takes your hand down
+    // having your say takes your hand down (but not what arrives just after
+    // it went up: that was said before)
+    await a.say({ words: [word("earlier", 0)] });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(ours((await (await hand(b.cookie, true)).json()) as Record<string, unknown>)).toEqual([a.name, b.name]);
+    await new Promise((r) => setTimeout(r, 3000));
     await a.say({ words: [word("thanks", 0)] });
     await queued([b.name]);
     // and so does putting it down; only your own, and only a yes or no
@@ -303,7 +308,7 @@ describe.skipIf(!writable)("the room", () => {
     expect(ours((await (await hand(b.cookie, true)).json()) as Record<string, unknown>)).toEqual([b.name]);
     await hand(b.cookie, false);
     watcher.close();
-  });
+  }, 15_000);
 
   it("moves someone's arms and hands with theirs, as directions and curls and nothing else", async () => {
     const watcher = listen();
@@ -433,6 +438,7 @@ describe.skipIf(!writable)("the room", () => {
     expect(await b.page()).not.toContain('&quot;hair&quot;:&quot;mohawk');
     // a slot that isn't one
     for (const slot of [4, -1, "1", 1.5]) expect((await post(a.cookie, "/looks", { slot })).status).toBe(400);
+    expect((await post(a.cookie, "/looks", null)).status).toBe(400);
     expect((await (await post(a.cookie, "/looks", { slot: 2, clear: true })).json()).looks[2]).toBeNull();
     expect((await fetch(new URL("/looks", baseUrl), { method: "POST", body: JSON.stringify({ slot: 0 }) })).status).toBe(401);
   });

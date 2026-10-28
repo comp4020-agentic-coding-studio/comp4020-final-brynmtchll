@@ -5,7 +5,7 @@
 // changed. Without this script the page is a plain form, and nothing saves.
 import { avatarSvg, fromShapes, REST, smoother, type Expression, type Pose } from "./avatar.ts";
 import { emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
-import { emoteOf, MORE_EXTRAS, randomLook, STYLES, type Look } from "./packs.ts";
+import { emoteOf, MORE_EXTRAS, randomLook, SLIDERS, STYLES, type Look } from "./packs.ts";
 import { wordHtml } from "./voice.ts";
 import { tryVoice } from "./speech.ts";
 
@@ -120,7 +120,8 @@ function fromForm(): Look {
     if (k.startsWith("tune.")) {
       const n = Number(v);
       if (n !== 0) tune[k.slice(5)] = n;
-    } else if (k === "more") more.push(v);
+    }
+    else if (k === "more") more.push(v);
     else out[k] = v;
   }
   return { ...look, ...out, tune, more: more.filter((m) => m !== out.extra).slice(0, MORE_EXTRAS) } as Look;
@@ -187,7 +188,10 @@ function apply(next: Look, record = true): void {
 
 async function save(): Promise<void> {
   try {
-    const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look }) });
+    // every slider said, at 0 too: the server keeps any not mentioned as it
+    // was, so one put back to 0 (or left out of a surprise) has to say so
+    const tune = Object.fromEntries(SLIDERS.map((sl) => [sl.id, (look.tune as Record<string, number> | undefined)?.[sl.id] ?? 0]));
+    const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: { ...look, tune } }) });
     if (!res.ok) return say("Couldn't save that. Try again.");
     say("Saved. Everyone sees you like this.");
   } catch {

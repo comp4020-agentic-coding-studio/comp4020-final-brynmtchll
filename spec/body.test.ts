@@ -100,8 +100,9 @@ describe("what's sent for someone's arms", () => {
     expect(cleanBody([1, 2, 3])).toBeNull();
     // a hand that isn't one goes, and its arm stays
     expect(cleanBody({ left: { upper: [0, -1, 0], fore: [0, -1, 0], hand: { curl: [1, 2] } } })?.left?.hand).toBeNull();
-    // a direction of nothing isn't a direction
+    // a direction of nothing isn't a direction, nor one too long to measure
     expect(cleanBody({ left: { upper: [0, 0, 0], fore: [0, -1, 0] } })?.left).toBeNull();
+    expect(cleanBody({ left: { upper: [1.7e308, 1.7e308, 1.7e308], fore: [0, -1, 0] } })?.left).toBeNull();
   });
 });
 

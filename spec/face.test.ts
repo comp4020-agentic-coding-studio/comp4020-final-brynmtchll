@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { faceReader, readFace } from "../src/face.ts";
-import { cleanExpression, cleanPose, fromShapes, oneEuro, poseFrom, resting } from "../src/avatar.ts";
+import { JSDOM } from "jsdom";
+import { avatarSvg, cleanExpression, cleanPose, fromShapes, oneEuro, poseFrom, resting } from "../src/avatar.ts";
+import { lookFor } from "../src/packs.ts";
 
 // Reading an emoji off a face's expression scores, checked on made-up scores.
 // Whether those rules match real faces is judged by people trying it.
@@ -161,5 +163,16 @@ describe("a head turning", () => {
     const tilted = [1, 0, 0, 0, 0, 0.98, -0.2, 0, 0, 0.2, 0.98, 0, 0, 0, -60, 1];
     const usual = { pitch: Math.atan2(-0.2, 0.98), yaw: 0, roll: 0, x: 0, y: 0, z: -60 };
     expect(poseFrom(tilted, usual).pitch).toBe(0);
+  });
+});
+
+describe("an avatar's name", () => {
+  it("is only ever its words, whatever characters a name has, never markup", () => {
+    // a name that would close the label and add a handler, were it not escaped
+    // (the browser redraws avatars from names it's sent)
+    const name = `"onload="alert(1)//`;
+    const svg = new JSDOM(`<body>${avatarSvg(lookFor(0) as never, undefined, `${name}'s avatar`)}</body>`).window.document.querySelector("svg")!;
+    expect(svg.getAttribute("onload")).toBeNull();
+    expect(svg.getAttribute("aria-label")).toBe(`${name}'s avatar`);
   });
 });

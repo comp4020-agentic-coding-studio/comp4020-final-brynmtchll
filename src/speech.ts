@@ -118,8 +118,15 @@ export function hearVoices(yes: boolean): void {
   }
 }
 
-// Quiet while you talk (so it doesn't talk over you, or into your microphone).
+// Quiet while you talk (so it doesn't talk over you, or into your
+// microphone): asked for again and again while you are, so it lifts by
+// itself DUCK_FOR after the last ask (a microphone turned off mid-word
+// doesn't leave it quiet for good).
+const DUCK_FOR = 1500; // ms
+let duckTimer = 0;
 export function duck(yes: boolean): void {
+  clearTimeout(duckTimer);
+  if (yes) duckTimer = setTimeout(() => (ducked = false), DUCK_FOR) as unknown as number;
   if (ducked === yes) return;
   ducked = yes;
   if (yes) hush();
@@ -146,7 +153,7 @@ export function speak(words: Spoken[], look: Pick<Look, "voice" | "tune">, whenS
     u.rate = run.rate;
     u.volume = run.volume;
     u.onstart = () => {
-      if (i === 0) spokenLately.push(said);
+      if (i === 0) keep(said);
       whenStarts?.(run);
     };
     if (i === runs.length - 1)
@@ -161,23 +168,42 @@ export function speak(words: Spoken[], look: Pick<Look, "voice" | "tune">, whenS
 // What was spoken lately, so a microphone that hears it (laptop speakers,
 // no headphones) doesn't send it back as the listener's own words. Heard
 // within ECHO_AFTER of something ending (time enough for the pause that
-// ends a phrase and Whisper's hearing of it), a phrase is an echo when most
-// of its words were in what was spoken; a word or two only when it's all of
-// one thing that was (so a "yeah" back to someone's "yeah, but" still goes).
+// ends a phrase and Whisper's hearing of it), a phrase is an echo when
+// nearly all its words come in one thing that was spoken, in the same order
+// (Whisper hears speakers a little wrong, so not all). Sharing words isn't
+// enough: "yes I want to get lunch" answering "do you want to get lunch" is
+// a reply, and a word or two back is an echo only if it was all that was said.
 const ECHO_AFTER = 8_000; // ms
+const ECHO_SHARE = 0.8;
 type Said = { words: string[]; until: number };
 const spokenLately: Said[] = [];
 const wordsOf = (text: string): string[] => text.toLowerCase().match(/[a-z0-9']+/g) ?? [];
-export function echoOf(text: string, now = Date.now()): boolean {
-  for (let i = spokenLately.length - 1; i >= 0; i--) if (now - spokenLately[i].until > ECHO_AFTER) spokenLately.splice(i, 1);
-  const heard = wordsOf(text);
-  if (!heard.length || !spokenLately.length) return false;
-  if (heard.length <= 2) return spokenLately.some((s) => s.words.join(" ") === heard.join(" "));
-  const lately = new Set(spokenLately.flatMap((s) => s.words));
-  return heard.filter((w) => lately.has(w)).length / heard.length >= 0.6;
+// how many of a's words come in b, in order (the longest common subsequence)
+function inOrder(a: string[], b: string[]): number {
+  let row = new Array<number>(b.length + 1).fill(0);
+  for (const x of a) {
+    const next = [0];
+    for (let j = 0; j < b.length; j++) next.push(x === b[j] ? row[j] + 1 : Math.max(row[j + 1], next[j]));
+    row = next;
+  }
+  return row[b.length];
 }
+const forget = (now: number): void => {
+  for (let i = spokenLately.length - 1; i >= 0; i--) if (now - spokenLately[i].until > ECHO_AFTER) spokenLately.splice(i, 1);
+};
+export function echoOf(text: string, now = Date.now()): boolean {
+  forget(now);
+  const heard = wordsOf(text);
+  if (!heard.length) return false;
+  if (heard.length <= 2) return spokenLately.some((s) => s.words.join(" ") === heard.join(" "));
+  return spokenLately.some((s) => inOrder(heard, s.words) / heard.length >= ECHO_SHARE);
+}
+const keep = (said: Said): void => {
+  forget(Date.now());
+  spokenLately.push(said);
+};
 // (for the checks: as if this had just been spoken)
-export const remember = (text: string, now = Date.now()): void => void spokenLately.push({ words: wordsOf(text), until: now });
+export const remember = (text: string, now = Date.now()): void => keep({ words: wordsOf(text), until: now });
 
 // For trying a voice out (the studio): this said in it, now, voices on or not.
 export function tryVoice(look: Pick<Look, "voice" | "tune">, words: Spoken[]): void {

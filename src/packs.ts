@@ -348,7 +348,8 @@ export function lookFor(seat: number): Look {
     hairColour: COLOURS.hairColour.swatches[(seat * 3) % 6],
     eyeColour: COLOURS.eyeColour.swatches[seat % 4],
     topColour: COLOURS.topColour.swatches[(seat * 7) % 10],
-    voice: VOICES[(seat * 3) % (VOICES.length - 1)].id,
+    // (every voice but silent, in turn: 9 voices and a step of 4 share no factor)
+    voice: VOICES[(seat * 4) % (VOICES.length - 1)].id,
   };
 }
 
