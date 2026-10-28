@@ -71,6 +71,20 @@ describe("how someone's words are drawn, and what they can put on one", () => {
   });
 });
 
+describe("what someone wears below the head", () => {
+  it("has tops to choose and a colour for them, and a surprise always has arms", () => {
+    expect(PARTS.top.length).toBeGreaterThan(4);
+    expect(DEFAULT_LOOK.top).not.toBe("none");
+    expect(cleanLook({ top: "hoodie", topColour: "#3EA66B" })).toMatchObject({ top: "hoodie", topColour: "#3ea66b" });
+    expect(cleanLook({ top: "cape" })).toBeNull();
+    // looks saved before tops existed still draw, with one
+    expect(fullLook({ face: "oval" })).toMatchObject({ top: DEFAULT_LOOK.top, topColour: DEFAULT_LOOK.topColour });
+    let seed = 3;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 200; i++) expect(randomLook(rnd).top).not.toBe("none");
+  });
+});
+
 describe("shaping a look finer, and wearing more than one thing", () => {
   it("takes any slider on offer, pulled into -1..1, and keeps the ones not mentioned", () => {
     const shaped = cleanLook({ tune: { eyeSize: 0.5, noseSize: 7 } })!;

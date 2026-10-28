@@ -9,6 +9,7 @@ import { APP, readmePage, roomPage, studioPage } from "./view.ts";
 import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
 import { readExpression, type Face } from "./face.ts";
 import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./avatar.ts";
+import { cleanBody, type Body } from "./body.ts";
 import { cleanLook, emoteOf, isEffect, reactionOf, stylesCss, type Look } from "./packs.ts";
 
 // Everyone's expression as they last showed it, in memory: a face is for now,
@@ -21,7 +22,7 @@ const FACE_FOR = 6_000;
 const expressions = new Map<string, Expression>();
 const faces = new Map<string, Face | null>(); // the emoji each expression reads as, for the record
 const faceSeen = new Map<string, number>();
-const showExpression = (name: string, e: Expression | null, pose: Pose | null = null): void => {
+const showExpression = (name: string, e: Expression | null, pose: Pose | null = null, body: Body | null = null): void => {
   if (e) expressions.set(name, e);
   else expressions.delete(name);
   const face = e ? readExpression(e) : null;
@@ -29,7 +30,7 @@ const showExpression = (name: string, e: Expression | null, pose: Pose | null = 
     console.log(`${name.padEnd(18)} face      face="${face ?? "none"}"`);
     faces.set(name, face);
   }
-  const payload = `event: face\ndata: ${JSON.stringify({ name, e: e ?? REST, pose: e ? pose : null })}\n\n`;
+  const payload = `event: face\ndata: ${JSON.stringify({ name, e: e ?? REST, pose: e ? pose : null, body: e ? body : null })}\n\n`;
   for (const listener of listening) listener.write(payload);
 };
 setInterval(() => {
@@ -68,7 +69,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
 const scripts = new Map(
-  ["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "packs.ts", "head3d.ts", "worker.ts", "tap.ts"].map((f) => [
+  ["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "packs.ts", "head3d.ts", "worker.ts", "tap.ts"].map((f) => [
     f,
     stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
   ]),
@@ -357,22 +358,26 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (faceTooFast(me.id)) return json(res, 429, { error: "too-fast" });
     let raw: unknown;
     let rawPose: unknown;
+    let rawBody: unknown;
     try {
-      const sent = JSON.parse((await body(req, 1024)) ?? "{}") as { e?: unknown; pose?: unknown };
+      // (arms and hands too: a few dozen numbers more)
+      const sent = JSON.parse((await body(req, 2048)) ?? "{}") as { e?: unknown; pose?: unknown; body?: unknown };
       raw = sent.e ?? null;
       rawPose = sent.pose ?? null;
+      rawBody = sent.body ?? null;
     } catch {
       return json(res, 400, { error: "not-a-face" });
     }
     const e = raw === null ? null : cleanExpression(raw);
     const pose = rawPose === null ? null : cleanPose(rawPose);
-    if ((raw !== null && !e) || (rawPose !== null && !pose)) {
+    const arms = rawBody === null ? null : cleanBody(rawBody);
+    if ((raw !== null && !e) || (rawPose !== null && !pose) || (rawBody !== null && !arms)) {
       log(me, "refused", { why: "not-a-face" });
       return json(res, 400, { error: "not-a-face" });
     }
     if (e) faceSeen.set(me.name, Date.now());
     else faceSeen.delete(me.name);
-    showExpression(me.name, e, pose);
+    showExpression(me.name, e, pose, arms);
     return json(res, 200, {});
   }
 

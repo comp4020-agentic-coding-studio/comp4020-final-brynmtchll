@@ -101,9 +101,10 @@ const SECTIONS: { label: string; parts: (Part | ColourPart)[]; sliders?: string 
   { label: "Eyes", parts: ["eyes", "eyeColour"], sliders: "Eyes" },
   { label: "Mouth", parts: ["mouth"], sliders: "Mouth" },
   { label: "Wearing", parts: ["extra", "extraColour"] },
+  { label: "Body", parts: ["top", "topColour"], sliders: "Body" },
   { label: "Words", parts: ["words"] },
 ];
-const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing" };
+const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing", top: "Top" };
 
 // Everything someone can choose about how they look, in tabs: for each
 // part a row of choices, for each colour a row of swatches and a picker for
@@ -226,6 +227,7 @@ export function roomPage(
           <button id="talk" type="button" class="talk" aria-pressed="false" disabled><span class="dot"></span><span class="label">Turn on microphone</span></button>
           <button id="face" type="button" class="face-toggle" aria-pressed="false" hidden><span class="label">Show my face</span></button>
           <video id="face-preview" class="face-preview" muted playsinline hidden></video>
+          <label class="hands-toggle"><input type="checkbox" id="hands"><span>Hands too</span></label>
         </div>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
         <div class="emotes" role="toolbar" aria-label="Emotes: your head does it, for everyone">

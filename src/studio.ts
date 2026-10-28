@@ -4,7 +4,7 @@
 // moment later; undo and redo walk back and forth through what you've
 // changed. Without this script the page is a plain form, and nothing saves.
 import { avatarSvg, fromShapes, REST, smoother, type Expression, type Pose } from "./avatar.ts";
-import { emote, head3d, webgl, zoom } from "./head3d.ts";
+import { emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
 import { emoteOf, MORE_EXTRAS, randomLook, STYLES, type Look } from "./packs.ts";
 import { wordHtml } from "./voice.ts";
 
@@ -356,6 +356,8 @@ faceButton.addEventListener("click", async () => {
 });
 
 limitMore();
+// the studio shows your shoulders and arms all the time, so you see your top
+withBody(slot);
 zoom(slot, near);
 draw();
 sample();

@@ -143,6 +143,16 @@ main.room {
   .spot:has(.head3d) .spot-avatar { width: 92px; height: 92px; margin: -10px 0 -10px -12px; }
   .mine-card .spot:has(.head3d) .spot-avatar { width: 128px; height: 128px; margin: -16px 0 -16px -16px; }
 }
+/* with their arms up (a gesture, or their hands on camera), more room, so
+   the head doesn't shrink to fit the shoulders and hands in */
+.spot:has(.head3d) .spot-avatar { transition: width 0.35s ease, height 0.35s ease; }
+.spot:has(.head3d) .spot-avatar[data-arms] { width: 168px; height: 168px; }
+.mine-card .spot:has(.head3d) .spot-avatar[data-arms] { width: 240px; height: 240px; }
+@media (max-width: 600px) {
+  .spot:has(.head3d) .spot-avatar[data-arms] { width: 128px; height: 128px; }
+  .mine-card .spot:has(.head3d) .spot-avatar[data-arms] { width: 168px; height: 168px; }
+}
+@media (prefers-reduced-motion: reduce) { .spot:has(.head3d) .spot-avatar { transition: none; } }
 /* With a head that size, the word being said goes beside it, under their
    name, as if it's coming from the head, rather than in a row of its own
    (where the head crowded it). The head's row and the word's are one. */
@@ -265,6 +275,10 @@ main.room {
 .face-preview { width: 64px; height: 48px; object-fit: cover; border-radius: 10px; border: 2px solid var(--warn, #e0a050); transform: scaleX(-1); transition: border-color 0.2s; }
 /* green while it can see your face, amber while it's looking */
 .face-preview.found { border-color: var(--ok, #3ecf8e); }
+/* arms and hands as well, offered once the face is showing */
+.hands-toggle { display: none; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
+.controls:has(.face-toggle[aria-pressed="true"]) .hands-toggle { display: inline-flex; }
+.hands-toggle input { accent-color: var(--accent); }
 .face-preview[hidden] { display: none; }
 .status { margin: 0; color: var(--muted); font-size: 0.875rem; min-height: 1.4em; }
 
@@ -328,7 +342,8 @@ main.room {
 .look-form:has(.look-tab input[value="2"]:checked) .look-section:not([data-section="2"]),
 .look-form:has(.look-tab input[value="3"]:checked) .look-section:not([data-section="3"]),
 .look-form:has(.look-tab input[value="4"]:checked) .look-section:not([data-section="4"]),
-.look-form:has(.look-tab input[value="5"]:checked) .look-section:not([data-section="5"]) { display: none; }
+.look-form:has(.look-tab input[value="5"]:checked) .look-section:not([data-section="5"]),
+.look-form:has(.look-tab input[value="6"]:checked) .look-section:not([data-section="6"]) { display: none; }
 
 /* ---- the brief record of what's been said lately ---- */
 

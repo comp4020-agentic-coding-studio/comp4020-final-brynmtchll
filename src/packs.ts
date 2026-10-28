@@ -55,22 +55,28 @@ export const stylesCss = (): string =>
 // Emotes: something someone's head does, for everyone, for a moment, by the
 // key shown (with Shift, so they don't take a word's keys) or a button.
 // `head` is how head3d.ts moves the head, `burst` what rises from it (an
-// emoji, drawn by the page), `face` the expression it pulls meanwhile. Some
-// go off by themselves when the face does (`when`: an expression held).
+// emoji, drawn by the page), `face` the expression it pulls meanwhile, `arm`
+// what their arm does (body.ts GESTURE_ARMS). Some go off by themselves when
+// the face does (`when`: an expression held), or a hand does (`gesture`:
+// MediaPipe's name for it, held up to the camera).
 export const EMOTES = [
   { id: "nod", label: "Nod", key: "N", head: "nod", burst: "", face: { smile: 0.3 } },
   { id: "shake", label: "No", key: "X", head: "shake", burst: "", face: { frown: 0.5 } },
   { id: "laugh", label: "Laugh", key: "L", head: "bounce", burst: "😂", face: { smile: 1, open: 0.7 }, when: { smile: 0.85, open: 0.5 } },
-  { id: "love", label: "Love", key: "H", head: "tilt", burst: "❤️", face: { smile: 0.8 } },
+  { id: "love", label: "Love", key: "H", head: "tilt", burst: "❤️", face: { smile: 0.8 }, arm: "love", gesture: "ILoveYou" },
   { id: "wow", label: "Wow", key: "W", head: "back", burst: "❗", face: { browUp: 1, open: 0.6, wide: 1 }, when: { browUp: 0.8, open: 0.55 } },
-  { id: "think", label: "Hmm", key: "T", head: "tilt", burst: "💭", face: { brow: 1, smirk: -0.4, lookY: 0.7, lookX: 0.5 } },
-  { id: "idea", label: "Idea", key: "I", head: "back", burst: "💡", face: { browUp: 0.7, smile: 0.6, wide: 0.6 } },
+  { id: "think", label: "Hmm", key: "T", head: "tilt", burst: "💭", face: { brow: 1, smirk: -0.4, lookY: 0.7, lookX: 0.5 }, arm: "chin" },
+  { id: "idea", label: "Idea", key: "I", head: "back", burst: "💡", face: { browUp: 0.7, smile: 0.6, wide: 0.6 }, arm: "point", gesture: "Pointing_Up" },
   { id: "sad", label: "Sad", key: "S", head: "droop", burst: "🌧️", face: { frown: 1, browUp: 0.6 } },
   { id: "angry", label: "Grr", key: "G", head: "shake", burst: "💢", face: { browDown: 1, frown: 0.7, sneer: 0.6 } },
-  { id: "party", label: "Party", key: "P", head: "bounce", burst: "🎉", face: { smile: 1, open: 0.4, wide: 0.5 } },
+  { id: "party", label: "Party", key: "P", head: "bounce", burst: "🎉", face: { smile: 1, open: 0.4, wide: 0.5 }, arm: "pump" },
   { id: "sleep", label: "Zzz", key: "Z", head: "droop", burst: "💤", face: { blink: 1 } },
   { id: "cool", label: "Cool", key: "C", head: "tilt", burst: "😎", face: { smirk: 0.8, smile: 0.4 } },
-] as const satisfies readonly (Choice & { key: string; head: string; burst: string; face: Record<string, number>; when?: Record<string, number> })[];
+  { id: "yes", label: "Yes", key: "Y", head: "nod", burst: "👍", face: { smile: 0.6 }, arm: "thumbs", gesture: "Thumb_Up" },
+  { id: "boo", label: "Boo", key: "B", head: "shake", burst: "👎", face: { frown: 0.6, browDown: 0.4 }, arm: "boo", gesture: "Thumb_Down" },
+  { id: "hi", label: "Hi", key: "O", head: "tilt", burst: "👋", face: { smile: 0.7 }, arm: "wave", gesture: "Open_Palm" },
+  { id: "peace", label: "Peace", key: "V", head: "tilt", burst: "✌️", face: { smile: 0.5, smirk: 0.3 }, arm: "peace", gesture: "Victory" },
+] as const satisfies readonly (Choice & { key: string; head: string; burst: string; face: Record<string, number>; when?: Record<string, number>; arm?: string; gesture?: string })[];
 export type Emote = (typeof EMOTES)[number];
 export const emoteOf = (id: unknown): Emote | undefined => EMOTES.find((e) => e.id === id);
 
@@ -157,6 +163,16 @@ export const PARTS = {
     { id: "goatee", label: "Goatee" },
     { id: "full", label: "Full" },
   ],
+  // what they're wearing below the head, which shows with their arms
+  top: [
+    { id: "tee", label: "T-shirt" },
+    { id: "hoodie", label: "Hoodie" },
+    { id: "jumper", label: "Jumper" },
+    { id: "collar", label: "Shirt" },
+    { id: "overalls", label: "Overalls" },
+    { id: "robe", label: "Robe" },
+    { id: "none", label: "No arms" },
+  ],
   words: STYLES.map(({ id, label }) => ({ id, label })),
   extra: [
     { id: "none", label: "None" },
@@ -185,6 +201,7 @@ export const COLOURS = {
   hairColour: { label: "Hair", swatches: ["#1b1b1f", "#4a2f1d", "#8a5a2b", "#d9a441", "#f3e2a0", "#b33a2b", "#e8e8ec", "#ff6fae", "#5aa9ff", "#6fdc8c"] },
   eyeColour: { label: "Eyes", swatches: ["#3a2a1a", "#5a3b22", "#2f6db5", "#3f8f5a", "#8a8f99", "#b07a2a", "#7a3fb5", "#d23a3a"] },
   extraColour: { label: "Accent", swatches: ["#e0506a", "#3d4a6e", "#f2c14e", "#4ec9b0", "#9b6bff", "#ff8a3d", "#1b1f2a", "#f4f4f4"] },
+  topColour: { label: "Top", swatches: ["#4a6fd1", "#e0506a", "#3ea66b", "#f2c14e", "#9b6bff", "#2b2f3a", "#f4f4f4", "#ff8a3d", "#5ec4d8", "#c46a3c"] },
 } as const;
 export type ColourPart = keyof typeof COLOURS;
 
@@ -207,6 +224,10 @@ export const SLIDERS = [
   { id: "mouthWidth", label: "Mouth width", group: "Mouth" },
   { id: "mouthHeight", label: "Mouth height", group: "Mouth" },
   { id: "lipSize", label: "Lips", group: "Mouth" },
+  { id: "shoulders", label: "Shoulders", group: "Body" },
+  { id: "armLength", label: "Arm length", group: "Body" },
+  { id: "handSize", label: "Hands", group: "Body" },
+  { id: "neck", label: "Neck", group: "Body" },
 ] as const satisfies readonly (Choice & { group: string })[];
 export type Slider = (typeof SLIDERS)[number]["id"];
 export type Tune = Partial<Record<Slider, number>>;
@@ -228,11 +249,13 @@ export const DEFAULT_LOOK: Look = {
   ears: "round",
   beard: "none",
   extra: "none",
+  top: "tee",
   words: "plain",
   skin: COLOURS.skin.swatches[0],
   hairColour: COLOURS.hairColour.swatches[1],
   eyeColour: COLOURS.eyeColour.swatches[0],
   extraColour: COLOURS.extraColour.swatches[0],
+  topColour: COLOURS.topColour.swatches[0],
 };
 
 const HEX = /^#[0-9a-f]{6}$/;
@@ -295,6 +318,7 @@ export function lookFor(seat: number): Look {
     hair: pick("hair", (seat * 5) % 7),
     hairColour: COLOURS.hairColour.swatches[(seat * 3) % 6],
     eyeColour: COLOURS.eyeColour.swatches[seat % 4],
+    topColour: COLOURS.topColour.swatches[(seat * 7) % 10],
   };
 }
 
@@ -303,8 +327,9 @@ export function randomLook(rnd: () => number = Math.random): Look {
   const out = { ...DEFAULT_LOOK } as unknown as Record<string, string>;
   for (const k of Object.keys(PARTS) as Part[]) out[k] = PARTS[k][Math.floor(rnd() * PARTS[k].length)].id;
   for (const k of Object.keys(COLOURS) as ColourPart[]) out[k] = COLOURS[k].swatches[Math.floor(rnd() * COLOURS[k].swatches.length)];
-  // a beard on half of them, accessories on most
+  // a beard on half of them, accessories on most, and always arms
   if (rnd() < 0.5) out.beard = "none";
+  if (out.top === "none") out.top = "tee";
   // and shaped a little, not far from usual
   const tune: Tune = {};
   for (const sl of SLIDERS) if (rnd() < 0.5) tune[sl.id] = Math.round((rnd() * 2 - 1) * 0.6 * 100) / 100;

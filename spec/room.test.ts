@@ -249,6 +249,23 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   });
 
+  it("moves someone's arms and hands with theirs, as directions and curls and nothing else", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const thumbsUp = { left: null, right: { upper: [0.3, -0.75, 0.6], fore: [-0.45, 0.55, 0.7], hand: { curl: [0, 1, 1, 1, 1], point: [-0.53, 0.23, 0.82], palm: [-0.76, 0.24, -0.61], picture: "AAAA" } }, tilt: 0, turn: 0, video: "AAAA" };
+    expect((await sendFace(p.cookie, { e: grin, pose: null, body: thumbsUp })).status).toBe(200);
+    const seen = (await watcher.waitFor(`"name":"${p.name}","e":{"smile":0.9`)) as unknown as { body: { right: { hand: Record<string, unknown> } } & Record<string, unknown> };
+    expect(Object.keys(seen.body).sort()).toEqual(["left", "right", "tilt", "turn"]);
+    expect(Object.keys(seen.body.right.hand).sort()).toEqual(["curl", "palm", "point"]);
+    expect(seen.body.right.hand.curl).toEqual([0, 1, 1, 1, 1]);
+    expect((await sendFace(p.cookie, { e: grin, body: "a picture" })).status).toBe(400);
+    // a face put away takes its arms with it
+    await sendFace(p.cookie, { e: null, body: thumbsUp });
+    expect((await watcher.waitFor(`"name":"${p.name}","e":{"smile":0,`)) as unknown as { body: unknown }).toMatchObject({ body: null });
+    watcher.close();
+  });
+
   it("moves someone's avatar's mouth with how loud they're talking, as levels and nothing else", async () => {
     const watcher = listen();
     await watcher.ready;

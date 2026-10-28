@@ -17,6 +17,7 @@
 // and head to whoever is speaking, glances about and blinks.
 import { STILL, type Expression, type Pose } from "./avatar.ts";
 import type { Look } from "./packs.ts";
+import { handPoints, RESTING, GESTURE_ARMS, unit, type Arm, type Body, type Side, type Vec } from "./body.ts";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
 // three.js as loaded from the CDN, untyped: this file only builds meshes
@@ -56,6 +57,8 @@ type Head = {
   look: string;
   // where the camera stands to fit all of it (bunny ears, a crown) in frame
   fit: { y: number; dist: number };
+  // their shoulders, arms and hands, if they have any (look.top not "none")
+  body: Torso | null;
 };
 
 // A head on the page: its look, the face and turn it's easing towards, and
@@ -77,7 +80,10 @@ type Shown = {
   blinkAt: number;
   // an emote it's doing (packs.ts EMOTES): how its head moves, the face it
   // pulls meanwhile, and since when
-  doing: { head: string; face: Partial<Expression>; at: number } | null;
+  doing: { head: string; face: Partial<Expression>; arm?: string; at: number } | null;
+  // their arms: as read off their camera (null when they aren't sending
+  // them), and as drawn, easing towards that, or an emote's, or resting
+  arms: { target: Body | null; at: number; busyAt: number; left: Arm; right: Arm; tilt: number; turn: number; shown: number };
   // what it was last drawn as, so a head that hasn't moved isn't drawn again
   drawn: string;
   open: number; // how open its mouth was last drawn
@@ -93,6 +99,30 @@ const sizeFor = (canvas: HTMLCanvasElement): number =>
 // how close the camera comes to each head: 1 as framed, more is nearer
 const zooms = new Map<HTMLElement, number>();
 const NEAREST = 4.3; // the closest the camera comes, from the head's middle
+// slots that show the body even when the arms aren't doing anything (the
+// studio's preview); elsewhere it shows only while they are
+const always = new Set<HTMLElement>();
+export const withBody = (slot: HTMLElement, on = true): void => void (on ? always.add(slot) : always.delete(slot));
+// how long arms read off a camera are kept after the last reading, and
+// how long an emote's arm takes to go back down
+const ARMS_FOR = 1500; // ms
+const ARMS_DOWN = 2500; // ms after the arms last did something, before the frame closes back to the head
+// where the camera stands to take in the shoulders and hands raised beside
+// the head, as the head's own fit does for the head
+const BODY_FIT = { y: -0.7, dist: 2.75 * 1.08 / Math.tan((14 * Math.PI) / 180) };
+// an arm eased towards another, each direction a little of the way (and
+// kept a direction); a hand eases its curls too, or appears where there was none
+const easeVec = (a: Vec, b: Vec, k: number): Vec => unit([ease(a[0], b[0], k), ease(a[1], b[1], k), ease(a[2], b[2], k)]);
+function easeArm(a: Arm, b: Arm, k: number): Arm {
+  const ha = a.hand ?? b.hand;
+  const hb = b.hand ?? a.hand;
+  return {
+    upper: easeVec(a.upper, b.upper, k),
+    fore: easeVec(a.fore, b.fore, k),
+    hand: ha && hb ? { curl: ha.curl.map((c, i) => ease(c, hb.curl[i], k)) as typeof ha.curl, point: easeVec(ha.point, hb.point, k), palm: easeVec(ha.palm, hb.palm, k) } : null,
+  };
+}
+const armNumbers = (a: Arm): number[] => [...a.upper, ...a.fore, ...(a.hand ? [...a.hand.curl, ...a.hand.point, ...a.hand.palm] : [])];
 export const zoom = (slot: HTMLElement, z: number): void => void zooms.set(slot, Math.min(3, Math.max(0.6, z)));
 const BLINK = 140; // ms
 const still = matchMedia("(prefers-reduced-motion: reduce)");
@@ -100,12 +130,14 @@ const still = matchMedia("(prefers-reduced-motion: reduce)");
 let renderer: T;
 let camera: T;
 let scene: T;
+let THREE_: T; // three.js, once it's loaded
 const heads = new Map<HTMLElement, Shown>();
 let speaker: HTMLElement | null = null;
 
 async function setUp(): Promise<T> {
   const THREE = await load();
   if (renderer) return THREE;
+  THREE_ = THREE;
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(1);
   renderer.setSize(LARGEST, LARGEST, false);
@@ -356,6 +388,192 @@ const EXTRAS: Record<string, (k: Kit) => void> = {
 };
 
 // A head in a look: built once per look, rebuilt when the look changes.
+// ---- shoulders, arms and hands ----
+
+// A torso under the head, in their top, and two arms, each a chain from the
+// shoulder: an upper arm, a forearm, and a hand of a palm, a thumb and four
+// fingers of three bones each. The head sits on it but turns on its own; the
+// torso turns with the shoulders. Arms are posed by pointing each bone (see
+// poseArm), so they go wherever the numbers say without any joint limits:
+// what's read is what someone's arm did.
+type Bone = { pivot: T; length: number };
+type HandMesh = { root: T; palm: T; size: number; bones: (Bone & { from: number; to: number })[] };
+type ArmMesh = { shoulder: Vec; upper: Bone; fore: Bone; hand: HandMesh };
+type Torso = { root: T; left: ArmMesh; right: ArmMesh };
+
+// a hand's bones, between body.ts's 21 points: the thumb from its base, and
+// each finger from its knuckle to its tip (in the palm, they aren't drawn)
+const HAND_BONES: [number, number][] = [
+  [1, 2], [2, 3], [3, 4],
+  [5, 6], [6, 7], [7, 8],
+  [9, 10], [10, 11], [11, 12],
+  [13, 14], [14, 15], [15, 16],
+  [17, 18], [18, 19], [19, 20],
+];
+
+// where things are, in the head's units (its radius is about 1)
+const NECK_TOP = -0.85;
+const SHOULDER_Y = -1.62;
+const SHOULDER_X = 1.05;
+// an arm a little shorter than life for the head's size: long enough to wave
+// beside it, short enough to stay near it in a small card
+const UPPER = 1.15;
+const FORE = 1.05;
+// a hand's metres (body.ts) as head units: a hand about as long as the face is tall
+const HAND = 6.2;
+
+// A bone: a group at its joint that turns to point its length along +y.
+function bone(THREE: T, parent: T, length: number, radius: number, m: T, at: Vec = [0, 0, 0]): Bone {
+  const pivot = new THREE.Group();
+  pivot.position.set(...at);
+  const limb = new THREE.Mesh(new THREE.CapsuleGeometry(radius, Math.max(0.001, length - radius * 2), 6, 12), m);
+  limb.position.y = length / 2;
+  pivot.add(limb);
+  parent.add(pivot);
+  return { pivot, length };
+}
+
+function buildHand(THREE: T, parent: T, skin: T, size: number): HandMesh {
+  const root = new THREE.Group();
+  parent.add(root);
+  // the palm: a flattened ball between the wrist and the knuckles
+  const palm = new THREE.Group();
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), skin);
+  ball.scale.set(0.052 * HAND * size, 0.055 * HAND * size, 0.026 * HAND * size);
+  palm.add(ball);
+  root.add(palm);
+  const bones = HAND_BONES.map(([from, to]) => {
+    const thumb = from < 5;
+    const little = from >= 17;
+    const tip = to % 4 === 0;
+    const r = (thumb ? 0.0145 : little ? 0.011 : 0.0125) * HAND * size * (tip ? 0.92 : 1);
+    return { ...bone(THREE, root, 1, r, skin), from, to };
+  });
+  return { root, palm, size, bones };
+}
+
+// Point a bone from a to b (in its parent's space), stretched to reach.
+const Y_UP = [0, 1, 0];
+function point(THREE: T, b: Bone, from: Vec, to: Vec): void {
+  const d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+  const len = Math.hypot(d[0], d[1], d[2]) || 1e-6;
+  b.pivot.position.set(...from);
+  b.pivot.quaternion.setFromUnitVectors(new THREE.Vector3(...Y_UP), new THREE.Vector3(d[0] / len, d[1] / len, d[2] / len));
+  b.pivot.scale.set(1, len / b.length, 1);
+}
+
+function buildBody(THREE: T, look: Look, skin: T, t: (id: string) => number): Torso | null {
+  if (look.top === "none") return null;
+  const root = new THREE.Group();
+  const cloth = mat(THREE, look.topColour, 0.8);
+  const wide = 1 + t("shoulders") * 0.18;
+  const neck = 1 + t("neck") * 0.35;
+  // the neck: down from under the jaw, longer or shorter
+  const neckLen = 0.75 * neck;
+  const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, neckLen, 20), skin);
+  neckMesh.position.y = NECK_TOP - neckLen / 2 + 0.05;
+  root.add(neckMesh);
+  const shoulderY = SHOULDER_Y - (neck - 1) * 0.75;
+  // the torso: a rounded block, shoulders down out of frame
+  const chest = new THREE.Mesh(new THREE.CapsuleGeometry(0.95, 1.6, 8, 24), cloth);
+  chest.scale.set(1.08 * wide, 1, 0.62);
+  chest.position.y = shoulderY - 1.25;
+  root.add(chest);
+  // what kind of top: a hood behind the neck, a collar, a robe's V, straps
+  const top = look.top;
+  if (top === "hoodie") {
+    const hood = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.17, 12, 28, Math.PI * 1.25), cloth);
+    hood.position.set(0, shoulderY + 0.08, -0.32);
+    hood.rotation.set(Math.PI / 2 + 0.25, 0, -Math.PI * 0.125 + Math.PI);
+    root.add(hood);
+    for (const s of [-1, 1]) {
+      const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.45, 6), mat(THREE, 0xf4f4f4, 0.6));
+      cord.position.set(s * 0.17, shoulderY - 0.25, 0.6);
+      root.add(cord);
+    }
+  } else if (top === "collar") {
+    for (const s of [-1, 1]) {
+      const flap = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.32, 3), mat(THREE, 0xf4f4f4, 0.6));
+      flap.position.set(s * 0.2, shoulderY + 0.05, 0.42);
+      flap.rotation.set(0.3, 0, s * 2.6);
+      flap.scale.set(1, 1, 0.3);
+      root.add(flap);
+    }
+  } else if (top === "jumper") {
+    const roll = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.1, 10, 28), cloth);
+    roll.position.set(0, shoulderY + 0.1, 0);
+    roll.rotation.x = Math.PI / 2;
+    root.add(roll);
+  } else if (top === "overalls") {
+    const denim = mat(THREE, 0x35507a, 0.85);
+    const bib = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.1), denim);
+    bib.position.set(0, shoulderY - 0.85, 0.6);
+    root.add(bib);
+    for (const s of [-1, 1]) {
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.95, 0.06), denim);
+      strap.position.set(s * 0.35, shoulderY - 0.15, 0.48);
+      strap.rotation.x = -0.45;
+      root.add(strap);
+    }
+  } else if (top === "robe") {
+    const trim = mat(THREE, look.extraColour, 0.5);
+    for (const s of [-1, 1]) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, 0.06), trim);
+      edge.position.set(s * 0.2, shoulderY - 0.55, 0.58);
+      edge.rotation.set(-0.2, 0, s * 0.35);
+      root.add(edge);
+    }
+  }
+  // arms: a shoulder of cloth, a sleeve, and (short sleeves) a bare forearm
+  const sleeve = top === "tee" || top === "overalls" ? skin : cloth;
+  const length = 1 + t("armLength") * 0.22;
+  const hand = 1 + t("handSize") * 0.35;
+  const arm = (side: Side): ArmMesh => {
+    const s = side === "left" ? -1 : 1;
+    const shoulder: Vec = [s * SHOULDER_X * wide, shoulderY, 0];
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.33, 20, 14), cloth);
+    cap.position.set(...shoulder);
+    root.add(cap);
+    const upper = bone(THREE, root, UPPER * length, sleeve === skin ? 0.23 : 0.27, sleeve);
+    const fore = bone(THREE, root, FORE * length, sleeve === skin ? 0.2 : 0.22, sleeve);
+    if (sleeve === skin) {
+      // a short sleeve, over the top half of the upper arm
+      const short = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.33, UPPER * length * 0.5, 18), cloth);
+      short.position.y = UPPER * length * 0.25;
+      upper.pivot.add(short);
+    }
+    return { shoulder, upper, fore, hand: buildHand(THREE, root, skin, hand) };
+  };
+  return { root, left: arm("left"), right: arm("right") };
+}
+
+// Put an arm where its numbers say: the upper arm from the shoulder, the
+// forearm from the elbow, the hand at the wrist. Directions are as drawn
+// (body.ts): x to the screen's right, y up, z out towards whoever's looking.
+function poseArm(THREE: T, m: ArmMesh, a: Arm): void {
+  const elbow: Vec = [m.shoulder[0] + a.upper[0] * m.upper.length, m.shoulder[1] + a.upper[1] * m.upper.length, m.shoulder[2] + a.upper[2] * m.upper.length];
+  const wrist: Vec = [elbow[0] + a.fore[0] * m.fore.length, elbow[1] + a.fore[1] * m.fore.length, elbow[2] + a.fore[2] * m.fore.length];
+  point(THREE, m.upper, m.shoulder, elbow);
+  point(THREE, m.fore, elbow, wrist);
+  const side: Side = m.shoulder[0] < 0 ? "left" : "right";
+  const hand = a.hand ?? { curl: [0.3, 0.35, 0.35, 0.35, 0.35], point: a.fore, palm: unit([side === "left" ? 1 : -1, 0, 0.3]) };
+  poseHand(THREE, m.hand, side, hand, wrist);
+}
+
+function poseHand(THREE: T, m: HandMesh, side: Side, h: NonNullable<Arm["hand"]>, wrist: Vec): void {
+  const k = HAND * m.size;
+  const pts = handPoints(side, h).map((p) => [p[0] * k, p[1] * k, p[2] * k] as Vec);
+  m.root.position.set(...wrist);
+  // the palm turned to match: along the hand's way, its face out the palm's
+  const y = new THREE.Vector3(...h.point).normalize();
+  const z = new THREE.Vector3(...h.palm);
+  z.sub(y.clone().multiplyScalar(z.dot(y))).normalize();
+  const x = new THREE.Vector3().crossVectors(y, z);
+  m.palm.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+  m.palm.position.copy(y.multiplyScalar(0.045 * k));
+  for (const b of m.bones) point(THREE, b, pts[b.from], pts[b.to]);
+}
+
 function build(THREE: T, look: Look): Head {
   const root = new THREE.Group();
   // the look's sliders, each -1 to 1 (packs.ts SLIDERS), 0 if unset
@@ -540,7 +758,11 @@ function build(THREE: T, look: Look): Head {
   const size = Math.max(top - bottom, 2 * Math.max(-box.min.x, box.max.x, 1.07));
   const fit = { y: (top + bottom) / 2 + 0.06, dist: (size / 2) * 1.13 / Math.tan((14 * Math.PI) / 180) };
 
-  return { root, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush" || (look.more ?? []).includes("blush"), sleepy: look.eyes === "sleepy", browY: 0.44 + t("browHeight") * 0.07 + t("eyeHeight") * 0.08, look: JSON.stringify(look), fit };
+  // the shoulders, arms and hands, built beside the head rather than in it:
+  // they don't turn when the head does
+  const body = buildBody(THREE, look, skin, t);
+
+  return { body, root, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush" || (look.more ?? []).includes("blush"), sleepy: look.eyes === "sleepy", browY: 0.44 + t("browHeight") * 0.07 + t("eyeHeight") * 0.08, look: JSON.stringify(look), fit };
 }
 
 // set a head's face, turn, place and gaze (-1 to 1 across and up)
@@ -755,6 +977,8 @@ function frame(now: number): void {
     // an emote: its face blended in, rising and falling over EMOTE_FOR, and
     // its head's move on top of whatever else the head is doing
     let move = STILL;
+    // (what its arm does, if anything: kept for after, which may end it)
+    const doingArm = s.doing?.arm && GESTURE_ARMS[s.doing.arm] ? { arm: s.doing.arm, t: (now - s.doing.at) / EMOTE_FOR } : null;
     if (s.doing) {
       // (started by a click, its time can be a moment ahead of this frame's)
       const t = Math.max(0, (now - s.doing.at) / EMOTE_FOR);
@@ -771,8 +995,37 @@ function frame(now: number): void {
       else s.blinkAt = now + 2200 + Math.random() * 4000;
     }
     const moved = { ...s.pose, pitch: s.pose.pitch + move.pitch, yaw: s.pose.yaw + move.yaw, roll: s.pose.roll + move.roll, y: s.pose.y + move.y, z: s.pose.z + move.z };
+    // arms: as read off their camera while that's coming, an emote's while
+    // one's going, or resting; the frame widens to show them while they do
+    // something, and closes back to the head a while after
+    const body = s.head.body;
+    let armsBusy = false;
+    if (body) {
+      const read = s.arms.target && now - s.arms.at < ARMS_FOR ? s.arms.target : null;
+      let want: { left: Arm; right: Arm; tilt: number; turn: number } = { left: read?.left ?? RESTING.left, right: read?.right ?? RESTING.right, tilt: read?.tilt ?? 0, turn: read?.turn ?? 0 };
+      // an emote's arm: their right, on the screen's right (a wave waves),
+      // up for most of the emote and back down for the end of it
+      if (doingArm && doingArm.t < 0.85) {
+        const g = GESTURE_ARMS[doingArm.arm];
+        const wave = doingArm.arm === "wave" ? Math.sin(doingArm.t * Math.PI * 8) * 0.35 : 0;
+        want = { ...want, right: { ...g, fore: unit([g.fore[0] + wave, g.fore[1], g.fore[2]]) } };
+      }
+      // doing something: read off a camera, or an emote's arm, lately
+      if (read || (doingArm && doingArm.t < 0.85)) s.arms.busyAt = now;
+      armsBusy = now - s.arms.busyAt < ARMS_DOWN;
+      const kk = k(read ? 24 : 9);
+      s.arms.left = easeArm(s.arms.left, want.left, kk);
+      s.arms.right = easeArm(s.arms.right, want.right, kk);
+      s.arms.tilt = ease(s.arms.tilt, want.tilt, kk);
+      s.arms.turn = ease(s.arms.turn, want.turn, kk);
+    }
+    s.arms.shown = ease(s.arms.shown, body && (armsBusy || always.has(slot)) ? 1 : 0, k(5));
+    // the card makes more room for them meanwhile (style.css [data-arms])
+    const roomy = body !== null && armsBusy && !always.has(slot);
+    if (slot.hasAttribute("data-arms") !== roomy) slot.toggleAttribute("data-arms", roomy);
     // drawn only if it's moved enough to see
-    const looks = [...Object.values(e), ...Object.values(moved), s.gaze.x, s.gaze.y].map((v) => Math.round(v * 200)).join(",");
+    const armKey = body && s.arms.shown > 0.01 ? [s.arms.shown, s.arms.tilt, s.arms.turn, ...armNumbers(s.arms.left), ...armNumbers(s.arms.right)] : [];
+    const looks = [...Object.values(e), ...Object.values(moved), s.gaze.x, s.gaze.y, ...armKey].map((v) => Math.round(v * 200)).join(",");
     if (looks === s.drawn) continue;
     s.drawn = looks;
     s.open = e.open;
@@ -790,12 +1043,24 @@ function frame(now: number): void {
     renderer.clear();
     // (zoomed in, it frames the face rather than the whole head)
     const z = zooms.get(slot) ?? 1;
+    // with the body showing, the frame takes in the shoulders and hands too
+    const b = s.arms.shown;
+    const fitY = ease(s.head.fit.y, BODY_FIT.y, b);
+    const fitDist = ease(s.head.fit.dist, Math.max(s.head.fit.dist, BODY_FIT.dist), b);
     // (never closer than a face's width away, or it's inside their glasses)
-    camera.position.set(0, s.head.fit.y + (z > 1 ? (0.1 - s.head.fit.y) * Math.min(1, (z - 1) / 1.2) : 0), Math.max(NEAREST, s.head.fit.dist / z));
+    camera.position.set(0, fitY + (z > 1 ? (0.1 - fitY) * Math.min(1, (z - 1) / 1.2) : 0), Math.max(NEAREST, fitDist / z));
     camera.lookAt(0, camera.position.y, 0);
     scene.add(s.head.root);
+    if (body && b > 0.01) {
+      // the shoulders tilt and turn; the head, on them, a little with them
+      body.root.rotation.set(0, s.arms.turn, s.arms.tilt);
+      poseArm(THREE_, body.left, s.arms.left);
+      poseArm(THREE_, body.right, s.arms.right);
+      scene.add(body.root);
+    }
     renderer.render(scene, camera);
     scene.remove(s.head.root);
+    if (body) scene.remove(body.root);
     const ctx = s.canvas.getContext("2d");
     ctx?.clearRect(0, 0, size, size);
     ctx?.drawImage(renderer.domElement, 0, 0, size, size, 0, 0, size, size);
@@ -844,6 +1109,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
       doing: known?.doing ?? null,
+      arms: known?.arms ?? { target: null, at: -Infinity, busyAt: -Infinity, left: RESTING.left, right: RESTING.right, tilt: 0, turn: 0, shown: 0 },
       drawn: "",
       open: 0,
     });
@@ -918,9 +1184,18 @@ const MOVES: Record<string, (t: number, amount: number) => Pose> = {
 };
 
 // An emote, for a head: its head moves and its face is pulled for a moment.
-export function emote(slot: HTMLElement, e: { head: string; face: Partial<Expression> }): void {
+export function emote(slot: HTMLElement, e: { head: string; face: Partial<Expression>; arm?: string }): void {
   const s = heads.get(slot);
-  if (s) s.doing = { head: e.head, face: e.face, at: performance.now() };
+  if (s) s.doing = { head: e.head, face: e.face, arm: e.arm, at: performance.now() };
+}
+
+// Someone's arms and hands as their camera reads them (body.ts), or null
+// when it stops: the arms go back down.
+export function arms(slot: HTMLElement, b: Body | null): void {
+  const s = heads.get(slot);
+  if (!s) return;
+  s.arms.target = b;
+  s.arms.at = b ? performance.now() : -Infinity;
 }
 
 // Who's speaking now, so every other head can look at them; the last to
