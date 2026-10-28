@@ -131,6 +131,27 @@ led to. Claude chose how to build each; what to build was yours.
    - Customising on its own screen: [`d6827db`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d6827db)
      (`/studio`: the head large and always in view, turn and zoom, sixteen
      sliders, up to two more things to wear, undo).
+   - Whole-body avatars with hand gestures: [`81d2090`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/81d2090)
+     (shoulders, arms and hands on every head, a choice of tops; "Hands too"
+     reads arms and hands off the camera in a background worker, and a
+     thumbs up, thumbs down, open palm, peace sign or "I love you" sets off
+     the matching emote), and [`d4bff2a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d4bff2a) (a hand held up, or
+     Shift+R, joins a queue to speak, the same on every page, until you've
+     spoken).
+   - A real room: [`309e650`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/309e650) (a "Room" view: everyone at a
+     table in one 3D room, with a window, shelves, a lamp and plants, names
+     and words over heads, the camera leaning towards whoever's talking),
+     [`60cdd2f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/60cdd2f) (the room takes the wide side of the screen when
+     you're in it) and [`859b13f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/859b13f) (emotes and reactions work in
+     the room too).
+   - Speech with the subtitles: [`fa34255`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/fa34255) ("Hear voices":
+     each phrase spoken by the browser in the voice its speaker picked in
+     the studio, with pitch and speed sliders; a loud, high or drawn-out word
+     gets its own run, louder, higher or slower; quiet while you talk, and a
+     phrase your microphone hears that's mostly what was just spoken is
+     dropped as an echo). Kokoro, the better voice the spike measured, is not built yet:
+     it takes a voice and a speed only, so a high word couldn't be spoken
+     higher without bending its sound afterwards.
 
 ### What the three spikes measured (22 October, for the next decisions)
 
