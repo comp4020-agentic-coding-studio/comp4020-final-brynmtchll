@@ -101,6 +101,7 @@ let waiting = 0;
 function hush(): void {
   synth?.cancel();
   waiting = 0;
+  held.length = 0;
   const now = Date.now();
   for (const s of spokenLately) s.until = Math.min(s.until, now);
 }
@@ -118,24 +119,36 @@ export function hearVoices(yes: boolean): void {
   }
 }
 
-// Quiet while you talk (so it doesn't talk over you, or into your
-// microphone): asked for again and again while you are, so it lifts by
-// itself DUCK_FOR after the last ask (a microphone turned off mid-word
-// doesn't leave it quiet for good).
+// Held while you talk, so it doesn't talk over you: what arrives meanwhile
+// waits (the latest MOST_WAITING of it) and is said once you stop. What's
+// being said already finishes rather than stop mid-word. Asked for again and
+// again while you are, so it lifts by itself DUCK_FOR after the last ask (a
+// microphone turned off mid-word doesn't leave it held for good).
 const DUCK_FOR = 1500; // ms
 let duckTimer = 0;
+type Waiting = { words: Spoken[]; look: Pick<Look, "voice" | "tune">; whenStarts?: (run: Run) => void; at: number };
+const held: Waiting[] = [];
+const HELD_FOR = 20_000; // ms: held longer than this, it's not news any more
 export function duck(yes: boolean): void {
   clearTimeout(duckTimer);
-  if (yes) duckTimer = setTimeout(() => (ducked = false), DUCK_FOR) as unknown as number;
+  if (yes) duckTimer = setTimeout(() => duck(false), DUCK_FOR) as unknown as number;
   if (ducked === yes) return;
   ducked = yes;
-  if (yes) hush();
+  if (!yes) for (const w of held.splice(0)) if (Date.now() - w.at < HELD_FOR) speak(w.words, w.look, w.whenStarts);
 }
+// whether it's saying something now (so a microphone hearing it isn't taken
+// for the listener talking)
+export const speaking = (): boolean => !!synth?.speaking;
 
 // A phrase, in its speaker's voice, after whatever's being said already.
 // `whenStarts` is told as each run starts (to move their avatar, say).
 export function speak(words: Spoken[], look: Pick<Look, "voice" | "tune">, whenStarts?: (run: Run) => void): void {
-  if (!on || ducked || !synth || look.voice === "silent") return;
+  if (!on || !synth || look.voice === "silent") return;
+  if (ducked) {
+    held.push({ words, look, whenStarts, at: Date.now() });
+    if (held.length > MOST_WAITING) held.shift();
+    return;
+  }
   // too far behind: start again from this one
   if (waiting >= MOST_WAITING) hush();
   const runs = runsOf(words, look);

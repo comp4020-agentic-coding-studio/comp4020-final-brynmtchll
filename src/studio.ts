@@ -320,8 +320,9 @@ faceButton.addEventListener("click", async () => {
   }
   faceButton.disabled = true;
   say("Opening your camera…");
+  let camera: MediaStream | undefined;
   try {
-    const camera = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } });
+    camera = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } });
     const { FaceLandmarker, FilesetResolver } = await import(`${VISION}/vision_bundle.mjs`);
     const reader = await FaceLandmarker.createFromOptions(await FilesetResolver.forVisionTasks(`${VISION}/wasm`), {
       baseOptions: { modelAssetPath: FACE_MODEL, delegate: "CPU" },
@@ -355,9 +356,10 @@ faceButton.addEventListener("click", async () => {
       void head3d(slot, look, face, matrix ? poseFrom(matrix, home) : null);
     };
     read();
+    const opened = camera;
     stopFace = () => {
       running = false;
-      for (const t of camera.getTracks()) t.stop();
+      for (const t of opened.getTracks()) t.stop();
       reader.close();
     };
     following = true;
@@ -366,7 +368,9 @@ faceButton.addEventListener("click", async () => {
     say("Following your face, on this page only.");
   } catch (err) {
     console.error(err);
-    say("Couldn't follow your face here: the camera's blocked or there isn't one.");
+    // the camera off again if it opened, and the right reason given
+    for (const t of camera?.getTracks() ?? []) t.stop();
+    say(camera ? "Couldn't load the face reader. Check your connection and try again." : "Couldn't follow your face here: the camera's blocked or there isn't one.");
   } finally {
     faceButton.disabled = false;
   }

@@ -6,7 +6,7 @@ import { avatarSvg, fromShapes, oneEuro, placed, poseFrom, resting, REST, smooth
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import { bodyFrom, type Body } from "./body.ts";
 import { overHead, showRoom } from "./room3d.ts";
-import { canSpeak, duck, echoOf, hearVoices, speak, type Spoken } from "./speech.ts";
+import { canSpeak, duck, echoOf, hearVoices, speak, speaking as voicesSpeaking, type Spoken } from "./speech.ts";
 import type { FromHands, ToHands } from "./hands.ts";
 import { EFFECTS, emoteOf, EMOTES, STYLES, type Look as PackLook } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
@@ -261,7 +261,7 @@ function arrive(p: Phrase & { draft?: number }): void {
   const spot = spotFor(p, p.look);
   // spoken, for anyone with voices on: not your own back to you, nor what
   // comes again after a dropped connection
-  if (p.name !== myName && p.look && Date.now() - p.at < FRESH) speak(spokenOf(p), p.look);
+  if (p.name !== myName && p.look && Date.now() - openedAt > CATCHING_UP) speak(spokenOf(p), p.look);
   addToThread(spot, p);
   spot.queue.push({ ...p, arrived: Date.now() });
   if (spot.state !== "playing") play(spot);
@@ -269,7 +269,11 @@ function arrive(p: Phrase & { draft?: number }): void {
   if (spot.el.classList.contains("mine") && (followLatest || !chosen) && typing === null) choose(p.id, p.words.length - 1, true);
 }
 
-const FRESH = 20_000; // ms: older than this, a phrase isn't spoken
+// What comes in the moment the stream (re)opens is what was missed, caught
+// up on all at once: shown, not spoken. (Timed by this page's own clock: a
+// device's clock may not agree with the server's.)
+const CATCHING_UP = 1500; // ms
+let openedAt = 0;
 
 // A phrase's words as they're to be spoken: each word's text (from its
 // drawing) and how it was said.
@@ -446,6 +450,7 @@ function connect(): void {
   const stream = new EventSource(`/events?after=${lastSeen}`);
   stream.addEventListener("open", () => {
     wait = 1000;
+    openedAt = Date.now();
     showLive(true, "Live");
   });
   stream.addEventListener("error", () => {
@@ -691,7 +696,8 @@ function sendVoice(level: number): void {
   const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
   if (slot) voiceLevels(slot, [level], true);
   // others' voices wait while you're talking, and carry on after a moment
-  if (level > 0.35) loudAt = Date.now();
+  // (not counting the voices themselves, heard through the microphone)
+  if (level > 0.35 && !voicesSpeaking()) loudAt = Date.now();
   duck(Date.now() - loudAt < 900);
   voiceBatch.push(Math.round(level * 100) / 100);
   if (Date.now() - voiceSentAt < VOICE_EVERY) return;

@@ -86,6 +86,7 @@ type Shown = {
   arms: { target: Body | null; at: number; busyAt: number; left: Arm; right: Arm; tilt: number; turn: number; shown: number; up: boolean };
   // what it was last drawn as, so a head that hasn't moved isn't drawn again
   drawn: string;
+  cardDrawn?: string; // (in the room: what yours was last drawn as on your card)
   open: number; // how open its mouth was last drawn
 };
 const LEVEL_EVERY = 43; // ms: one microphone batch
@@ -863,12 +864,22 @@ function shapeMouth(h: Head, given: Expression): void {
   u.tongue.position.y = -open * 0.75;
 }
 
+// a head's shaders made (from those already made, for the same kinds of
+// material) before anything that's using them now goes
+function warm(h: Head): void {
+  for (const part of [h.root, h.body?.root]) if (part) renderer.compile(part, camera, scene);
+}
+
 // a head no longer drawn gives back what the GPU was holding for it
 function drop(h: Head): void {
-  h.root.traverse((o: T) => {
-    o.geometry?.dispose();
-    o.material?.dispose();
-  });
+  // (its body too: built beside it, not in it)
+  for (const part of [h.root, h.body?.root]) {
+    part?.removeFromParent();
+    part?.traverse((o: T) => {
+      o.geometry?.dispose();
+      for (const m of [o.material].flat()) m?.dispose();
+    });
+  }
 }
 
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
@@ -920,6 +931,7 @@ function frame(now: number): void {
   const speakerNow = voiced?.[0] ?? speaker;
   const talker = speakerNow && heads.has(speakerNow) ? centre(speakerNow) : null;
   const inRoom: RoomHead[] = [];
+  let yours: [HTMLElement, Shown] | null = null;
   for (const [slot, s] of heads) {
     if (!s.canvas.isConnected) {
       heads.delete(slot);
@@ -1060,49 +1072,69 @@ function frame(now: number): void {
           poseArm(THREE_, body.right, s.arms.right);
         }
       }
-      inRoom.push({ slot, root: s.head.root, body: body?.root ?? null, fitY: s.head.fit.y, speaking: slot === speakerNow && now - s.voice.loudAt < VOICE_FOR + 400, mine: slot.closest(".mine") !== null });
+      const mine = slot.closest(".mine") !== null;
+      inRoom.push({ slot, root: s.head.root, body: body?.root ?? null, fitY: s.head.fit.y, speaking: slot === speakerNow && now - s.voice.loudAt < VOICE_FOR + 400, mine });
+      // yours is still in view on your card, beside the room: drawn there
+      // too, after the room's drawn (borrowed from its seat, and put back)
+      if (mine && s.canvas.getBoundingClientRect().width > 0 && s.cardDrawn !== looks) {
+        s.cardDrawn = looks;
+        yours = [slot, s];
+      }
       continue;
     }
     if (looks === s.drawn) continue;
     s.drawn = looks;
     s.open = e.open;
     pose(s.head, e, moved, s.gaze);
-    // drawn at this card's size, in the corner of the shared canvas, and
-    // copied from there
-    const size = sizeFor(s.canvas);
-    if (s.canvas.width !== size) {
-      s.canvas.width = size;
-      s.canvas.height = size;
-    }
-    renderer.setViewport(0, LARGEST - size, size, size);
-    renderer.setScissor(0, LARGEST - size, size, size);
-    renderer.setScissorTest(true);
-    renderer.clear();
-    // (zoomed in, it frames the face rather than the whole head)
-    const z = zooms.get(slot) ?? 1;
-    // with the body showing, the frame takes in the shoulders and hands too
-    const b = s.arms.shown;
-    const fitY = ease(s.head.fit.y, BODY_FIT.y, b);
-    const fitDist = ease(s.head.fit.dist, Math.max(s.head.fit.dist, BODY_FIT.dist), b);
-    // (never closer than a face's width away, or it's inside their glasses)
-    camera.position.set(0, fitY + (z > 1 ? (0.1 - fitY) * Math.min(1, (z - 1) / 1.2) : 0), Math.max(NEAREST, fitDist / z));
-    camera.lookAt(0, camera.position.y, 0);
-    scene.add(s.head.root);
-    if (body && b > 0.01) {
-      // the shoulders tilt and turn; the head, on them, a little with them
-      body.root.rotation.set(0, s.arms.turn, s.arms.tilt);
-      poseArm(THREE_, body.left, s.arms.left);
-      poseArm(THREE_, body.right, s.arms.right);
-      scene.add(body.root);
-    }
-    renderer.render(scene, camera);
-    scene.remove(s.head.root);
-    if (body) scene.remove(body.root);
-    const ctx = s.canvas.getContext("2d");
-    ctx?.clearRect(0, 0, size, size);
-    ctx?.drawImage(renderer.domElement, 0, 0, size, size, 0, 0, size, size);
+    drawCard(slot, s);
   }
   roomDraw?.draw(inRoom, THREE_);
+  if (yours) {
+    const [slot, s] = yours;
+    const seat = s.head.root.parent;
+    const bodySeat = s.head.body?.root.parent;
+    drawCard(slot, s);
+    seat?.add(s.head.root);
+    if (s.head.body) bodySeat?.add(s.head.body.root);
+  }
+}
+
+// A head drawn at its card's size, in the corner of the shared canvas, and
+// copied from there to the card.
+function drawCard(slot: HTMLElement, s: Shown): void {
+  const body = s.head.body;
+  const size = sizeFor(s.canvas);
+  if (s.canvas.width !== size) {
+    s.canvas.width = size;
+    s.canvas.height = size;
+  }
+  renderer.setViewport(0, LARGEST - size, size, size);
+  renderer.setScissor(0, LARGEST - size, size, size);
+  renderer.setScissorTest(true);
+  renderer.clear();
+  // (zoomed in, it frames the face rather than the whole head)
+  const z = zooms.get(slot) ?? 1;
+  // with the body showing, the frame takes in the shoulders and hands too
+  const b = s.arms.shown;
+  const fitY = ease(s.head.fit.y, BODY_FIT.y, b);
+  const fitDist = ease(s.head.fit.dist, Math.max(s.head.fit.dist, BODY_FIT.dist), b);
+  // (never closer than a face's width away, or it's inside their glasses)
+  camera.position.set(0, fitY + (z > 1 ? (0.1 - fitY) * Math.min(1, (z - 1) / 1.2) : 0), Math.max(NEAREST, fitDist / z));
+  camera.lookAt(0, camera.position.y, 0);
+  scene.add(s.head.root);
+  if (body && b > 0.01) {
+    // the shoulders tilt and turn; the head, on them, a little with them
+    body.root.rotation.set(0, s.arms.turn, s.arms.tilt);
+    poseArm(THREE_, body.left, s.arms.left);
+    poseArm(THREE_, body.right, s.arms.right);
+    scene.add(body.root);
+  }
+  renderer.render(scene, camera);
+  scene.remove(s.head.root);
+  if (body) scene.remove(body.root);
+  const ctx = s.canvas.getContext("2d");
+  ctx?.clearRect(0, 0, size, size);
+  ctx?.drawImage(renderer.domElement, 0, 0, size, size, 0, 0, size, size);
 }
 
 // how a head is turned, and its mouth open, as drawn: for the checks that
@@ -1127,7 +1159,13 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       return true;
     }
     const label = slot.querySelector("[aria-label]")?.getAttribute("aria-label") ?? known?.canvas.getAttribute("aria-label") ?? "";
-    if (known) drop(known.head);
+    // the new head made before the old one goes, so the GPU's shaders for
+    // it carry over rather than being made again each time (a slider drag)
+    const head = build(THREE, look);
+    if (known) {
+      warm(head);
+      drop(known.head);
+    }
     const canvas = known?.canvas.isConnected ? known.canvas : document.createElement("canvas");
     canvas.width = canvas.height = 128;
     canvas.className = "avatar head3d";
@@ -1136,7 +1174,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
     if (!canvas.isConnected) slot.replaceChildren(canvas);
     heads.set(slot, {
       canvas,
-      head: build(THREE, look),
+      head,
       e: known?.e ?? { ...e },
       pose: known?.pose ?? { ...(p ?? STILL) },
       target: { e: { ...e }, pose: p && { ...p } },
@@ -1147,7 +1185,8 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
       doing: known?.doing ?? null,
-      arms: known?.arms ?? { target: null, at: -Infinity, busyAt: -Infinity, left: RESTING.left, right: RESTING.right, tilt: 0, turn: 0, shown: 0, up: false },
+      // (a hand already up, as its card says, is up from the start)
+      arms: known?.arms ?? { target: null, at: -Infinity, busyAt: -Infinity, left: RESTING.left, right: RESTING.right, tilt: 0, turn: 0, shown: 0, up: !!slot.closest<HTMLElement>(".spot")?.dataset.hand },
       drawn: "",
       open: 0,
     });

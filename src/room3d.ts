@@ -34,6 +34,7 @@ type Room = {
   canvas: HTMLCanvasElement;
   at: Map<HTMLElement, { x: number; y: number }>;
   seatOf: Map<HTMLElement, number>;
+  activeAt: Map<HTMLElement, number>; // when each was last talking or had a hand up
   last: number;
 };
 
@@ -233,10 +234,21 @@ function chair(THREE: T, i: number): T {
 
 // ---- seats: who sits where ----
 
-// the order people sit in: you in the middle, everyone else as they came
-function arrange(heads: RoomHead[], aspect: number): RoomHead[] {
+// the order people sit in: you in the middle, everyone else as they came.
+// A room with more people than seats seats those talking, with a hand up or
+// most lately either, and keeps where each sits while they stay in it.
+function arrange(heads: RoomHead[], aspect: number, r?: Pick<Room, "activeAt" | "seatOf">): RoomHead[] {
   const mine = heads.find((h) => h.mine);
-  const others = heads.filter((h) => !h.mine).slice(0, MOST_SEATS - (mine ? 1 : 0));
+  let others = heads.filter((h) => !h.mine);
+  const room = MOST_SEATS - (mine ? 1 : 0);
+  if (others.length > room && r) {
+    const now = performance.now();
+    for (const h of others) if (h.speaking || h.slot.closest<HTMLElement>(".spot")?.dataset.hand) r.activeAt.set(h.slot, now);
+    const seated = (h: RoomHead): number => r.seatOf.get(h.slot) ?? Infinity;
+    const chosen = new Set([...others].sort((a, b) => (r.activeAt.get(b.slot) ?? -1) - (r.activeAt.get(a.slot) ?? -1) || seated(a) - seated(b)).slice(0, room));
+    // in the seats they had, the newly seated after
+    others = others.filter((h) => chosen.has(h)).sort((a, b) => seated(a) - seated(b));
+  } else others = others.slice(0, room);
   if (!mine) return others;
   // (in the middle of the front row)
   const front = seatPlaces(others.length + 1, aspect).filter((p) => p.row === 0).length;
@@ -280,7 +292,7 @@ function draw(heads: RoomHead[], THREE: T): void {
   }
   // the camera stands back just far enough to fit everyone in, across and
   // up and down (a narrow screen, further back)
-  const sitting = arrange(heads, r.camera.aspect);
+  const sitting = arrange(heads, r.camera.aspect, r);
   const places = seatPlaces(sitting.length, r.camera.aspect);
   const rows = places.length ? Math.max(...places.map((p) => p.row)) + 1 : 1;
   // (room either side of the outermost: their shoulders, and a hand up)
@@ -405,6 +417,7 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.labels.delete(slot);
     r.at.delete(slot);
   }
+  for (const m of [r.activeAt, r.seatOf]) for (const slot of m.keys()) if (!slot.isConnected) m.delete(slot);
 }
 
 // Where something rising from someone's head goes in the room (an emote's
@@ -413,6 +426,11 @@ function draw(heads: RoomHead[], THREE: T): void {
 export const overHead = (slot: HTMLElement): HTMLElement | null => room?.labels.get(slot) ?? null;
 
 // Show the room in `canvas`, with labels in `overlay` (over it), or stop.
+// Made once and kept, hidden, for the next time: a second drawing would
+// keep its own copy of every head on the GPU for as long as the page is
+// open (three.js keeps a renderer alive while anything it drew is), so each
+// visit to the room would add one.
+let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas"> | null = null;
 export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLElement | null): Promise<boolean> {
   if (!canvas || !overlay) {
     if (room) {
@@ -422,8 +440,9 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
           seat.group.remove(seat.holds.root);
           if (seat.holds.body) seat.group.remove(seat.holds.body);
         }
+        seat.holds = null;
+        seat.group.visible = false;
       }
-      room.renderer.dispose();
       for (const el of room.labels.values()) el.remove();
       room = null;
     }
@@ -432,14 +451,17 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
   }
   try {
     const THREE = await roomView({ draw, at: (slot) => room?.at.get(slot) ?? null });
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    const scene = new THREE.Scene();
-    furnish(THREE, scene);
-    const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 120);
-    room = { THREE, renderer, scene, camera, seats: [], look: { x: 0, y: 0 }, labels: new Map(), overlay, canvas, at: new Map(), seatOf: new Map(), last: performance.now() };
+    if (!kept || kept.canvas !== canvas) {
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      const scene = new THREE.Scene();
+      furnish(THREE, scene);
+      kept = { THREE, renderer, scene, camera: new THREE.PerspectiveCamera(38, 1, 0.5, 120), canvas };
+      seatsKept = [];
+    }
+    room = { ...kept, seats: seatsKept, look: { x: 0, y: 0 }, labels: new Map(), overlay, at: new Map(), seatOf: new Map(), activeAt: new Map(), last: performance.now() };
     return true;
   } catch (err) {
     console.error(err);
@@ -447,3 +469,4 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
     return false;
   }
 }
+let seatsKept: Seat[] = [];
