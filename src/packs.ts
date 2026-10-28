@@ -48,7 +48,7 @@ export type Style = (typeof STYLES)[number];
 // Each word style as CSS, for the server to put after style.css: a card
 // marked data-words="<id>" draws its words that way.
 export const stylesCss = (): string =>
-  STYLES.map((st) => `.spot[data-words="${st.id}"]{--style-loud:${st.loud};--style-pitch:${st.pitch};--style-motion:${st.motion}}`).join("\n");
+  STYLES.map((st) => `.spot[data-words="${st.id}"],.room-label[data-words="${st.id}"]{--style-loud:${st.loud};--style-pitch:${st.pitch};--style-motion:${st.motion}}`).join("\n");
 
 // ---- voices ----
 

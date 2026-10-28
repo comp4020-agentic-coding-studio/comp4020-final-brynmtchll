@@ -324,6 +324,7 @@ main.room {
    there, out of sight, for a screen reader. */
 .room3d { position: relative; height: min(68vh, 720px); min-height: 360px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: #1d2230; }
 .room3d[hidden] { display: none; }
+@media (max-width: 899px) { .room3d { height: min(62vh, 125vw, 640px); } }
 .room3d canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .room-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .room-label { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px; max-width: 46%; will-change: transform;
@@ -336,6 +337,15 @@ main.room {
 .room-name[data-hand]::after { content: " ✋ " attr(data-hand); color: var(--hand); }
 .room-word { color: var(--person); font-size: clamp(1.25rem, 0.9rem + 1.6vw, 2.25rem); line-height: 1.1; text-align: center; text-shadow: 0 2px 10px rgb(0 0 0 / 0.65); }
 .room-word:empty { display: none; }
+/* In the room, on a wide screen, the room is the place: it takes the wide
+   side, and you (already sitting in it) go to the narrow one, your card
+   shorter, with your controls under it. */
+@media (min-width: 900px) {
+  main.room.joined.in-room { grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); grid-template-areas: "others me" "record me"; }
+  main.in-room .mine-card .spot { --card-h: 240px; padding: 16px 18px 0 20px; }
+  main.in-room .mine-card .spot-word { font-size: clamp(1.75rem, 1.2rem + 1.4vw, 2.5rem); }
+  main.in-room .room3d { height: min(76vh, 860px); }
+}
 main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .live { margin: 0; font-size: 0.8125rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
@@ -450,7 +460,7 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 [data-font="mono"] .w { font-family: ui-monospace, "SF Mono", "Courier New", monospace; letter-spacing: -0.02em; }
 [data-font="serif"] .w { font-family: "Iowan Old Style", "Palatino", "Georgia", ui-serif, serif; }
 /* neon: every word glows a little, louder ones more */
-.spot[data-glow] .w { text-shadow: 0 0 calc(0.12em + max(0em, var(--L) * 0.03em)) var(--person); }
+.spot[data-glow] .w, .room-label[data-glow] .w { text-shadow: 0 0 calc(0.12em + max(0em, var(--L) * 0.03em)) var(--person); }
 /* the word being said, for a style with motion, springs in; a loud one bigger */
 .spot-word.arrive .w { animation: arrive calc(0.18s + var(--style-motion, 0) * 0.2s) cubic-bezier(0.2, calc(1 + var(--style-motion, 0) * 0.8), 0.4, 1); }
 .spot-word .w { margin: 0; }

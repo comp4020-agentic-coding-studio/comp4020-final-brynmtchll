@@ -82,16 +82,22 @@ function furnish(THREE: T, scene: T): void {
 
   // walls: one behind, with a window; one each side
   const wall = mat(THREE, 0x46506b, 0.95);
-  const back = new THREE.Mesh(new THREE.BoxGeometry(60, 26, 0.5), wall);
-  back.position.set(0, FLOOR + 13, -26);
+  // (tall enough that a phone's tall view, pulled back for a crowd, doesn't
+  // see over them)
+  const back = new THREE.Mesh(new THREE.BoxGeometry(60, 40, 0.5), wall);
+  back.position.set(0, FLOOR + 20, -26);
   back.receiveShadow = true;
   scene.add(back);
   for (const side of [-1, 1]) {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, 26, 40), wall);
-    w.position.set(side * 26, FLOOR + 13, -8);
+    const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, 40, 40), wall);
+    w.position.set(side * 26, FLOOR + 20, -8);
     w.receiveShadow = true;
     scene.add(w);
   }
+  // a picture rail along the back, so the wall above the window isn't bare
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(60, 0.35, 0.3), mat(THREE, 0x5a647f, 0.8));
+  rail.position.set(0, FLOOR + 21.5, -25.6);
+  scene.add(rail);
   // the window: a sky going from blue to gold, hills, and a frame
   const sky = new THREE.Mesh(
     new THREE.PlaneGeometry(22, 11),
@@ -247,9 +253,6 @@ function label(r: Room, slot: HTMLElement): HTMLElement {
   el = document.createElement("div");
   el.className = "room-label";
   el.setAttribute("aria-hidden", "true"); // the cards say it all for a screen reader
-  for (const k of ["words", "font"]) if (card?.dataset[k]) el.dataset[k] = card.dataset[k];
-  if (card?.hasAttribute("data-glow")) el.setAttribute("data-glow", "");
-  el.style.setProperty("--hue", card?.style.getPropertyValue("--hue") ?? "0");
   el.innerHTML = `<span class="room-name"></span><span class="room-word words"></span>`;
   r.overlay.append(el);
   r.labels.set(slot, el);
@@ -351,6 +354,12 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.at.set(who.slot, { x: rect.left + (mid.x * 0.5 + 0.5) * rect.width, y: rect.top + (-mid.y * 0.5 + 0.5) * rect.height });
     // their name, and the word they're saying (from their card)
     const card = who.slot.closest<HTMLElement>(".spot");
+    // their words drawn as on their card: its style, font and glow (which
+    // can change while they're here)
+    for (const k of ["words", "font"] as const) if (card && el.dataset[k] !== card.dataset[k]) el.dataset[k] = card.dataset[k] ?? "";
+    el.toggleAttribute("data-glow", !!card?.hasAttribute("data-glow"));
+    const hue = card?.style.getPropertyValue("--hue") ?? "0";
+    if (el.style.getPropertyValue("--hue") !== hue) el.style.setProperty("--hue", hue);
     const hand = card?.dataset.hand;
     const name = card?.dataset.name ?? "";
     const nameEl = el.firstElementChild as HTMLElement;

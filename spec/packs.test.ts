@@ -59,10 +59,10 @@ describe("how someone's words are drawn, and what they can put on one", () => {
     expect(isEffect("<script>")).toBe(false);
   });
 
-  it("draws every word style from its numbers, and every style's lettering is one style.css knows", () => {
+  it("draws every word style from its numbers, on a card and over a head in the room, and every style's lettering is one style.css knows", () => {
     const made = stylesCss();
     for (const st of STYLES) {
-      expect(made).toContain(`.spot[data-words="${st.id}"]{--style-loud:${st.loud};`);
+      expect(made).toContain(`.spot[data-words="${st.id}"],.room-label[data-words="${st.id}"]{--style-loud:${st.loud};`);
       expect(css, st.font).toContain(`[data-font="${st.font}"]`);
     }
     // and a word style is part of a look, checked like the rest
