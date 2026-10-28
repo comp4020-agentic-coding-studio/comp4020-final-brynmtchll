@@ -3,11 +3,11 @@
 // speaker's spot, and, while someone's microphone is on, hears them a phrase
 // at a time and sends each phrase as it's heard.
 import { avatarSvg, fromShapes, oneEuro, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
-import { arms as headArms, emote as headEmote, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
+import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import { bodyFrom, type Body } from "./body.ts";
 import type { FromHands, ToHands } from "./hands.ts";
 import { EFFECTS, emoteOf, EMOTES, STYLES, type Look as PackLook } from "./packs.ts";
-import { reactionsHtml } from "./voice.ts";
+import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
 import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
@@ -403,6 +403,7 @@ function connect(): void {
   stream.addEventListener("joined", (e) => {
     const p = JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue"> & { look: Look };
     spotFor(p, p.look);
+    showQueue(queueNow);
   });
   stream.addEventListener("face", (e) => {
     const { name, e: expression, pose, body } = JSON.parse((e as MessageEvent<string>).data) as { name: string; e: Expression; pose?: Pose | null; body?: Body | null };
@@ -411,6 +412,10 @@ function connect(): void {
     drawAvatar(name, expression, pose ?? null);
     const slot = cardOf(name)?.querySelector<HTMLElement>(".spot-avatar");
     if (slot && webgl) headArms(slot, body ?? null);
+  });
+  stream.addEventListener("hand", (e) => {
+    const { queue } = JSON.parse((e as MessageEvent<string>).data) as { queue: string[] };
+    showQueue(queue);
   });
   stream.addEventListener("voice", (e) => {
     const { name, levels } = JSON.parse((e as MessageEvent<string>).data) as { name: string; levels: number[] };
@@ -1251,6 +1256,8 @@ let handsSeenAt = 0;
 const GESTURE_HOLD = 400; // ms
 const gestureEmotes = EMOTES.filter((em) => "gesture" in em);
 let gestureHeld: { name: string; since: number } | null = null;
+const HAND_HOLD = 1000; // ms
+let raisedSince: number | null = null;
 // arms read off a camera jitter as a face does: smoothed the same way
 const steadyArms = new Map<string, (v: number, at: number) => number>();
 function steadyBody(b: Body, at: number): Body {
@@ -1284,7 +1291,7 @@ function handsStart(): void {
   handsWorker.onmessage = ({ data }: MessageEvent<FromHands>) => {
     if ("ready" in data) {
       handsOn = true;
-      say("Your avatar's arms and hands follow yours. Hold up a thumbs up, a wave, a peace sign.");
+      say("Your avatar's arms and hands follow yours. Try a thumbs up, a wave, a peace sign, or hold a hand up high to speak next.");
       return;
     }
     if ("failed" in data) {
@@ -1301,8 +1308,18 @@ function handsStart(): void {
     bodyNow = any ? steadyBody(read, now / 1000) : now - handsSeenAt > 600 ? null : bodyNow;
     const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
     if (slot && webgl) headArms(slot, bodyNow);
+    // an open hand held up above your head, still, for HAND_HOLD: your hand
+    // up to speak (lower down, an open hand is a wave)
+    const pose = data.seen.pose;
+    const raised = !!pose && data.seen.hands.some((h) => h.gesture === "Open_Palm" && h.score > 0.6 && h.image[0].y < pose.image[0].y - 0.08);
+    if (!raised) raisedSince = null;
+    else if (raisedSince === null) raisedSince = now;
+    else if (now - raisedSince >= HAND_HOLD && !queueNow.includes(myName)) {
+      raisedSince = Infinity;
+      void raiseHand(true);
+    }
     // a gesture held: its emote
-    const best = data.seen.hands.filter((h) => h.score > 0.6).sort((a, b) => b.score - a.score)[0];
+    const best = data.seen.hands.filter((h) => h.score > 0.6 && !(raised && h.gesture === "Open_Palm")).sort((a, b) => b.score - a.score)[0];
     const em = best && gestureEmotes.find((g) => g.gesture === best.gesture);
     if (!em) gestureHeld = null;
     else if (gestureHeld?.name !== em.id) gestureHeld = { name: em.id, since: now };
@@ -1404,6 +1421,62 @@ function faceEmotes(e: Expression): void {
     }
   }
 }
+
+// ---- a hand up to speak next ----
+
+// The queue as the server has it, shown everywhere at once: a badge with
+// each place on its card (and the avatar's arm up), a line under the room's
+// heading, and your button saying which way it goes. Raised by the button,
+// Shift+R, or (with "Hands too") an open hand held up above your head.
+const handButton = document.getElementById("hand") as HTMLButtonElement | null;
+const queueLine = document.getElementById("queue");
+let queueNow: string[] = [];
+function showQueue(queue: string[]): void {
+  queueNow = queue;
+  for (const card of document.querySelectorAll<HTMLElement>(".spot")) {
+    const place = queue.indexOf(card.dataset.name ?? "") + 1;
+    if (String(place || "") === (card.dataset.hand ?? "")) continue;
+    if (place) card.dataset.hand = String(place);
+    else delete card.dataset.hand;
+    card.querySelector(".hand-badge")?.remove();
+    if (place) card.querySelector(".who")?.insertAdjacentHTML("afterend", handBadge(place));
+    const slot = card.querySelector<HTMLElement>(".spot-avatar");
+    if (slot && webgl) handUp(slot, place > 0);
+  }
+  if (queueLine) {
+    queueLine.innerHTML = queueHtml(queue, myName);
+    queueLine.hidden = queue.length === 0;
+  }
+  if (handButton) {
+    const up = queue.includes(myName);
+    handButton.setAttribute("aria-pressed", String(up));
+    handButton.querySelector(".label")!.textContent = up ? "Lower hand" : "Raise hand";
+    (handButton.form?.elements.namedItem("up") as HTMLInputElement | null)?.setAttribute("value", String(!up));
+  }
+}
+async function raiseHand(up: boolean): Promise<void> {
+  if (!myName) return;
+  try {
+    const res = await fetch("/hand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ up }) });
+    if (res.ok) showQueue(((await res.json()) as { queue: string[] }).queue);
+    else if (res.status === 429) warn("Give it a moment before raising your hand again.");
+  } catch {
+    warn("Couldn't reach the room to raise your hand. Check your connection.");
+  }
+}
+handButton?.form?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  void raiseHand(!queueNow.includes(myName));
+});
+addEventListener("keydown", (e) => {
+  if (!myName || !e.shiftKey || e.key.toUpperCase() !== "R" || e.metaKey || e.ctrlKey || e.altKey || typing !== null) return;
+  if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]")) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  void raiseHand(!queueNow.includes(myName));
+}, { capture: true });
+// the queue as the page was drawn with it
+showQueue([...document.querySelectorAll<HTMLElement>(".spot[data-hand]")].sort((a, b) => Number(a.dataset.hand) - Number(b.dataset.hand)).map((c) => c.dataset.name!));
 
 // ---- reactions: tap a word someone else said to react to it ----
 

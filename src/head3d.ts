@@ -17,7 +17,7 @@
 // and head to whoever is speaking, glances about and blinks.
 import { STILL, type Expression, type Pose } from "./avatar.ts";
 import type { Look } from "./packs.ts";
-import { handPoints, RESTING, GESTURE_ARMS, unit, type Arm, type Body, type Side, type Vec } from "./body.ts";
+import { handPoints, HAND_UP, RESTING, GESTURE_ARMS, unit, type Arm, type Body, type Side, type Vec } from "./body.ts";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
 // three.js as loaded from the CDN, untyped: this file only builds meshes
@@ -83,7 +83,7 @@ type Shown = {
   doing: { head: string; face: Partial<Expression>; arm?: string; at: number } | null;
   // their arms: as read off their camera (null when they aren't sending
   // them), and as drawn, easing towards that, or an emote's, or resting
-  arms: { target: Body | null; at: number; busyAt: number; left: Arm; right: Arm; tilt: number; turn: number; shown: number };
+  arms: { target: Body | null; at: number; busyAt: number; left: Arm; right: Arm; tilt: number; turn: number; shown: number; up: boolean };
   // what it was last drawn as, so a head that hasn't moved isn't drawn again
   drawn: string;
   open: number; // how open its mouth was last drawn
@@ -1002,7 +1002,7 @@ function frame(now: number): void {
     let armsBusy = false;
     if (body) {
       const read = s.arms.target && now - s.arms.at < ARMS_FOR ? s.arms.target : null;
-      let want: { left: Arm; right: Arm; tilt: number; turn: number } = { left: read?.left ?? RESTING.left, right: read?.right ?? RESTING.right, tilt: read?.tilt ?? 0, turn: read?.turn ?? 0 };
+      let want: { left: Arm; right: Arm; tilt: number; turn: number } = { left: read?.left ?? RESTING.left, right: read?.right ?? (s.arms.up ? HAND_UP : RESTING.right), tilt: read?.tilt ?? 0, turn: read?.turn ?? 0 };
       // an emote's arm: their right, on the screen's right (a wave waves),
       // up for most of the emote and back down for the end of it
       if (doingArm && doingArm.t < 0.85) {
@@ -1011,7 +1011,7 @@ function frame(now: number): void {
         want = { ...want, right: { ...g, fore: unit([g.fore[0] + wave, g.fore[1], g.fore[2]]) } };
       }
       // doing something: read off a camera, or an emote's arm, lately
-      if (read || (doingArm && doingArm.t < 0.85)) s.arms.busyAt = now;
+      if (read || s.arms.up || (doingArm && doingArm.t < 0.85)) s.arms.busyAt = now;
       armsBusy = now - s.arms.busyAt < ARMS_DOWN;
       const kk = k(read ? 24 : 9);
       s.arms.left = easeArm(s.arms.left, want.left, kk);
@@ -1109,7 +1109,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
       doing: known?.doing ?? null,
-      arms: known?.arms ?? { target: null, at: -Infinity, busyAt: -Infinity, left: RESTING.left, right: RESTING.right, tilt: 0, turn: 0, shown: 0 },
+      arms: known?.arms ?? { target: null, at: -Infinity, busyAt: -Infinity, left: RESTING.left, right: RESTING.right, tilt: 0, turn: 0, shown: 0, up: false },
       drawn: "",
       open: 0,
     });
@@ -1187,6 +1187,13 @@ const MOVES: Record<string, (t: number, amount: number) => Pose> = {
 export function emote(slot: HTMLElement, e: { head: string; face: Partial<Expression>; arm?: string }): void {
   const s = heads.get(slot);
   if (s) s.doing = { head: e.head, face: e.face, arm: e.arm, at: performance.now() };
+}
+
+// A hand held up to speak next, or put down: it stays up till then (unless
+// their camera's reading their real arms, which it follows instead).
+export function handUp(slot: HTMLElement, on: boolean): void {
+  const s = heads.get(slot);
+  if (s) s.arms.up = on;
 }
 
 // Someone's arms and hands as their camera reads them (body.ts), or null

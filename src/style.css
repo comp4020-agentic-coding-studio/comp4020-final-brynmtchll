@@ -21,6 +21,7 @@
   --accent: #8ab4ff;
   --live: #ff6b6b;
   --ok: #3ddc97;
+  --hand: #f0b44c; /* a hand up to speak; dark ink on it is 9:1 */
   --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -12px rgb(0 0 0 / 0.6);
   --radius: 18px;
   color-scheme: dark;
@@ -40,6 +41,7 @@
     --accent: #2f5fd0;
     --live: #d33a3a;
     --ok: #138a5a;
+    --hand: #a86400; /* white on it is 4.6:1 */
     --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 12px 32px -16px rgb(16 24 40 / 0.18);
     color-scheme: light;
   }
@@ -146,10 +148,12 @@ main.room {
 /* with their arms up (a gesture, or their hands on camera), more room, so
    the head doesn't shrink to fit the shoulders and hands in */
 .spot:has(.head3d) .spot-avatar { transition: width 0.35s ease, height 0.35s ease; }
-.spot:has(.head3d) .spot-avatar[data-arms] { width: 168px; height: 168px; }
-.mine-card .spot:has(.head3d) .spot-avatar[data-arms] { width: 240px; height: 240px; }
+/* (and no longer tucked up into the card's top edge, where a hand held up
+   was cut off) */
+.spot:has(.head3d) .spot-avatar[data-arms] { width: 168px; height: 168px; margin-top: 0; }
+.mine-card .spot:has(.head3d) .spot-avatar[data-arms] { width: 240px; height: 240px; margin-top: -8px; }
 @media (max-width: 600px) {
-  .spot:has(.head3d) .spot-avatar[data-arms] { width: 128px; height: 128px; }
+  .spot:has(.head3d) .spot-avatar[data-arms] { width: 128px; height: 128px; margin-top: 0; }
   .mine-card .spot:has(.head3d) .spot-avatar[data-arms] { width: 168px; height: 168px; }
 }
 @media (prefers-reduced-motion: reduce) { .spot:has(.head3d) .spot-avatar { transition: none; } }
@@ -272,9 +276,18 @@ main.room {
 @keyframes pulse { 50% { opacity: 0.45; } }
 .face-toggle { border-radius: 999px; padding: 12px 18px; }
 .face-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-.face-preview { width: 64px; height: 48px; object-fit: cover; border-radius: 10px; border: 2px solid var(--warn, #e0a050); transform: scaleX(-1); transition: border-color 0.2s; }
+.face-preview { width: 64px; height: 48px; object-fit: cover; border-radius: 10px; border: 2px solid var(--hand); transform: scaleX(-1); transition: border-color 0.2s; }
 /* green while it can see your face, amber while it's looking */
 .face-preview.found { border-color: var(--ok, #3ecf8e); }
+/* a hand up to speak next: the button, a badge on their card, and the queue */
+.hand-form { display: contents; }
+.hand-toggle { border-radius: 999px; padding: 12px 18px; }
+.hand-toggle[aria-pressed="true"] { border-color: var(--hand); color: var(--hand); }
+.hand-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; color: var(--surface); background: var(--hand); }
+.spot[data-hand] { border-color: color-mix(in srgb, var(--hand) 55%, var(--line)); }
+.spot[data-hand="1"] { box-shadow: var(--shadow), 0 0 32px -14px var(--hand); }
+.queue { margin: 0 0 10px; padding: 8px 14px; border-radius: 999px; background: color-mix(in srgb, var(--hand) 14%, var(--surface)); color: var(--ink); font-size: 0.875rem; }
+.queue strong { color: var(--hand); }
 /* arms and hands as well, offered once the face is showing */
 .hands-toggle { display: none; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
 .controls:has(.face-toggle[aria-pressed="true"]) .hands-toggle { display: inline-flex; }

@@ -295,3 +295,10 @@ export const ago = (at: number, now: number = Date.now()): string => {
   if (s < 86400) return `${Math.round(s / 3600)}h ago`;
   return `${Math.round(s / 86400)}d ago`;
 };
+
+// A hand up to speak, and where it is in the queue: on their card, and as a
+// line under the room's heading
+export const handBadge = (place: number): string => (place ? `<span class="hand-badge" title="Hand up: ${ordinal(place)} to speak"><span aria-hidden="true">✋</span> ${place}</span>` : "");
+const ordinal = (n: number): string => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+export const queueHtml = (queue: string[], me?: string): string =>
+  queue.length ? `<span aria-hidden="true">✋</span> Next: ${queue.map((n) => (n === me ? "<strong>you</strong>" : esc(n))).join(", then ")}` : "";

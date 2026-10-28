@@ -1,5 +1,5 @@
 import type { Message, Person } from "./db.ts";
-import { ago, esc, hueOf, reactionsHtml, wordHtml, type Word } from "./voice.ts";
+import { ago, esc, handBadge, hueOf, queueHtml, reactionsHtml, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
 import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SLIDERS, STYLES, type ColourPart, type Look, type Part } from "./packs.ts";
 
@@ -80,12 +80,12 @@ export function threadHtml(messages: Said[]): string {
 // their thread underneath, scrolled to the latest. The live word is hidden
 // from screen readers, which hear each whole phrase from the page's one live
 // region instead.
-export function spotHtml(name: string, seat: number, look: Look, mine = false, e: Expression = REST, thread: { id: number; words: Word[]; at: number }[] = []): string {
+export function spotHtml(name: string, seat: number, look: Look, mine = false, e: Expression = REST, thread: { id: number; words: Word[]; at: number }[] = [], place = 0): string {
   const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
   // how their words are drawn: their word style (packs.ts), which the CSS
   // the server makes from it reads off data-words, and its lettering
-  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)}" data-words="${st.id}" data-font="${st.font}"${"glow" in st ? " data-glow" : ""} data-look="${esc(JSON.stringify(look))}">
-    <div class="spot-head"><span class="spot-avatar">${avatarSvg(look, e, `${esc(name)}'s avatar`)}</span><p class="spot-name"><span class="who">${esc(name)}</span>${mine ? '<span class="you">you</span>' : ""}</p></div>
+  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)}" data-words="${st.id}" data-font="${st.font}"${"glow" in st ? " data-glow" : ""} data-look="${esc(JSON.stringify(look))}"${place ? ` data-hand="${place}"` : ""}>
+    <div class="spot-head"><span class="spot-avatar">${avatarSvg(look, e, `${esc(name)}'s avatar`)}</span><p class="spot-name"><span class="who">${esc(name)}</span>${handBadge(place)}${mine ? '<span class="you">you</span>' : ""}</p></div>
     <p class="spot-word" aria-hidden="true"></p>
     <ol class="thread" aria-label="What ${esc(name)} said lately">${threadHtml(thread)}</ol>
   </li>`;
@@ -205,14 +205,17 @@ export function roomPage(
   lookOf: (name: string) => Look = () => lookFor(0),
   threads: Map<string, Said[]> = new Map(),
   saved: (Look | null)[] = [],
+  queue: string[] = [],
 ): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
   const myLook = me ? lookOf(me.name) : null;
-  const mine = me ? spotHtml(me.name, me.seat, myLook!, true, expressions.get(me.name), threads.get(me.name)) : "";
+  const place = (name: string): number => queue.indexOf(name) + 1;
+  const mine = me ? spotHtml(me.name, me.seat, myLook!, true, expressions.get(me.name), threads.get(me.name), place(me.name)) : "";
   const others = people
     .filter((p) => p.name !== me?.name)
-    .map((p) => spotHtml(p.name, p.seat, lookOf(p.name), false, expressions.get(p.name), threads.get(p.name)))
+    .map((p) => spotHtml(p.name, p.seat, lookOf(p.name), false, expressions.get(p.name), threads.get(p.name), place(p.name)))
     .join("");
+  const up = me ? queue.includes(me.name) : false;
 
   // a word of someone else's, tapped, offers these
   const picker = me ? `<div id="react-picker" class="react-picker" role="menu" hidden>${REACTIONS.map((r) => `<button type="button" role="menuitem" data-reaction="${r.id}" title="${r.label}">${r.emoji}</button>`).join("")}</div>` : "";
@@ -228,6 +231,7 @@ export function roomPage(
           <button id="face" type="button" class="face-toggle" aria-pressed="false" hidden><span class="label">Show my face</span></button>
           <video id="face-preview" class="face-preview" muted playsinline hidden></video>
           <label class="hands-toggle"><input type="checkbox" id="hands"><span>Hands too</span></label>
+          <form method="post" action="/hand" class="hand-form"><input type="hidden" name="up" value="${up ? "false" : "true"}"><button id="hand" type="submit" class="hand-toggle" aria-pressed="${up}" title="Raise your hand to speak next (Shift+R)"><span aria-hidden="true">✋</span> <span class="label">${up ? "Lower hand" : "Raise hand"}</span></button></form>
         </div>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
         <div class="emotes" role="toolbar" aria-label="Emotes: your head does it, for everyone">
@@ -259,6 +263,7 @@ export function roomPage(
   ${centre}${picker}
   <section class="others" aria-labelledby="others-h">
     <div class="others-head"><h2 id="others-h">In the room</h2><p id="live" class="live" role="status" hidden></p></div>
+    <p id="queue" class="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
     <ul id="stage" class="stage">${others}</ul>
     <p id="nobody" class="fine" ${others ? "hidden" : ""}>Nobody else is here yet.</p>
   </section>

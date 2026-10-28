@@ -33,6 +33,25 @@ const showExpression = (name: string, e: Expression | null, pose: Pose | null = 
   const payload = `event: face\ndata: ${JSON.stringify({ name, e: e ?? REST, pose: e ? pose : null, body: e ? body : null })}\n\n`;
   for (const listener of listening) listener.write(payload);
 };
+// Who has a hand up to speak next, in the order they raised it: for now,
+// like a face, so in memory. A hand goes down when its owner says something,
+// puts it down, or after HAND_FOR (a hand left up after someone's gone
+// shouldn't keep its place). Every page hears the whole queue each time it
+// changes, so they all show it in the same order.
+const HAND_FOR = 3 * 60_000;
+const hands = new Map<string, number>(); // name, when raised (oldest first)
+const handQueue = (): string[] => [...hands.keys()];
+const showHands = (): void => {
+  const payload = `event: hand\ndata: ${JSON.stringify({ queue: handQueue() })}\n\n`;
+  for (const listener of listening) listener.write(payload);
+};
+const handDown = (name: string): void => {
+  if (hands.delete(name)) showHands();
+};
+setInterval(() => {
+  const now = Date.now();
+  for (const [name, at] of hands) if (now - at > HAND_FOR) handDown(name);
+}, 10_000).unref();
 setInterval(() => {
   const now = Date.now();
   for (const [name, seen] of faceSeen) {
@@ -59,6 +78,7 @@ const voiceTooFast = limiter(150);
 const earlyTooFast = limiter(120);
 const emoteTooFast = limiter(20);
 const reactTooFast = limiter(60);
+const handTooFast = limiter(30);
 
 // style.css, and after it how each word style in packs.ts is drawn
 const css = Buffer.concat([readFileSync(new URL("./style.css", import.meta.url)), Buffer.from(`\n/* word styles, from packs.ts */\n${stylesCss()}\n`)]);
@@ -291,7 +311,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
-    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads(), seated ? room.savedLooks(seated.id) : []));
+    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads(), seated ? room.savedLooks(seated.id) : [], handQueue()));
   }
   // the studio, for making your avatar: only for someone who's joined (a
   // look is someone's), so anyone else is sent to join first
@@ -479,6 +499,35 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return json(res, 200, {});
   }
 
+  // A hand up to speak next, or down: only your own (from the cookie). From
+  // the page's script as JSON, or without it from the button's form, which
+  // comes back to the room.
+  if (req.method === "POST" && url.pathname === "/hand") {
+    const form = !(req.headers["content-type"] ?? "").includes("json");
+    if (!me) return form ? back(res, "no-person") : json(res, 401, { error: "no-person" });
+    if (handTooFast(me.id)) return form ? back(res) : json(res, 429, { error: "too-fast" });
+    const raw = (await body(req, 64)) ?? "";
+    let up: unknown;
+    try {
+      up = form ? { true: true, false: false }[new URLSearchParams(raw).get("up") ?? ""] : (JSON.parse(raw || "{}") as { up?: unknown }).up;
+    } catch {
+      up = undefined;
+    }
+    if (typeof up !== "boolean") {
+      log(me, "refused", { why: "not-a-hand" });
+      return form ? back(res) : json(res, 400, { error: "not-a-hand" });
+    }
+    if (up && !hands.has(me.name)) {
+      hands.set(me.name, Date.now());
+      log(me, "hand", { up: "yes", place: hands.size });
+      showHands();
+    } else if (!up && hands.has(me.name)) {
+      log(me, "hand", { up: "no" });
+      handDown(me.name);
+    }
+    return form ? back(res) : json(res, 200, { queue: handQueue() });
+  }
+
   // A reaction to a word (packs.ts REACTIONS), anyone's word: on, or off if
   // it's the one this person already put there. The reaction is theirs (from
   // the cookie), so it isn't a change to the word, and anyone who's joined
@@ -589,6 +638,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       console.error(`message ${m.id} couldn't be drawn`, err);
     }
     if (payload) for (const listener of listening) listener.write(payload);
+    // they've had their turn
+    handDown(me.name);
     return json(res, 201, { id: m.id });
   }
 

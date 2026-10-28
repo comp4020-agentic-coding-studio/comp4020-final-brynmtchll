@@ -89,9 +89,27 @@ function listen(headers: Record<string, string> = {}, query = "") {
       waiting.add(check);
       check();
     });
+  // the first event (since listening) that passes a test, waiting for one
+  const waitUntil = (test: (e: Record<string, unknown>) => boolean, ms = 3000): Promise<Record<string, unknown>> =>
+    new Promise((resolve, reject) => {
+      const check = (): void => {
+        const found = seen.find((e) => test(e as Record<string, unknown>));
+        if (!found) return;
+        waiting.delete(check);
+        clearTimeout(timer);
+        resolve(found as Record<string, unknown>);
+      };
+      const timer = setTimeout(() => {
+        waiting.delete(check);
+        reject(new Error(`nothing passing the test arrived within ${ms} ms`));
+      }, ms);
+      waiting.add(check);
+      check();
+    });
   return {
     ready,
     waitFor,
+    waitUntil,
     close: () => {
       controller.abort();
       void reading;
@@ -246,6 +264,42 @@ describe.skipIf(!writable)("the room", () => {
     // a face put away isn't left turned
     await sendFace(p.cookie, { e: null, pose: { pitch: 0.3, yaw: 0, roll: 0 } });
     expect((await watcher.waitFor(`"name":"${p.name}","e":{"smile":0,`)) as unknown as { pose: unknown }).toMatchObject({ pose: null });
+    watcher.close();
+  });
+
+  it("keeps a queue of hands up to speak, in the order raised, the same on every page, until each has spoken", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const [a, b] = [await person(), await person()];
+    const hand = (cookie: string, up: unknown) =>
+      fetch(new URL("/hand", baseUrl), { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ up }) });
+    // a queue event, as these two are in it (others' hands may be up too)
+    const ours = (e: Record<string, unknown>): string[] => (e.queue as string[]).filter((n) => n === a.name || n === b.name);
+    const queued = (want: string[]) => watcher.waitUntil((e) => e.type === "hand" && JSON.stringify(ours(e)) === JSON.stringify(want));
+    expect(await (await hand(a.cookie, true)).json()).toMatchObject({ queue: expect.arrayContaining([a.name]) });
+    await queued([a.name]);
+    await hand(b.cookie, true);
+    // raising it again doesn't move you to the back
+    expect(ours((await (await hand(a.cookie, true)).json()) as Record<string, unknown>)).toEqual([a.name, b.name]);
+    await queued([a.name, b.name]);
+    // a later page shows it too, with each one's place on their card
+    const page = await (await fetch(new URL("/", baseUrl), { headers: { cookie: b.cookie } })).text();
+    expect(page).toMatch(new RegExp(`data-name="${a.name}"[^>]*data-hand="\\d+"`));
+    expect(page).toMatch(/id="queue" class="queue" aria-live="polite">/);
+    expect(page).toMatch(/aria-pressed="true"[^>]*><span aria-hidden="true">✋<\/span> <span class="label">Lower hand/);
+    // having your say takes your hand down
+    await a.say({ words: [word("thanks", 0)] });
+    await queued([b.name]);
+    // and so does putting it down; only your own, and only a yes or no
+    expect((await hand(b.cookie, "maybe")).status).toBe(400);
+    await hand(b.cookie, false);
+    await queued([]);
+    expect((await fetch(new URL("/hand", baseUrl), { method: "POST", headers: { "content-type": "application/json" }, body: '{"up":true}' })).status).toBe(401);
+    // without the page's script, the button's form does it, and comes back
+    const viaForm = await fetch(new URL("/hand", baseUrl), { method: "POST", headers: { cookie: b.cookie }, body: new URLSearchParams({ up: "true" }), redirect: "manual" });
+    expect(viaForm.status).toBe(303);
+    expect(ours((await (await hand(b.cookie, true)).json()) as Record<string, unknown>)).toEqual([b.name]);
+    await hand(b.cookie, false);
     watcher.close();
   });
 

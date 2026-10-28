@@ -277,5 +277,9 @@ export const GESTURE_ARMS: Record<string, Arm> = {
   chin: { upper: unit([-0.05, -0.75, 0.66]), fore: unit([-0.6, 0.78, 0.2]), hand: { curl: [0.3, 0.2, 0.9, 0.95, 0.95], point: unit([-0.35, 0.9, 0.2]), palm: unit([-0.3, 0, -1]) } },
 };
 
+// A hand up to speak next (packs.ts has no emote for it: it stays up until
+// it's their turn, or they put it down)
+export const HAND_UP: Arm = { upper: unit([0.42, 0.6, 0.2]), fore: unit([0.04, 1, 0.05]), hand: { curl: [0.15, 0.05, 0.05, 0.05, 0.1], point: unit([0.02, 1, 0]), palm: [0, 0, 1] } };
+
 // MediaPipe's names for what a hand is doing, which an emote can go off on
 export const GESTURES = ["Closed_Fist", "Open_Palm", "Pointing_Up", "Thumb_Down", "Thumb_Up", "Victory", "ILoveYou"] as const;
