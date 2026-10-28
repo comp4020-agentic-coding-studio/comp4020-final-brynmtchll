@@ -187,6 +187,12 @@ None of them was run on a phone yet; that's the open half of each.
 - Ran two independent code reviews (subagents) and fixed what they found
   ([`8ba746e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/8ba746e),
   [`0d7470d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0d7470d)).
+  Two more on the work since crit 10 (28 October), fixed in
+  [`357a6b0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/357a6b0) and [`3408741`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/3408741): among them a name
+  that could run a script on pages drawing flat avatars, voices that
+  stopped themselves (the microphone heard them as you talking), replies
+  dropped as echoes, and GPU memory that grew with every slider step and
+  every visit to the room (measured flat afterwards).
 - Several of its own wrong turns, each visible in commit messages: a
   drawn-out measure that misfired on real speech; three pace measures that
   disagreed, so "faster/slower" was dropped; Whisper inventing sentences
