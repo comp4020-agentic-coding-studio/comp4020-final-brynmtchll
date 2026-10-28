@@ -4,7 +4,8 @@
 // moment later; undo and redo walk back and forth through what you've
 // changed. Without this script the page is a plain form, and nothing saves.
 import { avatarSvg, fromShapes, REST, smoother, type Expression, type Pose } from "./avatar.ts";
-import { emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
+import { arms, emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
+import { readHands, type HandReader } from "./handreader.ts";
 import { emoteOf, MORE_EXTRAS, randomLook, SLIDERS, STYLES, type Look } from "./packs.ts";
 import { wordHtml } from "./voice.ts";
 import { tryVoice } from "./speech.ts";
@@ -308,6 +309,30 @@ const VISION = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1";
 const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 const faceButton = document.getElementById("studio-face") as HTMLButtonElement;
 let stopFace: (() => void) | undefined;
+// and your arms and hands too, if asked: read off the same camera, in a
+// worker (handreader.ts), on your avatar here
+const handsButton = document.getElementById("studio-hands") as HTMLButtonElement;
+let hands: HandReader | null = null;
+function handsOff(): void {
+  hands?.stop();
+  hands = null;
+  arms(slot, null);
+  handsButton.setAttribute("aria-pressed", "false");
+}
+handsButton.addEventListener("click", () => {
+  if (hands) return handsOff();
+  handsButton.setAttribute("aria-pressed", "true");
+  say("Loading the hand reader…");
+  hands = readHands({
+    ready: () => say("Your arms and hands too, here only."),
+    failed: (why) => {
+      console.error(why);
+      say("Couldn't read your hands here.");
+      handsOff();
+    },
+    read: (body) => arms(slot, body),
+  });
+});
 faceButton.addEventListener("click", async () => {
   if (stopFace) {
     stopFace();
@@ -316,6 +341,8 @@ faceButton.addEventListener("click", async () => {
     face = REST;
     faceButton.setAttribute("aria-pressed", "false");
     faceButton.textContent = "Follow my face";
+    handsOff();
+    handsButton.hidden = true;
     return draw();
   }
   faceButton.disabled = true;
@@ -354,6 +381,7 @@ faceButton.addEventListener("click", async () => {
       face = steady(fromShapes(Object.fromEntries(shapes.map((c) => [c.categoryName, c.score]))), performance.now() / 1000);
       if (matrix) home ??= placed(matrix);
       void head3d(slot, look, face, matrix ? poseFrom(matrix, home) : null);
+      hands?.frame(video, performance.now());
     };
     read();
     const opened = camera;
@@ -365,6 +393,7 @@ faceButton.addEventListener("click", async () => {
     following = true;
     faceButton.setAttribute("aria-pressed", "true");
     faceButton.textContent = "Stop following";
+    handsButton.hidden = false;
     say("Following your face, on this page only.");
   } catch (err) {
     console.error(err);

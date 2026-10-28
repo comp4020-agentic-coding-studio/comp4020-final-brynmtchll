@@ -577,7 +577,7 @@ main.studio { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px,
 .preview-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .preview-tools button, .preview-tools select { padding: 8px 14px; border-radius: 999px; font: inherit; font-size: 0.875rem; }
 .preview-tools select { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
-#studio-face[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+#studio-hands[aria-pressed="true"], #studio-face[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .editor { display: grid; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
 .editor-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .editor-head .done { padding: 8px 18px; border-radius: 999px; background: var(--ink); color: var(--bg); font-weight: 700; text-decoration: none; }

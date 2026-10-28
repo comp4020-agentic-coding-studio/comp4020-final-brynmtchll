@@ -2,12 +2,12 @@
 // reads fine without this; the script keeps it live, plays each phrase in its
 // speaker's spot, and, while someone's microphone is on, hears them a phrase
 // at a time and sends each phrase as it's heard.
-import { avatarSvg, fromShapes, oneEuro, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
+import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
-import { bodyFrom, type Body } from "./body.ts";
+import type { Body } from "./body.ts";
+import { readHands, type HandReader } from "./handreader.ts";
 import { overHead, showRoom } from "./room3d.ts";
 import { canSpeak, duck, echoOf, hearVoices, speak, speaking as voicesSpeaking, type Spoken } from "./speech.ts";
-import type { FromHands, ToHands } from "./hands.ts";
 import { EFFECTS, emoteOf, EMOTES, STYLES, type Look as PackLook } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
@@ -1107,7 +1107,7 @@ let lastSentAt = 0;
 const coarse = (o: Record<string, number> | null): string => (o ? Object.values(o).map((v) => Math.round(v * 40)).join(",") : "-");
 async function sendFace(e: Expression | null, pose: Pose | null = null): Promise<void> {
   // (and their arms and hands, while those are being read)
-  const body = e && handsOn ? bodyNow : null;
+  const body = e && hands ? bodyNow : null;
   const key = coarse(e) + "|" + coarse(pose) + "|" + (body ? JSON.stringify(body) : "-");
   const since = Date.now() - lastSentAt;
   if (sendingFace || since < SEND_EVERY || (key === lastSent && since < 2000)) return;
@@ -1259,7 +1259,7 @@ async function faceStart(): Promise<void> {
     drawAvatar(myName, shown, turned);
     void sendFace(shown, turned);
     if (shapes) faceEmotes(shown);
-    if (handsOn) void handsFrame(video, now);
+    handsFrame(video, now);
   };
   // each new camera frame where the browser says when there is one, the
   // screen's frames where it doesn't
@@ -1313,97 +1313,61 @@ if (faceButton && "mediaDevices" in navigator) {
 // when asked: it's two more models (about 14 MB) and more work for the
 // processor than a face.
 const handsBox = document.getElementById("hands") as HTMLInputElement | null;
-let handsOn = false;
-let handsWorker: Worker | null = null;
-let handsBusy = false;
-let bodyNow: Body | null = null;
-let handsSeenAt = 0;
+let hands: HandReader | null = null;
 // a gesture held for GESTURE_HOLD does its emote (packs.ts EMOTES gesture)
 const GESTURE_HOLD = 400; // ms
 const gestureEmotes = EMOTES.filter((em) => "gesture" in em);
 let gestureHeld: { name: string; since: number } | null = null;
 const HAND_HOLD = 1000; // ms
 let raisedSince: number | null = null;
-// arms read off a camera jitter as a face does: smoothed the same way
-const steadyArms = new Map<string, (v: number, at: number) => number>();
-function steadyBody(b: Body, at: number): Body {
-  const walk = (o: unknown, path: string): unknown => {
-    if (typeof o === "number") {
-      if (!steadyArms.has(path)) steadyArms.set(path, oneEuro(1.5, 1));
-      return Math.round(steadyArms.get(path)!(o, at) * 100) / 100;
-    }
-    if (Array.isArray(o)) return o.map((v, i) => walk(v, `${path}.${i}`));
-    if (o && typeof o === "object") return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, walk(v, `${path}.${k}`)]));
-    return o;
-  };
-  return walk(b, "") as Body;
-}
+let bodyNow: Body | null = null;
 
-async function handsFrame(video: HTMLVideoElement, at: number): Promise<void> {
-  if (!handsWorker || handsBusy || video.readyState < 2) return;
-  handsBusy = true;
-  try {
-    const frame = await createImageBitmap(video);
-    handsWorker.postMessage({ frame, at } satisfies ToHands, [frame]);
-  } catch {
-    handsBusy = false;
-  }
+function handsFrame(video: HTMLVideoElement, at: number): void {
+  hands?.frame(video, at);
 }
 
 function handsStart(): void {
-  if (handsWorker || !faceOn) return;
+  if (hands || !faceOn) return;
   say("Loading the hand reader…");
-  handsWorker = new Worker("/js/hands.ts");
-  handsWorker.onmessage = ({ data }: MessageEvent<FromHands>) => {
-    if ("ready" in data) {
-      handsOn = true;
-      say("Your avatar's arms and hands follow yours. Try a thumbs up, a wave, a peace sign, or hold a hand up high to speak next.");
-      return;
-    }
-    if ("failed" in data) {
-      console.error(data.failed);
+  hands = readHands({
+    ready: () => say("Your avatar's arms and hands follow yours. Try a thumbs up, a wave, a peace sign, or hold a hand up high to speak next."),
+    failed: (why) => {
+      console.error(why);
       warn("Couldn't read your hands here. Your face still shows.");
-      return handsStop();
-    }
-    handsBusy = false;
-    const now = performance.now();
-    const read = bodyFrom(data.seen);
-    const any = read.left !== null || read.right !== null;
-    if (any) handsSeenAt = now;
-    // arms not seen for a moment go back down, rather than freeze
-    bodyNow = any ? steadyBody(read, now / 1000) : now - handsSeenAt > 600 ? null : bodyNow;
-    const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
-    if (slot && webgl) headArms(slot, bodyNow);
-    // an open hand held up above your head, still, for HAND_HOLD: your hand
-    // up to speak (lower down, an open hand is a wave)
-    const pose = data.seen.pose;
-    const raised = !!pose && data.seen.hands.some((h) => h.gesture === "Open_Palm" && h.score > 0.6 && h.image[0].y < pose.image[0].y - 0.08);
-    if (!raised) raisedSince = null;
-    else if (raisedSince === null) raisedSince = now;
-    else if (now - raisedSince >= HAND_HOLD && !queueNow.includes(myName)) {
-      raisedSince = Infinity;
-      void raiseHand(true);
-    }
-    // a gesture held: its emote
-    const best = data.seen.hands.filter((h) => h.score > 0.6 && !(raised && h.gesture === "Open_Palm")).sort((a, b) => b.score - a.score)[0];
-    const em = best && gestureEmotes.find((g) => g.gesture === best.gesture);
-    if (!em) gestureHeld = null;
-    else if (gestureHeld?.name !== em.id) gestureHeld = { name: em.id, since: now };
-    else if (now - gestureHeld.since >= GESTURE_HOLD && Date.now() - emotedAt > 2500) {
-      gestureHeld = { name: em.id, since: Infinity };
-      void sendEmote(em.id);
-    }
-  };
-  handsWorker.postMessage({ start: true } satisfies ToHands);
+      handsStop();
+    },
+    read: (body, seen) => {
+      bodyNow = body;
+      const now = performance.now();
+      const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
+      if (slot && webgl) headArms(slot, bodyNow);
+      // an open hand held up above your head, still, for HAND_HOLD: your hand
+      // up to speak (lower down, an open hand is a wave)
+      const pose = seen.pose;
+      const raised = !!pose && seen.hands.some((h) => h.gesture === "Open_Palm" && h.score > 0.6 && h.image[0].y < pose.image[0].y - 0.08);
+      if (!raised) raisedSince = null;
+      else if (raisedSince === null) raisedSince = now;
+      else if (now - raisedSince >= HAND_HOLD && !queueNow.includes(myName)) {
+        raisedSince = Infinity;
+        void raiseHand(true);
+      }
+      // a gesture held: its emote
+      const best = seen.hands.filter((h) => h.score > 0.6 && !(raised && h.gesture === "Open_Palm")).sort((a, b) => b.score - a.score)[0];
+      const em = best && gestureEmotes.find((g) => g.gesture === best.gesture);
+      if (!em) gestureHeld = null;
+      else if (gestureHeld?.name !== em.id) gestureHeld = { name: em.id, since: now };
+      else if (now - gestureHeld.since >= GESTURE_HOLD && Date.now() - emotedAt > 2500) {
+        gestureHeld = { name: em.id, since: Infinity };
+        void sendEmote(em.id);
+      }
+    },
+  });
 }
 
 function handsStop(): void {
-  handsWorker?.terminate();
-  handsWorker = null;
-  handsOn = false;
-  handsBusy = false;
+  hands?.stop();
+  hands = null;
   bodyNow = null;
-  steadyArms.clear();
   if (handsBox) handsBox.checked = false;
   const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
   if (slot && webgl) headArms(slot, null);
