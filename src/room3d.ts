@@ -368,11 +368,16 @@ function draw(heads: RoomHead[], THREE: T): void {
     const wordEl = el.lastElementChild as HTMLElement;
     const html = word && !word.classList.contains("fading") ? word.innerHTML : "";
     if (wordEl.innerHTML !== html) wordEl.innerHTML = html;
+    // which word, so it can be tapped to react to
+    for (const k of ["id", "i"] as const) {
+      const v = html && word instanceof HTMLElement ? word.dataset[k] : undefined;
+      if (wordEl.dataset[k] !== v) v === undefined ? delete wordEl.dataset[k] : (wordEl.dataset[k] = v);
+    }
     el.classList.toggle("speaking", who.speaking);
     el.classList.toggle("mine", who.mine);
     // a crowded room names only who's talking or has a hand up (their cards
     // name everyone)
-    el.classList.toggle("quiet", sitting.length > CROWD && !who.speaking && !hand && !html);
+    el.classList.toggle("quiet", sitting.length > CROWD && !who.speaking && !hand && !html && !el.querySelector(".burst"));
     if ((nameEl.dataset.hand ?? "") !== (hand ?? "")) {
       if (hand) nameEl.dataset.hand = hand;
       else delete nameEl.dataset.hand;
@@ -401,6 +406,11 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.at.delete(slot);
   }
 }
+
+// Where something rising from someone's head goes in the room (an emote's
+// emoji): over their head, with their name. Null when the room isn't shown,
+// or they're not sitting in it.
+export const overHead = (slot: HTMLElement): HTMLElement | null => room?.labels.get(slot) ?? null;
 
 // Show the room in `canvas`, with labels in `overlay` (over it), or stop.
 export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLElement | null): Promise<boolean> {

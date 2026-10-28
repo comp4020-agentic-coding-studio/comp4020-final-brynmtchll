@@ -337,6 +337,7 @@ main.room {
 .room-name[data-hand]::after { content: " ✋ " attr(data-hand); color: var(--hand); }
 .room-word { color: var(--person); font-size: clamp(1.25rem, 0.9rem + 1.6vw, 2.25rem); line-height: 1.1; text-align: center; text-shadow: 0 2px 10px rgb(0 0 0 / 0.65); }
 .room-word:empty { display: none; }
+.room-label:not(.mine) .room-word[data-id] { pointer-events: auto; cursor: pointer; }
 /* In the room, on a wide screen, the room is the place: it takes the wide
    side, and you (already sitting in it) go to the narrow one, your card
    shorter, with your controls under it. */
@@ -519,6 +520,7 @@ main.prose { max-width: 70ch; margin: 0 auto; padding: 8px 20px 48px; }
 .spot-avatar { position: relative; }
 .burst { position: absolute; left: 50%; top: 10%; font-size: 1.6em; pointer-events: none; animation: burst 1.5s ease-out forwards; z-index: 2; }
 .mine-card .burst { font-size: 2.2em; }
+.room-label .burst { top: auto; bottom: 100%; font-size: 1.8rem; }
 @keyframes burst {
   0% { transform: translate(-50%, 0) scale(0.4); opacity: 0; }
   15% { transform: translate(calc(-50% + var(--dx) * 0.3), -10px) scale(1.15); opacity: 1; }

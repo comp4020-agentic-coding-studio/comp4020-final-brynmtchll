@@ -5,7 +5,7 @@
 import { avatarSvg, fromShapes, oneEuro, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import { bodyFrom, type Body } from "./body.ts";
-import { showRoom } from "./room3d.ts";
+import { overHead, showRoom } from "./room3d.ts";
 import { canSpeak, duck, echoOf, hearVoices, speak, type Spoken } from "./speech.ts";
 import type { FromHands, ToHands } from "./hands.ts";
 import { EFFECTS, emoteOf, EMOTES, STYLES, type Look as PackLook } from "./packs.ts";
@@ -139,9 +139,12 @@ const slotOf = (spot: Spot): HTMLElement | null => spot.el.querySelector<HTMLEle
 for (const el of document.querySelectorAll<HTMLElement>(".spot")) spotFor({ name: el.dataset.name!, hue: 0 });
 
 // The word being said goes up large (the thread underneath has the rest).
-function showWord(spot: Spot, html: string): void {
+function showWord(spot: Spot, html: string, at?: { id: number; i: number }): void {
   spot.word.classList.remove("fading");
   spot.word.innerHTML = html;
+  // which word it is, so it can be reacted to where it's shown big (the room)
+  if (at) Object.assign(spot.word.dataset, { id: String(at.id), i: String(at.i) });
+  else for (const k of ["id", "i"]) delete spot.word.dataset[k];
   // restart the arrival animation on the new word
   spot.word.classList.remove("arrive");
   void spot.word.offsetWidth;
@@ -165,8 +168,8 @@ function play(spot: Spot): void {
   if (slot) speaking(slot, true);
   const later = (at: number, fn: () => void): void => void spot.timers.push(window.setTimeout(fn, at * 1000));
   // each word goes up large, and their head says it, the way it was said
-  const show = (w: StageWord): void => {
-    showWord(spot, w.html);
+  const show = (w: StageWord, i: number): void => {
+    showWord(spot, w.html, { id: phrase.id, i });
     const shown = spot.word.querySelector<HTMLElement>(".w");
     if (!slot || !shown) return;
     const n = (v: string): number => Number(shown.style.getPropertyValue(v)) || 0;
@@ -185,12 +188,12 @@ function play(spot: Spot): void {
   let at = 0;
   if (still.matches) {
     const lastWord = phrase.words.at(-1);
-    if (lastWord) showWord(spot, lastWord.html);
+    if (lastWord) showWord(spot, lastWord.html, { id: phrase.id, i: phrase.words.length - 1 });
   } else {
     let due = 0;
     phrase.words.forEach((w, i) => {
       at = Math.max(at, due);
-      later(at, () => show(w));
+      later(at, () => show(w, i));
       at += SHORTEST_WORD;
       due += i + 1 < phrase.words.length ? w.d + Math.min(Math.max(0, w.gap), LONGEST_PAUSE) : w.d;
     });
@@ -1420,6 +1423,8 @@ function showEmote(name: string, id: string): void {
   headEmote(slot, em);
   if (!em.burst || still.matches) return;
   // what rises from their head: a few of its emoji, floating up and away
+  // (from their head in the room, if that's what's shown)
+  const from = overHead(slot) ?? slot;
   for (let i = 0; i < 3; i++) {
     const b = document.createElement("span");
     b.className = "burst";
@@ -1427,7 +1432,7 @@ function showEmote(name: string, id: string): void {
     b.setAttribute("aria-hidden", "true");
     b.style.setProperty("--dx", `${(i - 1) * 26 + (Math.random() - 0.5) * 14}px`);
     b.style.animationDelay = `${i * 120}ms`;
-    slot.append(b);
+    from.append(b);
     b.addEventListener("animationend", () => b.remove());
   }
 }
@@ -1593,15 +1598,26 @@ function closePicker(): void {
 stage.addEventListener("click", (e) => {
   const w = (e.target as HTMLElement).closest<HTMLElement>(".tw");
   const ph = w?.closest<HTMLElement>(".phrase");
-  if (!picker || !myName || !w || !ph || w.closest(".spot.mine")) return;
-  reactingTo = { id: Number(ph.dataset.id), index: Number(w.dataset.i) };
+  if (!w || !ph || w.closest(".spot.mine")) return;
+  openPicker({ id: Number(ph.dataset.id), index: Number(w.dataset.i) }, w);
+  e.stopPropagation();
+});
+// a word over someone's head in the room, the same
+document.querySelector(".room-labels")?.addEventListener("click", (e) => {
+  const w = (e.target as HTMLElement).closest<HTMLElement>(".room-word[data-id]");
+  if (!w || w.closest(".room-label.mine")) return;
+  openPicker({ id: Number(w.dataset.id), index: Number(w.dataset.i) }, w);
+  e.stopPropagation();
+});
+function openPicker(to: { id: number; index: number }, w: HTMLElement): void {
+  if (!picker || !myName || !Number.isFinite(to.id) || !Number.isFinite(to.index)) return;
+  reactingTo = to;
   const r = w.getBoundingClientRect();
   picker.hidden = false;
   picker.style.left = `${Math.max(8, Math.min(innerWidth - picker.offsetWidth - 8, r.left + r.width / 2 - picker.offsetWidth / 2))}px`;
   picker.style.top = `${r.top + scrollY - picker.offsetHeight - 8}px`;
   (picker.querySelector("button") as HTMLButtonElement | null)?.focus();
-  e.stopPropagation();
-});
+}
 picker?.addEventListener("click", async (e) => {
   const reaction = (e.target as HTMLElement).closest<HTMLElement>("[data-reaction]")?.dataset.reaction;
   const to = reactingTo;
