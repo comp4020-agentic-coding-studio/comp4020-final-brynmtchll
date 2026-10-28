@@ -50,6 +50,30 @@ export type Style = (typeof STYLES)[number];
 export const stylesCss = (): string =>
   STYLES.map((st) => `.spot[data-words="${st.id}"]{--style-loud:${st.loud};--style-pitch:${st.pitch};--style-motion:${st.motion}}`).join("\n");
 
+// ---- voices ----
+
+// How someone's words sound to whoever has voices on (speech.ts): a voice
+// of a few, each a way of sounding rather than a particular recording, since
+// each listener's device has its own voices: `names` are the ones to look
+// for, best first (macOS, Windows, Android and Chrome's own), and `lang` the
+// accent to fall back on, at the voice's own pitch and speed (1 as the
+// device speaks). Each listener's device says it a little differently; the
+// pitch and speed make it theirs anywhere. "Silent" is never spoken.
+export const VOICES = [
+  { id: "warm", label: "Warm", names: ["Samantha", "Google US English", "Microsoft Aria", "Microsoft Zira", "Karen"], lang: "en-US", pitch: 1, rate: 1 },
+  { id: "deep", label: "Deep", names: ["Daniel", "Google UK English Male", "Microsoft Guy", "Microsoft David", "Rishi", "Fred"], lang: "en-GB", pitch: 0.75, rate: 0.95 },
+  { id: "bright", label: "Bright", names: ["Karen", "Tessa", "Google UK English Female", "Microsoft Jenny", "Samantha"], lang: "en-AU", pitch: 1.3, rate: 1.06 },
+  { id: "story", label: "Storyteller", names: ["Moira", "Daniel", "Google UK English Female", "Microsoft Libby", "Microsoft Hazel"], lang: "en-IE", pitch: 0.95, rate: 0.88 },
+  { id: "quick", label: "Quick", names: ["Rishi", "Reed (English (United States))", "Microsoft Mark", "Google US English"], lang: "en-IN", pitch: 1.05, rate: 1.25 },
+  { id: "grand", label: "Grand", names: ["Grandpa (English (United Kingdom))", "Grandpa (English (United States))", "Microsoft George", "Daniel"], lang: "en-GB", pitch: 0.7, rate: 0.85 },
+  { id: "tiny", label: "Tiny", names: ["Junior", "Flo (English (United States))", "Microsoft Ana", "Google US English"], lang: "en-US", pitch: 1.65, rate: 1.15 },
+  { id: "robot", label: "Robot", names: ["Trinoids", "Zarvox", "Fred", "Microsoft David"], lang: "en-US", pitch: 0.4, rate: 1 },
+  { id: "whisper", label: "Whisper", names: ["Whisper", "Microsoft Zira"], lang: "en-US", pitch: 1.1, rate: 0.9 },
+  { id: "silent", label: "Silent", names: [], lang: "", pitch: 1, rate: 1 },
+] as const satisfies readonly (Choice & { names: readonly string[]; lang: string; pitch: number; rate: number })[];
+export type VoiceChoice = (typeof VOICES)[number];
+export const voiceOf = (id: unknown): VoiceChoice => VOICES.find((v) => v.id === id) ?? VOICES[0];
+
 // ---- moments ----
 
 // Emotes: something someone's head does, for everyone, for a moment, by the
@@ -163,6 +187,8 @@ export const PARTS = {
     { id: "goatee", label: "Goatee" },
     { id: "full", label: "Full" },
   ],
+  // how their words sound, to anyone listening
+  voice: VOICES.map(({ id, label }) => ({ id, label })),
   // what they're wearing below the head, which shows with their arms
   top: [
     { id: "tee", label: "T-shirt" },
@@ -228,6 +254,8 @@ export const SLIDERS = [
   { id: "armLength", label: "Arm length", group: "Body" },
   { id: "handSize", label: "Hands", group: "Body" },
   { id: "neck", label: "Neck", group: "Body" },
+  { id: "voicePitch", label: "Pitch", group: "Voice" },
+  { id: "voiceSpeed", label: "Speed", group: "Voice" },
 ] as const satisfies readonly (Choice & { group: string })[];
 export type Slider = (typeof SLIDERS)[number]["id"];
 export type Tune = Partial<Record<Slider, number>>;
@@ -250,6 +278,7 @@ export const DEFAULT_LOOK: Look = {
   beard: "none",
   extra: "none",
   top: "tee",
+  voice: "warm",
   words: "plain",
   skin: COLOURS.skin.swatches[0],
   hairColour: COLOURS.hairColour.swatches[1],
@@ -319,6 +348,7 @@ export function lookFor(seat: number): Look {
     hairColour: COLOURS.hairColour.swatches[(seat * 3) % 6],
     eyeColour: COLOURS.eyeColour.swatches[seat % 4],
     topColour: COLOURS.topColour.swatches[(seat * 7) % 10],
+    voice: VOICES[(seat * 3) % (VOICES.length - 1)].id,
   };
 }
 
@@ -330,6 +360,7 @@ export function randomLook(rnd: () => number = Math.random): Look {
   // a beard on half of them, accessories on most, and always arms
   if (rnd() < 0.5) out.beard = "none";
   if (out.top === "none") out.top = "tee";
+  if (out.voice === "silent") out.voice = "warm";
   // and shaped a little, not far from usual
   const tune: Tune = {};
   for (const sl of SLIDERS) if (rnd() < 0.5) tune[sl.id] = Math.round((rnd() * 2 - 1) * 0.6 * 100) / 100;

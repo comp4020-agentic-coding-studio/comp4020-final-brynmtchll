@@ -288,6 +288,12 @@ main.room {
 .spot[data-hand="1"] { box-shadow: var(--shadow), 0 0 32px -14px var(--hand); }
 .queue { margin: 0 0 10px; padding: 8px 14px; border-radius: 999px; background: color-mix(in srgb, var(--hand) 14%, var(--surface)); color: var(--ink); font-size: 0.875rem; }
 .queue strong { color: var(--hand); }
+/* hearing what people say */
+.voices-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 0.875rem; font-weight: 600; color: var(--ink); cursor: pointer; }
+.voices-toggle[hidden] { display: none; }
+.voices-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.voices-toggle:has(input:checked) { border-color: var(--accent); color: var(--accent); }
+.voices-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* arms and hands as well, offered once the face is showing */
 .hands-toggle { display: none; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
 .controls:has(.face-toggle[aria-pressed="true"]) .hands-toggle { display: inline-flex; }
@@ -381,7 +387,11 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 .look-form:has(.look-tab input[value="3"]:checked) .look-section:not([data-section="3"]),
 .look-form:has(.look-tab input[value="4"]:checked) .look-section:not([data-section="4"]),
 .look-form:has(.look-tab input[value="5"]:checked) .look-section:not([data-section="5"]),
-.look-form:has(.look-tab input[value="6"]:checked) .look-section:not([data-section="6"]) { display: none; }
+.look-form:has(.look-tab input[value="6"]:checked) .look-section:not([data-section="6"]),
+.look-form:has(.look-tab input[value="7"]:checked) .look-section:not([data-section="7"]) { display: none; }
+.voice-try { display: grid; gap: 6px; padding-top: 6px; }
+.voice-try button { justify-self: start; padding: 8px 16px; border-radius: 999px; }
+.voice-try .hint { margin: 0; font-size: 0.75rem; color: var(--faint); }
 
 /* ---- the brief record of what's been said lately ---- */
 

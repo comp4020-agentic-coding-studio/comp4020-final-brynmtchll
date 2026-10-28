@@ -6,6 +6,7 @@ import { avatarSvg, fromShapes, oneEuro, placed, poseFrom, resting, REST, smooth
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import { bodyFrom, type Body } from "./body.ts";
 import { showRoom } from "./room3d.ts";
+import { canSpeak, duck, echoOf, hearVoices, speak, type Spoken } from "./speech.ts";
 import type { FromHands, ToHands } from "./hands.ts";
 import { EFFECTS, emoteOf, EMOTES, STYLES, type Look as PackLook } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
@@ -21,7 +22,7 @@ const heardAloud = document.getElementById("heard") as HTMLElement;
 
 // ---- the stage: each person's words, one at a time, in their spot ----
 
-type StageWord = { html: string; t: number; d: number; gap: number };
+type StageWord = { html: string; t: number; d: number; gap: number; say?: [number, number, number] };
 type Phrase = { id: number; name: string; hue: number; look?: Look; text: string; at: number; words: StageWord[]; reactions?: Record<number, Record<string, number>> };
 
 // Each word appears when it was said, but stays up at least SHORTEST_WORD so
@@ -255,11 +256,60 @@ function arrive(p: Phrase & { draft?: number }): void {
   remember(p);
   heardAloud.textContent = `${p.name}: ${p.text}`;
   const spot = spotFor(p, p.look);
+  // spoken, for anyone with voices on: not your own back to you, nor what
+  // comes again after a dropped connection
+  if (p.name !== myName && p.look && Date.now() - p.at < FRESH) speak(spokenOf(p), p.look);
   addToThread(spot, p);
   spot.queue.push({ ...p, arrived: Date.now() });
   if (spot.state !== "playing") play(spot);
   // your latest word is the one chosen, unless you've chosen another
   if (spot.el.classList.contains("mine") && (followLatest || !chosen) && typing === null) choose(p.id, p.words.length - 1, true);
+}
+
+const FRESH = 20_000; // ms: older than this, a phrase isn't spoken
+
+// A phrase's words as they're to be spoken: each word's text (from its
+// drawing) and how it was said.
+const scratch = document.createElement("span");
+function spokenOf(p: Phrase): Spoken[] {
+  return p.words.map((w) => {
+    scratch.innerHTML = w.html;
+    // (a drawn-out word's extra letters are for the eye)
+    for (const held of scratch.querySelectorAll(".held")) held.remove();
+    const fx = scratch.querySelector<HTMLElement>(".w")?.className.match(/fx-(\w+)/)?.[1] ?? null;
+    const [loud, pitch, stretch] = w.say ?? [0, 0, 0];
+    return { text: scratch.textContent ?? "", loud, pitch, stretch, effect: fx };
+  });
+}
+
+// Voices: off until asked for (a page that suddenly talks is a surprise,
+// and browsers won't before a tap anyway), and remembered on this browser.
+const voicesBox = document.getElementById("voices") as HTMLInputElement | null;
+const VOICES_KEY = "said-voices";
+if (voicesBox && canSpeak) {
+  voicesBox.closest("label")!.hidden = false;
+  voicesBox.addEventListener("change", () => {
+    hearVoices(voicesBox.checked);
+    say(voicesBox.checked ? "Voices on: what people say is spoken, the way they said it. Headphones stop it coming back through your microphone." : "Voices off.");
+    try {
+      localStorage.setItem(VOICES_KEY, voicesBox.checked ? "on" : "off");
+    } catch {
+      // not remembered
+    }
+  });
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem(VOICES_KEY);
+  } catch {
+    saved = null;
+  }
+  // remembered as on: ticked, and on from the first tap anywhere (browsers
+  // won't speak before one)
+  if (saved === "on") {
+    voicesBox.checked = true;
+    addEventListener("pointerdown", () => voicesBox.checked && hearVoices(true), { once: true, capture: true });
+    addEventListener("keydown", () => voicesBox.checked && hearVoices(true), { once: true, capture: true });
+  }
 }
 
 // ---- each person's thread: what they've said lately, as text messages ----
@@ -633,9 +683,13 @@ const VOICE_EVERY = 120; // ms
 let voiceBatch: number[] = [];
 let voiceSentAt = 0;
 let voiceQuiet = 0;
+let loudAt = 0;
 function sendVoice(level: number): void {
   const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
   if (slot) voiceLevels(slot, [level], true);
+  // others' voices wait while you're talking, and carry on after a moment
+  if (level > 0.35) loudAt = Date.now();
+  duck(Date.now() - loudAt < 900);
   voiceBatch.push(Math.round(level * 100) / 100);
   if (Date.now() - voiceSentAt < VOICE_EVERY) return;
   const levels = voiceBatch;
@@ -723,6 +777,8 @@ function send(pcm: Float32Array): void {
       // phrase that's only that, with no voice under it, is dropped
       const voiced = result.voice?.pitch != null && result.words.some((w) => w.pitch !== null);
       if (result.words.length === 0 || invented(result.words.map((w) => w.w).join(" "), voiced)) return void clearDraft(forDraft);
+      // someone else's words, spoken here, heard back through the microphone
+      if (echoOf(result.words.map((w) => w.w).join(" "))) return void clearDraft(forDraft);
       await post(result.words, result.voice, forDraft);
     } catch (err) {
       console.error(err);

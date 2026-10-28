@@ -158,13 +158,15 @@ describe.skipIf(!writable)("the room", () => {
     await watcher.ready;
     const p = await person();
     const stamp = Date.now();
-    await p.say({ words: [word(`first${stamp}`, 0.2), word("second", 0.9)] });
-    const e = (await watcher.waitFor(`first${stamp}`)) as unknown as { name: string; hue: number; words: { html: string; t: number; d: number }[] };
+    await p.say({ words: [word(`first${stamp}`, 0.2), word("second", 0.9, { loud: 7.6, pitch: -3.2, stretch: 0.44 })] });
+    const e = (await watcher.waitFor(`first${stamp}`)) as unknown as { name: string; hue: number; words: { html: string; t: number; d: number; say: number[] }[] };
     expect(e.name).toBe(p.name);
     expect(e.hue).toBeGreaterThanOrEqual(0);
     expect(e.hue).toBeLessThan(360);
     expect(e.words.map((w) => [w.t, w.d])).toEqual([[0.2, 0.3], [0.9, 0.3]]);
     expect(e.words[1].html).toContain("second");
+    // and how each was said, for speaking it: louder, lower, a little drawn out
+    expect(e.words.map((w) => w.say)).toEqual([[0, 0, 0], [8, -3, 0.4]]);
     watcher.close();
   });
 

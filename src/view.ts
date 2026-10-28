@@ -14,6 +14,8 @@ const HELP = `<details class="help">
     <p>Turn your microphone on and talk. Your words appear for everyone as you say them: louder is heavier, higher sits higher, drawn-out sounds repeat (sooo).</p>
     <p>Tap any of your words (your latest is chosen already) to type over it, delete it, or press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for Impact, Whisper or Glow, live, for everyone.</p>
     <p>Show your face and your avatar pulls the faces you pull and turns as you turn. Your voice and face are read in this browser; only words, how they were said, and a handful of numbers about your face leave it. No recording or picture is kept anywhere.</p>
+    <p>Hands too, and your avatar's arms and hands follow yours: a thumbs up, a wave or a peace sign sets off its emote. Raise your hand (<kbd>Shift</kbd> <kbd>R</kbd>) to take a place in the queue to speak.</p>
+    <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. Headphones stop it coming back through your microphone.</p>
   </div>
 </details>`;
 
@@ -103,8 +105,9 @@ const SECTIONS: { label: string; parts: (Part | ColourPart)[]; sliders?: string 
   { label: "Wearing", parts: ["extra", "extraColour"] },
   { label: "Body", parts: ["top", "topColour"], sliders: "Body" },
   { label: "Words", parts: ["words"] },
+  { label: "Voice", parts: ["voice"], sliders: "Voice" },
 ];
-const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing", top: "Top" };
+const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing", top: "Top", voice: "Voice" };
 
 // Everything someone can choose about how they look, in tabs: for each
 // part a row of choices, for each colour a row of swatches and a picker for
@@ -139,9 +142,12 @@ function lookEditor(look: Look): string {
     .filter((c) => c.id !== "none")
     .map((c) => `<label><input type="checkbox" name="more" value="${c.id}"${more.has(c.id) ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
     .join("")}<p class="hint">Up to ${MORE_EXTRAS} besides the one above.</p></fieldset>`;
+  // how it sounds: tried out here, and said honestly to sound a little
+  // different on each device (each has its own voices)
+  const voiceMore = `<div class="voice-try"><button type="button" id="hear-voice">🔊 Hear it</button><p class="hint">How your words sound to anyone with voices on: loud words louder, high words higher, drawn-out words slower. Each device has its own voices, so it sounds a little different on each.</p></div>`;
   return `<form id="look" class="look-form">
       <div class="look-tabs" role="tablist">${SECTIONS.map((sec, i) => `<label class="look-tab"><input type="radio" name="look-tab" value="${i}"${i === 0 ? " checked" : ""}><span>${sec.label}</span></label>`).join("")}</div>
-      ${SECTIONS.map((sec, i) => `<div class="look-section" data-section="${i}">${sec.parts.map(row).join("")}${sec.sliders ? sliders(sec.sliders) : ""}${sec.label === "Wearing" ? wearMore : ""}</div>`).join("")}
+      ${SECTIONS.map((sec, i) => `<div class="look-section" data-section="${i}">${sec.parts.map(row).join("")}${sec.sliders ? sliders(sec.sliders) : ""}${sec.label === "Wearing" ? wearMore : ""}${sec.label === "Voice" ? voiceMore : ""}</div>`).join("")}
     </form>`;
 }
 
@@ -231,6 +237,7 @@ export function roomPage(
           <button id="face" type="button" class="face-toggle" aria-pressed="false" hidden><span class="label">Show my face</span></button>
           <video id="face-preview" class="face-preview" muted playsinline hidden></video>
           <label class="hands-toggle"><input type="checkbox" id="hands"><span>Hands too</span></label>
+          <label class="voices-toggle" hidden><input type="checkbox" id="voices"><span>🔊 Hear voices</span></label>
           <form method="post" action="/hand" class="hand-form"><input type="hidden" name="up" value="${up ? "false" : "true"}"><button id="hand" type="submit" class="hand-toggle" aria-pressed="${up}" title="Raise your hand to speak next (Shift+R)"><span aria-hidden="true">✋</span> <span class="label">${up ? "Lower hand" : "Raise hand"}</span></button></form>
         </div>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>

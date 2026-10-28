@@ -7,6 +7,7 @@ import { avatarSvg, fromShapes, REST, smoother, type Expression, type Pose } fro
 import { emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
 import { emoteOf, MORE_EXTRAS, randomLook, STYLES, type Look } from "./packs.ts";
 import { wordHtml } from "./voice.ts";
+import { tryVoice } from "./speech.ts";
 
 const form = document.getElementById("look") as HTMLFormElement;
 const preview = document.querySelector<HTMLElement>(".preview")!;
@@ -250,6 +251,18 @@ document.getElementById("surprise")?.addEventListener("click", () => {
   toForm(next);
   apply({ ...fromForm(), tune: next.tune });
 });
+
+// ---- how your words sound ----
+
+// The sample sentence, said in your voice the way the sample's drawn: "oh
+// this is" quietly, "SO" loud and high, "good" drawn out.
+document.getElementById("hear-voice")?.addEventListener("click", () =>
+  tryVoice(look, [
+    { text: "oh this is", loud: -3, pitch: 0, stretch: 0 },
+    { text: "so", loud: 9, pitch: 5, stretch: 0 },
+    { text: "good", loud: 2, pitch: 2, stretch: 1.6 },
+  ]),
+);
 
 // ---- saved looks ----
 
