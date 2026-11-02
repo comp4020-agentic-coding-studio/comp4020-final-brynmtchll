@@ -1167,7 +1167,9 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       drop(known.head);
     }
     const canvas = known?.canvas.isConnected ? known.canvas : document.createElement("canvas");
-    canvas.width = canvas.height = 128;
+    // (a canvas already showing a head keeps its size: setting it clears it,
+    // and the head would blink out for a frame at every change of look)
+    if (canvas !== known?.canvas) canvas.width = canvas.height = 128;
     canvas.className = "avatar head3d";
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", label);

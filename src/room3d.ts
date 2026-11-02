@@ -357,7 +357,9 @@ function draw(heads: RoomHead[], THREE: T): void {
     const el = label(r, who.slot);
     who.root.getWorldPosition(v);
     const mid = v.clone();
-    v.y += 2.1;
+    // (just above the top of their head, hair and all: further up, a near
+    // head's name floats off it, into the row behind)
+    v.y += 1.3;
     v.project(r.camera);
     mid.project(r.camera);
     const x = (v.x * 0.5 + 0.5) * rect.width;

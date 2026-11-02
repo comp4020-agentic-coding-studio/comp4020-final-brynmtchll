@@ -257,6 +257,9 @@ main.room {
 /* yours, on the left: bigger, with the controls under it */
 .me { display: grid; gap: 14px; align-content: start; }
 .mine-card .spot { --card-h: 460px; padding: 22px 26px 0 28px; }
+/* (on a phone, shorter: your controls are under it, and a screen's worth of
+   empty card pushes them out of reach) */
+@media (max-width: 600px) { .mine-card .spot { --card-h: min(320px, 42vh); padding: 16px 18px 0 20px; } }
 .mine-card .spot-avatar { width: 88px; height: 88px; }
 .mine-card .spot-name { font-size: 1.0625rem; }
 .mine-card .spot-word { margin-top: 14px; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
