@@ -488,7 +488,10 @@ function connect(): void {
   });
   stream.addEventListener("hand", (e) => {
     const { queue } = JSON.parse((e as MessageEvent<string>).data) as { queue: string[] };
-    showQueue(queue);
+    // (your own hand as you last put it, while the room hasn't caught up)
+    const mine = queueNow.includes(myName);
+    if (handSending && queue.includes(myName) !== mine) showQueue(mine ? [...queue, myName] : queue.filter((n) => n !== myName));
+    else showQueue(queue);
   });
   stream.addEventListener("voice", (e) => {
     const { name, levels } = JSON.parse((e as MessageEvent<string>).data) as { name: string; levels: number[] };
@@ -1538,14 +1541,30 @@ function showQueue(queue: string[]): void {
     (handButton.form?.elements.namedItem("up") as HTMLInputElement | null)?.setAttribute("value", String(!up));
   }
 }
+// Shown at once, as asked (the room's answer can take a moment, longer if
+// it's waking up), then as the room has it. A second press meanwhile is
+// sent after the first, so the hand ends where it was last put.
+let handWanted: boolean | null = null;
+let handSending = false;
 async function raiseHand(up: boolean): Promise<void> {
   if (!myName) return;
+  handWanted = up;
+  showQueue(up ? [...queueNow.filter((n) => n !== myName), myName] : queueNow.filter((n) => n !== myName));
+  if (handSending) return;
+  handSending = true;
   try {
-    const res = await fetch("/hand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ up }) });
-    if (res.ok) showQueue(((await res.json()) as { queue: string[] }).queue);
-    else if (res.status === 429) warn("Give it a moment before raising your hand again.");
+    while (handWanted !== null) {
+      const want = handWanted;
+      handWanted = null;
+      const res = await fetch("/hand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ up: want }) });
+      if (res.status === 429) warn("Give it a moment before raising your hand again.");
+      if (handWanted === null && res.ok) showQueue(((await res.json()) as { queue: string[] }).queue);
+    }
   } catch {
     warn("Couldn't reach the room to raise your hand. Check your connection.");
+  } finally {
+    handSending = false;
+    handWanted = null;
   }
 }
 handButton?.form?.addEventListener("submit", (e) => {
