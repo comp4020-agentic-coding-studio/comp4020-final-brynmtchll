@@ -149,6 +149,18 @@ function showWord(spot: Spot, html: string, at?: { id: number; i: number }): voi
   spot.word.classList.remove("arrive");
   void spot.word.offsetWidth;
   spot.word.classList.add("arrive");
+  fitWord(spot.word);
+}
+
+// A word too wide for where it's shown big shrinks to fit it, on one line
+// (broken across lines, it ran down over their thread). On the card's own
+// element rather than the word, so the room, copying the word, doesn't.
+function fitWord(el: HTMLElement): void {
+  el.style.removeProperty("--fit");
+  const w = el.querySelector<HTMLElement>(".w");
+  if (!w || !el.clientWidth) return;
+  const over = w.offsetWidth / el.clientWidth;
+  if (over > 1) el.style.setProperty("--fit", String(Math.floor((100 / over) * 0.97) / 100));
 }
 
 function play(spot: Spot): void {

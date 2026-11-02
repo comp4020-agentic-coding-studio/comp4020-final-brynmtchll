@@ -173,6 +173,9 @@ main.room {
 .mine-card .spot:has(.head3d) .spot-name { padding-top: 22px; }
 .mine-card .spot:has(.head3d) .spot-word { margin-top: 6px; }
 .spot-name { flex: 1; display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.9375rem; font-weight: 700; color: var(--person); }
+/* a long name ends in … rather than running off the card */
+.spot-name { min-width: 0; }
+.spot-name .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spot-name .you { margin-left: auto; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .spot-word {
   flex: none;
@@ -482,7 +485,7 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 .spot[data-glow] .w, .room-label[data-glow] .w { text-shadow: 0 0 calc(0.12em + max(0em, var(--L) * 0.03em)) var(--person); }
 /* the word being said, for a style with motion, springs in; a loud one bigger */
 .spot-word.arrive .w { animation: arrive calc(0.18s + var(--style-motion, 0) * 0.2s) cubic-bezier(0.2, calc(1 + var(--style-motion, 0) * 0.8), 0.4, 1); }
-.spot-word .w { margin: 0; }
+.spot-word .w { margin: 0; white-space: nowrap; scale: var(--fit, 1); transform-origin: 0 50%; }
 
 /* Effects a speaker puts on one of their words (voice.ts EFFECTS). Each
    builds on how the word was said rather than replacing it. */
