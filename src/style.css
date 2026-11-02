@@ -600,6 +600,16 @@ main.studio { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px,
 .editor-head .history button:disabled { opacity: 0.4; }
 .editor .surprise { margin-left: auto; }
 .editor .status { margin: 0; min-height: 1.2em; font-size: 0.8125rem; color: var(--muted); }
+/* on a phone the choices start sooner: one row of Done, undo, redo and a
+   surprise, and no line kept for a status until there is one */
+@media (max-width: 600px) {
+  .editor-head { flex-wrap: nowrap; gap: 6px; }
+  .editor-head .done { padding: 8px 14px; }
+  .editor-head .history button { padding: 8px 10px; }
+  .editor .surprise { padding: 8px 12px; font-size: 0.8125rem; white-space: nowrap; }
+  .editor .status:empty { display: none; }
+  .saved-looks { margin: 0; }
+}
 /* the sliders: a label, the track, and a way back to the middle */
 .sliders { border: 0; margin: 0; padding: 10px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 6px; }
 .sliders legend { padding: 0; font-size: 0.8125rem; color: var(--muted); }
