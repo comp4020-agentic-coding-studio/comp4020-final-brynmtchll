@@ -29,5 +29,7 @@ describe("where people sit in the room", () => {
     expect(rowsOf(9, 390 / 600)).toBeGreaterThanOrEqual(3);
     expect(rowsOf(9, 16 / 9)).toBeLessThanOrEqual(2);
     expect(rowsOf(3, 16 / 9)).toBe(1);
+    // a few, on a laptop's room (wider than tall, not much), in one row
+    expect(rowsOf(3, 818 / 606)).toBe(1);
   });
 });

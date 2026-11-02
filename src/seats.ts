@@ -13,7 +13,9 @@ export const ROW = { y: 3.4, z: -5 };
 export type Place = { x: number; y: number; z: number; turn: number; row: number };
 export function seatPlaces(n: number, aspect = 16 / 9): Place[] {
   const out: Place[] = [];
-  const perRow = Math.max(1, Math.min(6, Math.round(Math.sqrt(n * aspect * 1.4))));
+  // (three or fewer, on a screen that isn't tall, side by side: a second
+  // row of one or two only hides the front row behind the table)
+  const perRow = Math.max(aspect >= 1 ? Math.min(n, 3) : 1, Math.min(6, Math.round(Math.sqrt(n * aspect * 1.4))));
   const rows = Math.ceil(n / perRow);
   for (let row = 0; row < rows; row++) {
     // the front rows full; the back one takes what's left

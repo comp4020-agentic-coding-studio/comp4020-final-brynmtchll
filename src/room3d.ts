@@ -343,7 +343,8 @@ function draw(heads: RoomHead[], THREE: T): void {
   const k = 1 - Math.exp(-2.5 * dt);
   r.look.x += (aim - r.look.x) * k;
   const middle = -0.4 + (rows - 1) * ROW.y * 0.5;
-  r.camera.position.set(r.look.x * 0.5, middle + back * (rows > 1 ? 0.28 : 0.18), -8 + back);
+  // (a little over the table, so it doesn't hide the front row's bodies)
+  r.camera.position.set(r.look.x * 0.5, middle + back * (rows > 1 ? 0.3 : 0.25), -8 + back);
   r.camera.lookAt(r.look.x, middle, -10 + (rows - 1) * ROW.z * 0.5);
   r.camera.updateMatrixWorld();
   r.renderer.render(r.scene, r.camera);
