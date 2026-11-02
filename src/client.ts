@@ -254,15 +254,13 @@ setInterval(() => {
 }, 15_000);
 
 function arrive(p: Phrase & { draft?: number }): void {
-  // the real phrase replaces its draft
-  dropDraft(p.name, p.draft);
   remember(p);
   heardAloud.textContent = `${p.name}: ${p.text}`;
   const spot = spotFor(p, p.look);
   // spoken, for anyone with voices on: not your own back to you, nor what
   // comes again after a dropped connection
   if (p.name !== myName && p.look && Date.now() - openedAt > CATCHING_UP) speak(spokenOf(p), p.look);
-  addToThread(spot, p);
+  addToThread(spot, p, p.draft);
   spot.queue.push({ ...p, arrived: Date.now() });
   if (spot.state !== "playing") play(spot);
   // your latest word is the one chosen, unless you've chosen another
@@ -333,22 +331,37 @@ const phraseHtml = (p: Phrase): string =>
   `<span class="phrase" data-id="${p.id}">${p.words.map((w, i) => `<span class="tw" data-i="${i}">${w.html}${reactionsHtml(p.reactions?.[i])}</span>${w.gap > NEW_LINE && i + 1 < p.words.length ? "<br>" : " "}`).join("")}</span>`;
 const said = new Map<number, Phrase>(); // each phrase on the page, by id, for redrawing
 
-function addToThread(spot: Spot, p: Phrase): void {
+// The real phrase takes the place of its draft (`draft`, the number its
+// speaker's page gave it): in the draft's own bubble when it starts a new
+// one, so the words settle where they were rather than jump.
+function addToThread(spot: Spot, p: Phrase, draftNo?: number): void {
   const thread = spot.el.querySelector<HTMLOListElement>(".thread");
-  if (!thread || thread.querySelector(`.phrase[data-id="${p.id}"]`)) return;
+  if (!thread) return;
+  let draft = thread.querySelector<HTMLElement>(":scope > .draft");
+  if (draft && draftNo !== undefined && Number(draft.dataset.draft) > draftNo) draft = null; // (a later phrase's)
+  if (thread.querySelector(`.phrase[data-id="${p.id}"]`)) return void draft?.remove();
   said.set(p.id, p);
   const atTop = thread.scrollTop < 40;
-  const latest = thread.firstElementChild as HTMLElement | null;
+  // (the newest bubble of what's been said, not a draft of what's being
+  // said, which stays on top of it until the real phrase replaces it)
+  const latest = thread.querySelector<HTMLElement>(":scope > .bubble:not(.draft)");
+  let bubble: HTMLElement;
   if (latest && p.at - Number(latest.dataset.at) < NEW_BUBBLE) {
+    draft?.remove();
     latest.insertAdjacentHTML("afterbegin", `${phraseHtml(p)}<br>`);
+    bubble = latest;
   } else {
-    const li = document.createElement("li");
-    li.className = "bubble";
-    li.innerHTML = phraseHtml(p);
-    thread.prepend(li);
+    bubble = draft ?? document.createElement("li");
+    bubble.className = "bubble";
+    delete bubble.dataset.draft;
+    bubble.innerHTML = phraseHtml(p);
+    if (!draft) thread.prepend(bubble);
     while (thread.children.length > THREAD_BUBBLES) thread.lastElementChild!.remove();
   }
-  (thread.firstElementChild as HTMLElement).dataset.at = String(p.at);
+  if (draft) clearTimeout(draftTimers.get(p.name));
+  // (the words that were faded settle, rather than pop)
+  bubble.querySelector(".phrase")?.classList.add("settled");
+  bubble.dataset.at = String(p.at);
   if (atTop) thread.scrollTop = 0;
 }
 

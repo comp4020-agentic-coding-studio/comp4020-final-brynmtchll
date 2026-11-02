@@ -243,6 +243,8 @@ main.room {
    breathing, until the real phrase replaces them */
 .bubble.draft { opacity: 0.6; border-style: dashed; animation: drafting 1.4s ease-in-out infinite; }
 @keyframes drafting { 50% { opacity: 0.4; } }
+.phrase.settled { animation: settle 0.35s ease-out; }
+@keyframes settle { from { opacity: 0.55; } }
 .bubble .w { font-size: 1em; transform: none; margin: 0; }
 .bubble .w.fx-impact { font-size: 1.15em; }
 .bubble .w.fx-whisper { font-size: 0.85em; }
@@ -505,7 +507,7 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 /* the effect buttons show what they do */
 .fx-button .w { font-size: inherit; transform: none; opacity: 1; margin: 0; display: inline; }
 @media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .talk.recording .dot, .caret, .bubble.draft { animation: none; }
+  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .talk.recording .dot, .caret, .bubble.draft, .phrase.settled { animation: none; }
 }
 
 /* ---- the README page ---- */
