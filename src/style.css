@@ -270,6 +270,15 @@ main.room {
 /* everyone else's are side by side where there's room */
 @media (min-width: 1300px) {
   .stage { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* (one or two others: the whole width each, not half and a gap) */
+  .stage:not(:has(> .spot:nth-child(3))) { grid-template-columns: minmax(0, 1fr); }
+}
+/* someone on their own with you: a card as big as yours, so their words and
+   their thread have room */
+@media (min-width: 900px) {
+  .stage:not(:has(> .spot:nth-child(2))) > .spot { --card-h: 460px; padding: 22px 26px 0 28px; }
+  .stage:not(:has(> .spot:nth-child(2))) > .spot:has(.head3d) .spot-avatar:not([data-arms]) { width: 176px; height: 176px; margin: -24px 0 -26px -22px; }
+  .stage:not(:has(> .spot:nth-child(2))) > .spot .spot-word { margin-top: 14px; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
 }
 
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
