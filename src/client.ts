@@ -386,8 +386,9 @@ function showDraft(d: Draft): void {
   }
   el.innerHTML = d.words.map((w, i) => `${w.html}${w.gap > NEW_LINE && i + 1 < d.words.length ? "<br>" : " "}`).join("");
   if (thread.scrollTop < 40) thread.scrollTop = 0;
-  // the big word shows the newest heard word straight away
-  if (spot.state !== "playing") showWord(spot, d.words.at(-1)?.html ?? "");
+  // (the big word waits for the real phrase: a guess's last word shown big
+  // would jump back to the phrase's first when it plays, and a misheard one
+  // would stand there large meanwhile)
   clearTimeout(draftTimers.get(d.name));
   draftTimers.set(d.name, window.setTimeout(() => dropDraft(d.name), DRAFT_FOR));
 }
