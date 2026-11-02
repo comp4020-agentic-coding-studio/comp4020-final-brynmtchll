@@ -92,15 +92,17 @@ const css = Buffer.concat([readFileSync(new URL("./style.css", import.meta.url))
 const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")));
 
 // The page's own scripts are TypeScript in src/ like the server, so the
-// browser and the server share voice.ts. Node strips the types once at boot
+// browser and the server share voice.ts. Node strips the types the first
+// time each is asked for (not at boot, so a server waking up answers sooner)
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
-const scripts = new Map(
-  ["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "speech.ts", "worker.ts", "tap.ts"].map((f) => [
-    f,
-    stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")),
-  ]),
-);
+const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "speech.ts", "worker.ts", "tap.ts"]);
+const stripped = new Map<string, string>();
+const scriptOf = (f: string): string | undefined => {
+  if (!SCRIPTS.has(f)) return undefined;
+  if (!stripped.has(f)) stripped.set(f, stripTypeScriptTypes(readFileSync(new URL(`./${f}`, import.meta.url), "utf8")));
+  return stripped.get(f);
+};
 
 // /data is the Fly volume, the only storage that survives a restart or a
 // redeploy (the Dockerfile sets DATA_DIR); locally it falls back to ./data
@@ -346,7 +348,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (req.method === "GET" && url.pathname === "/style.css") {
     return send(res, 200, "text/css; charset=utf-8", css);
   }
-  const script = req.method === "GET" && url.pathname.startsWith("/js/") && scripts.get(url.pathname.slice(4));
+  const script = req.method === "GET" && url.pathname.startsWith("/js/") && scriptOf(url.pathname.slice(4));
   if (script) {
     return send(res, 200, "text/javascript; charset=utf-8", script);
   }
