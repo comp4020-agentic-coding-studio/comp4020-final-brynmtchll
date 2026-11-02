@@ -147,16 +147,20 @@ main.room {
 }
 /* with their arms up (a gesture, or their hands on camera), more room, so
    the head doesn't shrink to fit the shoulders and hands in */
-.spot:has(.head3d) .spot-avatar { transition: width 0.35s ease, height 0.35s ease; }
-/* (and no longer tucked up into the card's top edge, where a hand held up
-   was cut off) */
-.spot:has(.head3d) .spot-avatar[data-arms] { width: 168px; height: 168px; margin-top: 0; }
-.mine-card .spot:has(.head3d) .spot-avatar[data-arms] { width: 240px; height: 240px; margin-top: -8px; }
+/* It grows over what's beside and below it rather than pushing it (as a
+   change of size would: every emote moved the whole thread down and back),
+   from its top corner, clear of the card's top edge where a hand held up
+   was cut off. */
+.spot:has(.head3d) .spot-avatar { transition: transform 0.35s ease, translate 0.35s ease; transform-origin: 0 0; z-index: 1; }
+.spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.5); translate: 0 12px; }
+.mine-card .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.36); translate: 0 16px; }
 @media (max-width: 600px) {
-  .spot:has(.head3d) .spot-avatar[data-arms] { width: 128px; height: 128px; margin-top: 0; }
-  .mine-card .spot:has(.head3d) .spot-avatar[data-arms] { width: 168px; height: 168px; }
+  .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.4); translate: 0 10px; }
+  .mine-card .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.3); }
 }
 @media (prefers-reduced-motion: reduce) { .spot:has(.head3d) .spot-avatar { transition: none; } }
+/* and what they're saying stays in front of it, its hand showing round the words */
+.spot:has(.head3d) :is(.spot-name, .spot-word, .thread) { z-index: 2; }
 /* With a head that size, the word being said goes beside it, under their
    name, as if it's coming from the head, rather than in a row of its own
    (where the head crowded it). The head's row and the word's are one. */
@@ -277,7 +281,7 @@ main.room {
    their thread have room */
 @media (min-width: 900px) {
   .stage:not(:has(> .spot:nth-child(2))) > .spot { --card-h: 460px; padding: 22px 26px 0 28px; }
-  .stage:not(:has(> .spot:nth-child(2))) > .spot:has(.head3d) .spot-avatar:not([data-arms]) { width: 176px; height: 176px; margin: -24px 0 -26px -22px; }
+  .stage:not(:has(> .spot:nth-child(2))) > .spot:has(.head3d) .spot-avatar { width: 176px; height: 176px; margin: -24px 0 -26px -22px; }
   .stage:not(:has(> .spot:nth-child(2))) > .spot .spot-word { margin-top: 14px; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
 }
 
