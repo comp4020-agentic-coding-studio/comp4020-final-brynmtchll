@@ -822,15 +822,29 @@ let hearing: Promise<void> = Promise.resolve(); // so phrases go out in the orde
 
 // A phrase goes out the moment it's heard, whole: it plays in your place and
 // joins your thread for everyone.
+// (a moment's outage, a redeploy or the server waking, is waited out:
+// tried again a few times before it's given up, still in order)
+const RETRY_AFTER = [1000, 2000, 3000]; // ms
 async function post(words: Word[], voice: Voice | null, forDraft?: number): Promise<void> {
   try {
-    const res = await fetch("/say", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ words, voice, draft: forDraft }),
-      // a send that hangs mustn't hold up every phrase after it
-      signal: AbortSignal.timeout(15_000),
-    });
+    let res: Response | null = null;
+    for (let i = 0; ; i++) {
+      try {
+        res = await fetch("/say", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ words, voice, draft: forDraft }),
+          // a send that hangs mustn't hold up every phrase after it
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (res.status < 500 || i >= RETRY_AFTER.length) break;
+      } catch (err) {
+        if (i >= RETRY_AFTER.length) throw err;
+      }
+      if (i === 0) say("Reconnecting… what you said will go when it can.");
+      await new Promise((r) => setTimeout(r, RETRY_AFTER[i]));
+    }
+    if (!res) return;
     if (res.status === 401) {
       void turnOff();
       warn("You've been signed out. Reload the page and join again.");
