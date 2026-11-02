@@ -310,6 +310,24 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   }, 15_000);
 
+  it("shows someone with no page open as away, on every page, and back when they return", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    // joined, said something, and no page open (gone, or never opened one):
+    // away once that's longer than a reload takes
+    const p = await person();
+    await p.say({ words: [word("bye", 0)] });
+    await watcher.waitUntil((e) => e.type === "here" && (e.away as string[]).includes(p.name), 14_000);
+    expect(await (await fetch(new URL("/", baseUrl))).text()).toMatch(new RegExp(`data-name="${p.name}"[^>]*data-away`));
+    // a page of theirs open: back
+    const theirs = listen({ cookie: p.cookie });
+    await theirs.ready;
+    await watcher.waitUntil((e) => e.type === "here" && !(e.away as string[]).includes(p.name), 4000);
+    expect(await (await fetch(new URL("/", baseUrl))).text()).not.toMatch(new RegExp(`data-name="${p.name}"[^>]*data-away`));
+    theirs.close();
+    watcher.close();
+  }, 25_000);
+
   it("moves someone's arms and hands with theirs, as directions and curls and nothing else", async () => {
     const watcher = listen();
     await watcher.ready;

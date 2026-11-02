@@ -306,6 +306,13 @@ main.room {
 .hand-toggle[aria-pressed="true"] { border-color: var(--hand); color: var(--hand); }
 .hand-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; color: var(--surface); background: var(--hand); }
 .spot[data-hand] { border-color: color-mix(in srgb, var(--hand) 55%, var(--line)); }
+/* someone with no page open: faded, and said to be away, their words kept */
+.spot[data-away] .spot-avatar { opacity: 0.6; filter: saturate(0.5); transition: opacity 0.6s, filter 0.6s; }
+.spot[data-away] .spot-name .who { opacity: 0.6; }
+.spot[data-away] .spot-name::after { content: "away"; flex: none; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+.room-name[data-away]::before { content: "away · "; font-weight: 500; color: var(--muted); }
+.room-label:has(.room-name[data-away]) { opacity: 0.7; }
+.spot[data-away] .spot-word:empty::before { content: none; }
 .spot[data-hand="1"] { box-shadow: var(--shadow), 0 0 32px -14px var(--hand); }
 .queue { margin: 0 0 10px; padding: 8px 14px; border-radius: 999px; background: color-mix(in srgb, var(--hand) 14%, var(--surface)); color: var(--ink); font-size: 0.875rem; }
 .queue strong { color: var(--hand); }

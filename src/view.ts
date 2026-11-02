@@ -82,11 +82,11 @@ export function threadHtml(messages: Said[]): string {
 // their thread underneath, scrolled to the latest. The live word is hidden
 // from screen readers, which hear each whole phrase from the page's one live
 // region instead.
-export function spotHtml(name: string, seat: number, look: Look, mine = false, e: Expression = REST, thread: { id: number; words: Word[]; at: number }[] = [], place = 0): string {
+export function spotHtml(name: string, seat: number, look: Look, mine = false, e: Expression = REST, thread: { id: number; words: Word[]; at: number }[] = [], place = 0, gone = false): string {
   const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
   // how their words are drawn: their word style (packs.ts), which the CSS
   // the server makes from it reads off data-words, and its lettering
-  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)}" data-words="${st.id}" data-font="${st.font}"${"glow" in st ? " data-glow" : ""} data-look="${esc(JSON.stringify(look))}"${place ? ` data-hand="${place}"` : ""}>
+  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)}" data-words="${st.id}" data-font="${st.font}"${"glow" in st ? " data-glow" : ""} data-look="${esc(JSON.stringify(look))}"${place ? ` data-hand="${place}"` : ""}${gone ? " data-away" : ""}>
     <div class="spot-head"><span class="spot-avatar">${avatarSvg(look, e, `${name}'s avatar`)}</span><p class="spot-name"><span class="who">${esc(name)}</span>${handBadge(place)}${mine ? '<span class="you">you</span>' : ""}</p></div>
     <p class="spot-word" aria-hidden="true"></p>
     <ol class="thread" aria-label="What ${esc(name)} said lately">${threadHtml(thread)}</ol>
@@ -213,6 +213,7 @@ export function roomPage(
   threads: Map<string, Said[]> = new Map(),
   saved: (Look | null)[] = [],
   queue: string[] = [],
+  away: string[] = [],
 ): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
   const myLook = me ? lookOf(me.name) : null;
@@ -220,7 +221,7 @@ export function roomPage(
   const mine = me ? spotHtml(me.name, me.seat, myLook!, true, expressions.get(me.name), threads.get(me.name), place(me.name)) : "";
   const others = people
     .filter((p) => p.name !== me?.name)
-    .map((p) => spotHtml(p.name, p.seat, lookOf(p.name), false, expressions.get(p.name), threads.get(p.name), place(p.name)))
+    .map((p) => spotHtml(p.name, p.seat, lookOf(p.name), false, expressions.get(p.name), threads.get(p.name), place(p.name), away.includes(p.name)))
     .join("");
   const up = me ? queue.includes(me.name) : false;
 

@@ -505,6 +505,11 @@ function connect(): void {
     if (handSending && queue.includes(myName) !== mine) showQueue(mine ? [...queue, myName] : queue.filter((n) => n !== myName));
     else showQueue(queue);
   });
+  // who's on the stage with no page open: shown as away until they're back
+  stream.addEventListener("here", (e) => {
+    const { away } = JSON.parse((e as MessageEvent<string>).data) as { away: string[] };
+    for (const card of document.querySelectorAll<HTMLElement>("#stage .spot")) card.toggleAttribute("data-away", away.includes(card.dataset.name ?? ""));
+  });
   stream.addEventListener("voice", (e) => {
     const { name, levels } = JSON.parse((e as MessageEvent<string>).data) as { name: string; levels: number[] };
     // your own head moves with your voice here, as you talk

@@ -78,6 +78,7 @@ type Shown = {
   gaze: { x: number; y: number };
   glance: { x: number; y: number; at: number };
   blinkAt: number;
+  away: number; // how far they're shown as away (no page open): eyes shut, head down
   // an emote it's doing (packs.ts EMOTES): how its head moves, the face it
   // pulls meanwhile, and since when
   doing: { head: string; face: Partial<Expression>; arm?: string; at: number } | null;
@@ -1028,6 +1029,13 @@ function frame(now: number): void {
       if (now < s.blinkAt + BLINK) e.blink = 1;
       else s.blinkAt = now + 2200 + Math.random() * 4000;
     }
+    // away (no page open: style.css [data-away]): dozing off, and waking as
+    // they come back
+    s.away = ease(s.away, slot.closest(".spot[data-away]") ? 1 : 0, k(2));
+    if (s.away > 0.01) {
+      e.blink = Math.max(e.blink, s.away);
+      move = { ...move, pitch: move.pitch + 0.22 * s.away, y: move.y - 0.15 * s.away };
+    }
     const moved = { ...s.pose, pitch: s.pose.pitch + move.pitch, yaw: s.pose.yaw + move.yaw, roll: s.pose.roll + move.roll, y: s.pose.y + move.y, z: s.pose.z + move.z };
     // arms: as read off their camera while that's coming, an emote's while
     // one's going, or resting; the frame widens to show them while they do
@@ -1186,6 +1194,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       gaze: known?.gaze ?? { x: 0, y: 0 },
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
+      away: known?.away ?? (slot.closest(".spot[data-away]") ? 1 : 0),
       doing: known?.doing ?? null,
       // (a hand already up, as its card says, is up from the start)
       arms: known?.arms ?? { target: null, at: -Infinity, busyAt: -Infinity, left: RESTING.left, right: RESTING.right, tilt: 0, turn: 0, shown: 0, up: !!slot.closest<HTMLElement>(".spot")?.dataset.hand },

@@ -379,6 +379,9 @@ function draw(heads: RoomHead[], THREE: T): void {
     const name = card?.dataset.name ?? "";
     const nameEl = el.firstElementChild as HTMLElement;
     if (nameEl.textContent !== name) nameEl.textContent = name;
+    // no page open: said to be away (style.css)
+    const gone = !!card?.hasAttribute("data-away");
+    if (nameEl.hasAttribute("data-away") !== gone) nameEl.toggleAttribute("data-away", gone);
     const word = card?.querySelector(".spot-word");
     const wordEl = el.lastElementChild as HTMLElement;
     const html = word && !word.classList.contains("fading") ? word.innerHTML : "";

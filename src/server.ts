@@ -58,6 +58,22 @@ setInterval(() => {
   for (const name of hands.keys()) if (!pagesOf.get(name) && now - (goneSince.get(name) ?? hands.get(name)!) > GONE_FOR) handDown(name);
   for (const [name, since] of goneSince) if (now - since > GONE_FOR) goneSince.delete(name);
 }, 10_000).unref();
+// Who's on the stage with no page open (a closed tab, a phone put away)
+// for longer than a reload takes: shown as away, rather than as if they
+// were sat there listening. They keep their place on the stage meanwhile,
+// so their words stay where they were.
+// (After a restart nobody's page is back yet, so it's counted from then.)
+const AWAY_AFTER = 8_000;
+const started = Date.now();
+const away = (): string[] => room.people().flatMap((p) => (!pagesOf.get(p.name) && Date.now() - (goneSince.get(p.name) ?? started) > AWAY_AFTER ? [p.name] : []));
+let awayShown = "";
+const showAway = (): void => {
+  const now = JSON.stringify({ away: away() });
+  if (now === awayShown) return;
+  awayShown = now;
+  for (const listener of listening) listener.write(`event: here\ndata: ${now}\n\n`);
+};
+setInterval(showAway, 2000).unref();
 setInterval(() => {
   const now = Date.now();
   for (const [name, seen] of faceSeen) {
@@ -334,7 +350,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
-    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads(), seated ? room.savedLooks(seated.id) : [], handQueue()));
+    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads(), seated ? room.savedLooks(seated.id) : [], handQueue(), away()));
   }
   // the studio, for making your avatar: only for someone who's joined (a
   // look is someone's), so anyone else is sent to join first
