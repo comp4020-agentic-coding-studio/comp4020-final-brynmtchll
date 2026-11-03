@@ -402,15 +402,18 @@ function draw(heads: RoomHead[], THREE: T): void {
     }
   }
   // labels that would sit on each other: the later (further back, or
-  // further along) lifted clear of the earlier, the speaker's first
+  // further along) lifted clear of the earlier, the speaker's first. Only
+  // about a name's height, all told: lifted over someone's word, a name in
+  // a crowded room ended up rows above its head, over someone else's. One
+  // that can't clear stays by its head, under the other (words are on top).
   placed.sort((a, b) => Number(b.el.classList.contains("speaking")) - Number(a.el.classList.contains("speaking")) || b.y - a.y);
   const done: { x: number; y: number; w: number; h: number }[] = [];
   for (const l of placed) {
-    // (lifted at most twice: a name further up than that is no longer by its head)
+    const most = (l.el.firstElementChild as HTMLElement).offsetHeight * 1.3 + 2;
     let y = l.y;
     for (let tries = 0; tries < 2; tries++) {
       if (l.el.classList.contains("quiet")) break;
-      const hit = done.find((d) => Math.abs(d.x - l.x) < (d.w + l.w) / 2 + 2 && y > d.y - d.h - 2 && y - l.h < d.y + 2);
+      const hit = done.find((d) => Math.abs(d.x - l.x) < (d.w + l.w) / 2 + 2 && y > d.y - d.h - 2 && y - l.h < d.y + 2 && l.y - (d.y - d.h - 2) <= most);
       if (!hit) break;
       y = hit.y - hit.h - 2;
     }
