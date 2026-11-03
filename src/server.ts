@@ -199,6 +199,8 @@ const back = (res: ServerResponse, msg?: string, headers: Record<string, string>
 const listening = new Set<ServerResponse>();
 // each open page holds a connection on a 256 MB machine, so there's a ceiling
 const MOST_LISTENING = 500;
+// how many of the latest phrases a page coming back is sent as they stand
+const CAUGHT_UP = 50;
 
 // No one person can fill the room: at most SAY_LIMIT sends in any
 // SAY_WINDOW. Each word goes out on its own as it leaves its speaker's queue,
@@ -297,18 +299,23 @@ const event = (m: Message, draft?: number): string =>
   })}\n\n`;
 
 // Where a stream starts: after the phrase the browser last saw (Last-Event-ID,
-// which it sends itself when it reconnects), or, for a page just opened
-// (?after=now), from now: words are for the moment they're said.
-function listen(req: IncomingMessage, res: ServerResponse, after: string | null): void {
+// which it sends itself when it reconnects), or after the one a page was
+// drawn with (?after=), or, failing that (?after=now), from now: words are
+// for the moment they're said. A page that's coming back after its stream
+// dropped says so (?back, or Last-Event-ID), and is told what changed.
+function listen(req: IncomingMessage, res: ServerResponse, after: string | null, back: boolean): void {
   // the page tries again itself, waiting longer each time
   if (listening.size >= MOST_LISTENING) return send(res, 503, "text/plain; charset=utf-8", "Too many people listening");
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive", ...ISOLATED });
   // a reconnecting page catches up on what it missed; a new one starts now
+  const coming = back || req.headers["last-event-id"] !== undefined;
   const last = Number(req.headers["last-event-id"] ?? (after === "now" ? room.newest() : after) ?? NaN);
+  let upTo = Number.isSafeInteger(last) ? Math.max(last, 0) : room.newest();
   if (Number.isSafeInteger(last)) {
     for (const m of room.since(last)) {
       try {
         res.write(event(m));
+        upTo = m.id;
       } catch (err) {
         console.error(`message ${m.id} couldn't be drawn`, err);
       }
@@ -317,13 +324,34 @@ function listen(req: IncomingMessage, res: ServerResponse, after: string | null)
   // where this page is up to, so if the stream drops before anything's been
   // said, the browser's reconnect (which sends the last id it saw) catches up
   // on what it missed rather than starting from "now" again
-  res.write(`id: ${Number.isSafeInteger(last) ? Math.max(last, 0) : room.newest()}\n: listening\n\n`);
+  res.write(`id: ${upTo}\n: listening\n\n`);
   listening.add(res);
   const who = room.findPerson(cookieId(req));
   if (who) {
     pagesOf.set(who.name, (pagesOf.get(who.name) ?? 0) + 1);
     goneSince.delete(who.name);
   }
+  // The room as it is now: whose hands are up and who's away. A page coming
+  // back after its connection dropped (a phone asleep, a deploy) missed more
+  // than what was said: who arrived or changed how they look, and what was
+  // done to what's already on it. So it also gets who's on the stage and the
+  // latest phrases as they stand, edited, reacted to, or gone.
+  const now: Record<string, unknown> = { upTo, queue: handQueue(), away: away() };
+  if (coming) {
+    const latest = room.recent(CAUGHT_UP);
+    now.people = room.people().map((p) => ({ name: p.name, hue: hueOf(p.seat), look: room.lookOf(p.name) }));
+    // (from the oldest it covers: one older that's on the page is past it)
+    now.from = latest.length < CAUGHT_UP ? 0 : (latest.at(-1)?.id ?? 0);
+    now.phrases = latest.flatMap((m) => {
+      try {
+        const { look: _, ...p } = phraseOf(m);
+        return [p];
+      } catch {
+        return [];
+      }
+    });
+  }
+  res.write(`event: room\ndata: ${JSON.stringify(now)}\n\n`);
   log(who, "watching", { pages: listening.size });
   req.on("close", () => {
     listening.delete(res);
@@ -350,7 +378,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
-    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads(), seated ? room.savedLooks(seated.id) : [], handQueue(), away()));
+    return send(res, 200, "text/html; charset=utf-8", roomPage(room.people(), seated, url.searchParams.get("m") ?? undefined, room.record(), expressions, room.lookOf, room.threads(), seated ? room.savedLooks(seated.id) : [], handQueue(), away(), room.newest()));
   }
   // the studio, for making your avatar: only for someone who's joined (a
   // look is someone's), so anyone else is sent to join first
@@ -369,7 +397,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return send(res, 200, "text/javascript; charset=utf-8", script);
   }
   if (req.method === "GET" && url.pathname === "/events") {
-    return listen(req, res, url.searchParams.get("after"));
+    return listen(req, res, url.searchParams.get("after"), url.searchParams.has("back"));
   }
   if (req.method === "GET" && url.pathname === "/api/messages") {
     return json(res, 200, { me: me ? { name: me.name } : null, messages: room.recent() });

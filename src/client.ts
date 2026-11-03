@@ -8,7 +8,7 @@ import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { overHead, showRoom } from "./room3d.ts";
 import { canSpeak, duck, echoOf, hearVoices, speak, speaking as voicesSpeaking, type Spoken } from "./speech.ts";
-import { EFFECTS, emoteOf, EMOTES, STYLES, type Look as PackLook } from "./packs.ts";
+import { EFFECTS, emoteOf, EMOTES, REACTIONS, STYLES, type Look as PackLook } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
@@ -437,17 +437,26 @@ function edited(p: Phrase | { id: number; removed: true }): void {
   }
 }
 // the threads the server drew: each phrase known by its id (from the words
-// as drawn, with their pauses), so a change to it can be drawn again; and
-// each thread scrolled to the latest
+// as drawn, with their pauses, and the reactions on each apart from it), so
+// a change to it can be drawn again; and each thread scrolled to the latest
+const REACTION_OF = new Map<string, string>(REACTIONS.map((r) => [r.label, r.id]));
 for (const el of document.querySelectorAll<HTMLElement>(".thread .phrase")) {
   const tws = [...el.querySelectorAll<HTMLElement>(".tw")];
+  const reactions: Record<number, Record<string, number>> = {};
+  tws.forEach((t, i) => {
+    for (const r of t.querySelectorAll<HTMLElement>(".reacts .react")) {
+      const id = REACTION_OF.get(r.title);
+      if (id) (reactions[i] ??= {})[id] = Number(r.querySelector("b")?.textContent ?? 1);
+    }
+  });
   said.set(Number(el.dataset.id), {
     id: Number(el.dataset.id),
     name: el.closest<HTMLElement>(".spot")?.dataset.name ?? "",
     hue: 0,
-    text: tws.map((t) => t.textContent).join(" "),
+    text: tws.map((t) => t.querySelector(".w")?.textContent ?? "").join(" "),
     at: 0,
-    words: tws.map((t) => ({ html: t.innerHTML, t: 0, d: 0, gap: t.nextElementSibling?.nodeName === "BR" ? 1 : 0 })),
+    words: tws.map((t) => ({ html: t.querySelector(".w")?.outerHTML ?? t.innerHTML, t: 0, d: 0, gap: t.nextElementSibling?.nodeName === "BR" ? 1 : 0 })),
+    reactions,
   });
 }
 for (const thread of document.querySelectorAll<HTMLOListElement>(".thread")) thread.scrollTop = 0;
@@ -463,8 +472,11 @@ for (const thread of document.querySelectorAll<HTMLOListElement>(".thread")) thr
 // The browser reconnects a dropped stream on its own, but gives up for good
 // if the server answers with an error (a deploy, a restart, a full room), so
 // the page then opens a new one itself, waiting longer each time.
-let lastSeen: number | "now" = "now";
+// (a page starts after the last phrase it was drawn with, so what's said
+// while it loads isn't lost)
+let lastSeen: number | "now" = Number(stage.dataset.upTo) || "now";
 let wait = 1000;
+let opened = false;
 
 const showLive = (on: boolean, text: string): void => {
   live.hidden = false;
@@ -473,12 +485,14 @@ const showLive = (on: boolean, text: string): void => {
 };
 
 function connect(): void {
-  const stream = new EventSource(`/events?after=${lastSeen}`);
+  const stream = new EventSource(`/events?after=${lastSeen}${opened ? "&back" : ""}`);
   stream.addEventListener("open", () => {
     wait = 1000;
     openedAt = Date.now();
+    opened = true;
     showLive(true, "Live");
   });
+  stream.addEventListener("room", (e) => caughtUp(JSON.parse((e as MessageEvent<string>).data) as RoomNow));
   stream.addEventListener("error", () => {
     showLive(false, "Reconnecting…");
     if (stream.readyState !== EventSource.CLOSED) return;
@@ -541,6 +555,49 @@ function connect(): void {
     showReactions(id, index, counts);
   });
   stream.addEventListener("early", (e) => showDraft(JSON.parse((e as MessageEvent<string>).data) as Draft));
+}
+
+// The room as it is when a stream opens: whose hands are up and who's away,
+// and, coming back after the stream dropped, who's on the stage and the
+// latest phrases as they stand now, which this page may have missed being
+// edited, reacted to or taken away while it wasn't listening.
+type RoomNow = {
+  upTo: number;
+  queue: string[];
+  away: string[];
+  people?: (Pick<Phrase, "name" | "hue"> & { look: Look })[];
+  from?: number;
+  phrases?: Phrase[];
+};
+function caughtUp(now: RoomNow): void {
+  if (typeof lastSeen !== "number" || now.upTo > lastSeen) lastSeen = now.upTo;
+  for (const p of now.people ?? []) {
+    if (p.name === myName) continue;
+    const had = cardOf(p.name)?.dataset.look;
+    spotFor(p, p.look);
+    const card = cardOf(p.name);
+    if (card && had && had !== JSON.stringify(p.look)) {
+      card.dataset.look = JSON.stringify(p.look);
+      drawAvatar(p.name, expressionOf.get(p.name) ?? REST);
+    }
+  }
+  if (now.phrases) {
+    const kept = new Map(now.phrases.map((p) => [p.id, p]));
+    for (const el of document.querySelectorAll<HTMLElement>(".thread .phrase[data-id]")) {
+      const id = Number(el.dataset.id);
+      const p = kept.get(id);
+      if (p) {
+        const had = said.get(id);
+        const as = (q?: Phrase): string => JSON.stringify([q?.words.map((w) => w.html), q?.reactions ?? {}]);
+        if (as(had) === as(p)) continue;
+        said.set(id, { ...had, ...p, look: had?.look });
+        // (not the word being typed over: that's redrawn when it's done)
+        if (!(typing !== null && chosen?.id === id)) redrawPhrase(id);
+      } else if (id > (now.from ?? Infinity) && id <= now.upTo) edited({ id, removed: true });
+    }
+  }
+  showQueue(handSending ? queueNow : now.queue);
+  for (const card of document.querySelectorAll<HTMLElement>("#stage .spot")) card.toggleAttribute("data-away", now.away.includes(card.dataset.name ?? ""));
 }
 connect();
 

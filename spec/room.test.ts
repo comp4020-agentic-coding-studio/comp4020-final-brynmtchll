@@ -745,6 +745,46 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   });
 
+  it("tells a page that comes back what changed while it was gone, not only what was said", async () => {
+    const [a, b] = [await person(), await person()];
+    const { id } = (await (await a.say({ words: [word("so", 0), word("there", 0.4)] })).json()) as { id: number };
+    const gone = (await (await a.say({ words: [word("gone", 0)] })).json()) as { id: number };
+    // while the page wasn't listening: a word changed, one reacted to, a
+    // phrase taken away, a hand up, someone new
+    await editAs(a.cookie, { id, index: 1, text: "everyone" });
+    await fetch(new URL("/react", baseUrl), { method: "POST", headers: { cookie: b.cookie, "content-type": "application/json" }, body: JSON.stringify({ id, index: 0, reaction: "love" }) });
+    await editAs(a.cookie, { id: gone.id, index: 0, remove: true });
+    await fetch(new URL("/hand", baseUrl), { method: "POST", headers: { cookie: b.cookie, "content-type": "application/json" }, body: JSON.stringify({ up: true }) });
+    const c = await person();
+    const back = listen({ "last-event-id": String(gone.id) });
+    const now = (await back.waitUntil((e) => e.type === "room")) as { queue: string[]; people: { name: string }[]; phrases: { id: number; words: { html: string }[]; reactions: Record<number, Record<string, number>> }[] };
+    expect(now.queue).toContain(b.name);
+    expect(now.people.map((p) => p.name)).toContain(c.name);
+    const phrase = now.phrases.find((p) => p.id === id)!;
+    expect(phrase.words[1].html).toContain("everyone");
+    expect(phrase.reactions[0]).toEqual({ love: 1 });
+    expect(now.phrases.map((p) => p.id)).not.toContain(gone.id);
+    back.close();
+    // a page just opened isn't sent all that, only the hands and who's away
+    const fresh = listen({}, "?after=now");
+    expect(await fresh.waitUntil((e) => e.type === "room")).not.toHaveProperty("phrases");
+    fresh.close();
+  });
+
+  it("says where a page is up to after catching it up, so dropping again doesn't repeat it", async () => {
+    const p = await person();
+    const first = (await (await p.say({ words: [word("one", 0)] })).json()) as { id: number };
+    const second = (await (await p.say({ words: [word("two", 0)] })).json()) as { id: number };
+    const controller = new AbortController();
+    const res = await fetch(new URL("/events", baseUrl), { headers: { "last-event-id": String(first.id) }, signal: controller.signal });
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+    let head = "";
+    while (!head.includes(": listening")) head += (await reader.read()).value;
+    controller.abort();
+    // the last id the browser's told is the newest it was sent
+    expect(head.match(/^id: (\d+)/gm)?.at(-1)).toBe(`id: ${second.id}`);
+  });
+
   it("lets a page that drops off before anything's said catch up when it reconnects", async () => {
     // a new page's stream says where it's up to; the browser sends that back
     // when it reconnects
