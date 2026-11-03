@@ -568,6 +568,7 @@ const mb = (bytes: number): string => (bytes / 1e6).toFixed(0);
 // microphone on, so people who only read never download the model.
 let worker: Worker | undefined;
 let modelReady = false;
+const MODEL_BYTES = 80e6; // about what the model's files come to
 // what each transcription asked for is waiting on, by its id
 const waiting = new Map<number, { resolve: (chunks: Heard[]) => void; reject: (e: Error) => void }>();
 let nextId = 1;
@@ -578,7 +579,9 @@ function whisper(): Worker {
   worker.onmessage = (e: MessageEvent<FromWorker>) => {
     const m = e.data;
     if (m.type === "loading" && !modelReady && m.total > 1e6) {
-      downloaded = `${mb(m.loaded)} of ${mb(m.total)} MB`;
+      // (the total grows as each file starts: until the big one has, it's
+      // the 80 MB it comes to, not the 3 of the first few)
+      downloaded = `${mb(m.loaded)} of ${mb(Math.max(m.total, MODEL_BYTES))} MB`;
       showBehind();
     } else if (m.type === "ready") {
       modelReady = true;
