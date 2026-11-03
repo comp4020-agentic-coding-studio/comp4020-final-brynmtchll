@@ -311,7 +311,7 @@ main.room {
 .spot[data-away] .spot-name .who { opacity: 0.6; }
 .spot[data-away] .spot-name::after { content: "away"; flex: none; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
 .room-name[data-away]::before { content: "away · "; font-weight: 500; color: var(--muted); }
-.room-label:has(.room-name[data-away]) { opacity: 0.7; }
+.room-label:not(.quiet):has(.room-name[data-away]) { opacity: 0.7; }
 .spot[data-away] .spot-word:empty::before { content: none; }
 .spot[data-hand="1"] { box-shadow: var(--shadow), 0 0 32px -14px var(--hand); }
 .queue { margin: 0 0 10px; padding: 8px 14px; border-radius: 999px; background: color-mix(in srgb, var(--hand) 14%, var(--surface)); color: var(--ink); font-size: 0.875rem; }
