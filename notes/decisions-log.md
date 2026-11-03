@@ -173,6 +173,20 @@ led to. Claude chose how to build each; what to build was yours.
      ([`174f4cc`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/174f4cc)).
    - Hand up: the button lagged and a quick double press could undo itself
      ([`77035aa`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/77035aa)).
+   - Speech model: a download that failed said nothing, and its progress
+     read "3 of 3 MB" until the big file started ([`b3c649b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b3c649b), [`8241d70`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/8241d70)).
+   - Keyboard: choosing one of your own words needed a pointer; ← and →
+     now do it ([`043f36c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/043f36c)).
+   - Away: an away name stayed up in a crowded room where other quiet ones
+     were hidden ([`b5a03aa`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b5a03aa)); someone in the studio showed as away
+     ([`123a049`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/123a049)).
+   - Reconnecting: a page whose stream dropped (a phone asleep) came back
+     with what was said meanwhile but not hands raised, people who joined,
+     edits, reactions, phrases taken away or new looks; dropping a second
+     time sent the same phrases again; a page lost what was said while it
+     loaded; and a redraw showed a word's reactions twice ([`4bcaad3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/4bcaad3)).
+   - Names in a crowded room were lifted clear of someone's word, so on a
+     phone they ended up over the row behind ([`305396c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/305396c)).
    - The server: what was said while it restarted (every deploy) was lost
      ([`eeb636c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/eeb636c)); waking for the first visitor after a quiet spell takes
      about 3 s; asking Fly to suspend rather than stop didn't change it (it
