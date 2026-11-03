@@ -592,9 +592,12 @@ function whisper(): Worker {
       waiting.get(m.id)?.reject(new Error(m.error));
       waiting.delete(m.id);
     } else if (m.type === "failed") {
-      // the model itself didn't load: everything waiting on it fails
+      // the model itself didn't load: everything waiting on it fails, and
+      // what it said of the download isn't so any more (the next try starts
+      // it again)
       for (const w of waiting.values()) w.reject(new Error(m.error));
       waiting.clear();
+      couldntLoad();
     }
   };
   // The worker couldn't even start: its import from the CDN failed (a flaky
@@ -606,9 +609,17 @@ function whisper(): Worker {
     worker = undefined;
     for (const w of waiting.values()) w.reject(new Error(e.message || "the speech model's worker didn't start"));
     waiting.clear();
+    couldntLoad();
   };
   worker.postMessage({ type: "load" } satisfies ToWorker);
   return worker;
+}
+// The download failed (a phone's connection dropping, say): said, rather
+// than left showing how far it had got, and tried again when they next talk.
+function couldntLoad(): void {
+  if (modelReady) return;
+  downloaded = "";
+  warn(on ? "Couldn't download the speech model. It'll try again as you talk." : "Couldn't download the speech model. It'll try again when you turn your microphone on.");
 }
 
 // Each transcription is matched to its answer by id. One that takes longer
