@@ -153,6 +153,31 @@ led to. Claude chose how to build each; what to build was yours.
      it takes a voice and a speed only, so a high word couldn't be spoken
      higher without bending its sound afterwards.
 
+2. **Glitches.** "things are a bit glitchy i want you to work and refine
+   them", then "ok lets get to it" (2 and 3 November). Found by running
+   two- to seven-person sessions in headless Chrome at desktop and phone
+   size and looking at the screenshots and timings; each fix was checked
+   the same way.
+   - Words: a phrase jumped about as its draft settled ([`5c28ef9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/5c28ef9)); a
+     draft's guesses showed big before they were really said ([`5cff87b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/5cff87b));
+     a long word broke across lines over the thread, and a long name ran off
+     the card ([`642c7be`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/642c7be)).
+   - Cards: one or two others got small cards in a big empty space
+     ([`94e7640`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/94e7640)); an emote's arm grew the head and pushed the whole
+     thread down and back ([`d742832`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d742832)); labels sat in the wrong place and
+     a head blinked out on a change of look ([`24b4056`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/24b4056)).
+   - The room: a small group sat behind each other, hidden by the table
+     ([`caa187a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/caa187a)); two on a phone sat one in front of the other
+     ([`d2d4cc1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d2d4cc1)); someone who'd closed their tab sat there for up to an
+     hour as if listening, now shown as away, dozing, until they're back
+     ([`174f4cc`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/174f4cc)).
+   - Hand up: the button lagged and a quick double press could undo itself
+     ([`77035aa`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/77035aa)).
+   - The server: what was said while it restarted (every deploy) was lost
+     ([`eeb636c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/eeb636c)); waking for the first visitor after a quiet spell took
+     about 3 s, now faster ([`75dd8a7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/75dd8a7), [`b3c2ef9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b3c2ef9)); the studio's choices
+     on a phone started below the fold ([`d0a55de`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d0a55de)).
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Bryn's M4 Pro in headless Chrome.
