@@ -965,6 +965,17 @@ function key(k: string): boolean {
     void change({ remove: true });
     return true;
   }
+  // ← and → choose the word before or after, as they're shown (so choosing
+  // doesn't need a pointer)
+  if (k === "ArrowLeft" || k === "ArrowRight") {
+    const all = [...(myThread()?.querySelectorAll<HTMLElement>(".bubble:not(.draft) .phrase .tw") ?? [])];
+    const at = all.findIndex((el) => el.classList.contains("chosen"));
+    const next = all[at + (k === "ArrowLeft" ? -1 : 1)];
+    const ph = next?.closest<HTMLElement>(".phrase");
+    if (!next || !ph) return at >= 0;
+    choose(Number(ph.dataset.id), Number(next.dataset.i));
+    return true;
+  }
   if (k.length === 1 && k !== " " && /\S/u.test(k)) {
     typing = k;
     markChosen();

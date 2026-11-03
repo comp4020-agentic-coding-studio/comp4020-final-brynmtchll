@@ -247,7 +247,7 @@ export function roomPage(
           ${EMOTES.map((em) => `<button type="button" data-emote="${em.id}" title="${em.label} (Shift+${em.key})"><span aria-hidden="true">${em.burst || (em.head === "nod" ? "🙂" : "🙅")}</span><span class="emote-label">${em.label}</span></button>`).join("")}
         </div>
         <div class="edit-tools" role="toolbar" aria-label="Change the chosen word">
-          <p class="edit-hint">Your latest word is chosen; tap any of yours to choose it instead. Type to change it, live, for everyone.</p>
+          <p class="edit-hint">Your latest word is chosen; tap any of yours <span class="keys">(or press <kbd>←</kbd> <kbd>→</kbd>)</span> to choose it instead. Type to change it, live, for everyone.</p>
           ${EFFECTS.map((fx) => `<button type="button" data-key="${fx.key}" title="${fx.label}" class="fx-button"><kbd>${fx.key}</kbd><span class="w fx-${fx.id}">${fx.label}</span></button>`).join("")}
           <button type="button" data-key="Backspace" title="Delete"><kbd>⌫</kbd><span>Delete</span></button>
         </div>

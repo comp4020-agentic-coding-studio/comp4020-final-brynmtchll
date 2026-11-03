@@ -384,6 +384,8 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 
 .edit-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .edit-hint { flex-basis: 100%; margin: 0 0 2px; color: var(--muted); font-size: 0.8125rem; }
+/* (no arrow keys to press on a touch screen) */
+@media (hover: none) { .edit-hint .keys { display: none; } }
 .edit-tools button { display: flex; align-items: center; gap: 6px; padding: 6px 10px; min-height: 38px; font-size: 0.8125rem; }
 
 /* ---- your avatar's look ---- */
