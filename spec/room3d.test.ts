@@ -31,5 +31,7 @@ describe("where people sit in the room", () => {
     expect(rowsOf(3, 16 / 9)).toBe(1);
     // a few, on a laptop's room (wider than tall, not much), in one row
     expect(rowsOf(3, 818 / 606)).toBe(1);
+    // and two, on a phone, side by side, not one in front of the other
+    expect(rowsOf(2, 350 / 488)).toBe(1);
   });
 });
