@@ -174,8 +174,10 @@ led to. Claude chose how to build each; what to build was yours.
    - Hand up: the button lagged and a quick double press could undo itself
      ([`77035aa`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/77035aa)).
    - The server: what was said while it restarted (every deploy) was lost
-     ([`eeb636c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/eeb636c)); waking for the first visitor after a quiet spell took
-     about 3 s, now faster ([`75dd8a7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/75dd8a7), [`b3c2ef9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b3c2ef9)); the studio's choices
+     ([`eeb636c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/eeb636c)); waking for the first visitor after a quiet spell takes
+     about 3 s; asking Fly to suspend rather than stop didn't change it (it
+     can't suspend a machine with a volume), and starting the server lazily
+     saved about a tenth of a second locally ([`75dd8a7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/75dd8a7), [`b3c2ef9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b3c2ef9)); the studio's choices
      on a phone started below the fold ([`d0a55de`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d0a55de)).
 
 ### What the three spikes measured (22 October, for the next decisions)
