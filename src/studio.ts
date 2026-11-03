@@ -20,6 +20,11 @@ const say = (text: string): void => void (status.textContent = text);
 
 let look = JSON.parse(preview.dataset.look!) as Look;
 
+// Someone making their avatar is still in the room, not away from it: the
+// room counts the pages anyone has listening, so this one listens too,
+// though it has nothing to show of what's said (the browser reconnects it).
+new EventSource("/events?after=now");
+
 // ---- the preview: turned by dragging, zoomed by scrolling or pinching ----
 
 // A turn a drag gives the head, eased back towards facing you when let go
