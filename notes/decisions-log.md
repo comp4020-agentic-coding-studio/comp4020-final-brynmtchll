@@ -194,6 +194,16 @@ led to. Claude chose how to build each; what to build was yours.
      saved about a tenth of a second locally ([`75dd8a7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/75dd8a7), [`b3c2ef9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b3c2ef9)); the studio's choices
      on a phone started below the fold ([`d0a55de`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d0a55de)).
 
+3. **Typing instead.** "can we do text to speech option as well with
+   customiseability there" (3 November). Speech for what others say was
+   already there ("Hear voices"), so this was built as the other way round:
+   a box to type in, sent as a message that goes up and is spoken like a
+   said one ([`850616c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/850616c)). How it's said comes from the writing (stars or
+   caps, !, drawn-out letters, brackets, ?) and a tone picked beside the box
+   (plain, excited, calm, asking, sad, whisper, sarcastic); the voice, its
+   pitch and speed are in the box too, the same ones the studio keeps.
+   Typed messages are marked ⌨ and aren't counted in someone's usual voice.
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Bryn's M4 Pro in headless Chrome.
