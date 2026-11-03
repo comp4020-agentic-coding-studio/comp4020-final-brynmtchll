@@ -625,6 +625,24 @@ describe.skipIf(!writable)("the room", () => {
     expect(JSON.stringify(found)).not.toContain("UklGR");
   });
 
+  it("marks a message typed instead of said as typed, on every page and kept, and never as their voice", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const marker = `typed${Date.now()}`;
+    const voice = { pitch: 30, range: 6, loud: -20, pace: 12 };
+    const res = await p.say({ typed: true, voice, words: [word(marker, 0, { loud: 6 })] });
+    expect(res.status).toBe(201);
+    expect(await watcher.waitFor(marker)).toMatchObject({ type: "said", typed: true });
+    expect((await messages()).find((m) => m.text === marker)).toMatchObject({ typed: true, usual: null });
+    expect(await p.page()).toMatch(new RegExp(`class="phrase typed"[^>]*>[\\s\\S]*?${marker}`));
+    // a said one isn't
+    const said = `said${Date.now()}`;
+    await p.say({ words: [word(said, 0)] });
+    expect(await watcher.waitFor(said)).not.toHaveProperty("typed");
+    watcher.close();
+  });
+
   it("pulls extreme numbers into range, so one shout can't take over the page", async () => {
     const p = await person();
     const marker = `loud${Date.now()}`;

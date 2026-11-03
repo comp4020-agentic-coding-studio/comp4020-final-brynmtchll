@@ -6,12 +6,12 @@ export type Person = { id: string; name: string; joined_at: number };
 
 // a message as anyone can see it: who said it by name, never by id, since the
 // id is also their login cookie; and how it compared with how they usually
-// sound, as worked out when they said it
-export type Message = { id: number; name: string; text: string; words: Word[]; usual: Usual | null; at: number };
+// sound, as worked out when they said it; and whether it was typed instead
+export type Message = { id: number; name: string; text: string; words: Word[]; usual: Usual | null; at: number; typed?: true };
 
 export type JoinResult = { ok: true } | { ok: false; reason: "name-bad" | "name-taken" };
 
-type MessageRow = { id: number; name: string; text: string; words: string; usual: string | null; at: number };
+type MessageRow = { id: number; name: string; text: string; words: string; usual: string | null; at: number; typed: number | null };
 
 // The room lives in one SQLite file: who has joined, and everything they've
 // said. `now` is injectable so time can be pinned in a check.
@@ -43,6 +43,8 @@ export function openRoom(file: string, now: () => number = Date.now) {
   if (!columns.includes("usual")) db.exec("ALTER TABLE messages ADD COLUMN usual TEXT");
   // the speaker's face (an emoji) when they said it, if they were showing one
   if (!columns.includes("face")) db.exec("ALTER TABLE messages ADD COLUMN face TEXT");
+  // 1 for a message typed rather than said (its shape is the one asked for)
+  if (!columns.includes("typed")) db.exec("ALTER TABLE messages ADD COLUMN typed INTEGER");
   // a phrase every second or two per person adds up: who's been speaking
   // lately and someone's last few voices are looked up by person, newest first
   db.exec("CREATE INDEX IF NOT EXISTS messages_by_person ON messages (person_id, id)");
@@ -84,9 +86,10 @@ export function openRoom(file: string, now: () => number = Date.now) {
     words: (JSON.parse(r.words) as Word[]).map((w) => ({ ...w, contour: w.contour ?? [] })),
     usual: r.usual ? (JSON.parse(r.usual) as Usual) : null,
     at: Number(r.at),
+    ...(r.typed ? { typed: true as const } : {}),
   });
 
-  const SELECT = "SELECT m.id, p.name, m.text, m.words, m.usual, m.at FROM messages m JOIN people p ON p.id = m.person_id";
+  const SELECT = "SELECT m.id, p.name, m.text, m.words, m.usual, m.at, m.typed FROM messages m JOIN people p ON p.id = m.person_id";
 
   // Invisible characters (zero-width spaces, joiners, direction marks) are
   // dropped and the rest normalised, so two names that look the same are the
@@ -149,11 +152,12 @@ export function openRoom(file: string, now: () => number = Date.now) {
       .reverse();
 
   // words and voice have already been through clean() and cleanVoice()
-  function say(personId: string, words: Word[], voice: Voice | null = null, face: string | null = null): Message {
-    const usual = voice ? compare(voice, voices(personId)) : null;
+  // (a typed one has no voice, so isn't compared with their usual)
+  function say(personId: string, words: Word[], voice: Voice | null = null, face: string | null = null, typed = false): Message {
+    const usual = voice && !typed ? compare(voice, voices(personId)) : null;
     const { lastInsertRowid } = db
-      .prepare("INSERT INTO messages (person_id, text, words, voice, usual, face, at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(personId, textOf(words), JSON.stringify(words), voice && JSON.stringify(voice), usual && JSON.stringify(usual), face, now());
+      .prepare("INSERT INTO messages (person_id, text, words, voice, usual, face, typed, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(personId, textOf(words), JSON.stringify(words), typed ? null : voice && JSON.stringify(voice), usual && JSON.stringify(usual), face, typed ? 1 : null, now());
     return toMessage(db.prepare(`${SELECT} WHERE m.id = ?`).get(lastInsertRowid) as MessageRow);
   }
 

@@ -556,6 +556,32 @@ main.prose { max-width: 70ch; margin: 0 auto; padding: 8px 20px 48px; }
   15% { transform: translate(calc(-50% + var(--dx) * 0.3), -10px) scale(1.15); opacity: 1; }
   100% { transform: translate(calc(-50% + var(--dx)), -80px) scale(0.9); opacity: 0; }
 }
+/* typing instead: a box and Say it, how it's said under it, your voice
+   folded away below */
+.type-box { display: grid; gap: 8px; }
+.type-box[hidden] { display: none; }
+.type-row { display: flex; gap: 8px; }
+.type-row input { flex: 1; min-width: 0; font: inherit; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); min-height: 44px; }
+.type-row input::placeholder { color: var(--faint); }
+.type-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.type-send { flex: none; }
+.type-send:not(:disabled) { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tones { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: 0; }
+.tones label { cursor: pointer; }
+.tones input { position: absolute; opacity: 0; pointer-events: none; }
+.tones label > span { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 0.8125rem; color: var(--muted); }
+.tones input:checked + span { border-color: var(--accent); color: var(--accent); }
+.tones input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.type-voice summary { cursor: pointer; font-size: 0.8125rem; color: var(--muted); width: fit-content; }
+.type-voice-body { display: grid; gap: 8px; margin-top: 8px; max-width: 420px; }
+.type-voice .slider { grid-template-columns: 60px minmax(0, 1fr); }
+.voice-pick { display: grid; grid-template-columns: 60px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 0.8125rem; }
+.voice-pick select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--ink); min-height: 40px; }
+.type-hear { justify-self: start; min-height: 36px; padding: 6px 12px; font-size: 0.8125rem; }
+.type-voice .hint { margin: 0; font-size: 0.75rem; color: var(--muted); }
+/* a phrase typed rather than said: a small keyboard after it */
+.phrase.typed::after { content: "⌨"; margin-left: 3px; font-size: 0.75em; opacity: 0.6; vertical-align: 0.05em; }
+
 .emotes { display: flex; flex-wrap: wrap; gap: 6px; }
 .emotes button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 0.8125rem; }
 .emotes button span:first-child { font-size: 1.1em; }

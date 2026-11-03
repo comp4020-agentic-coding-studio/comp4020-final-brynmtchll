@@ -1,7 +1,8 @@
 import type { Message, Person } from "./db.ts";
 import { ago, esc, handBadge, hueOf, queueHtml, reactionsHtml, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
-import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SLIDERS, STYLES, type ColourPart, type Look, type Part } from "./packs.ts";
+import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SLIDERS, STYLES, VOICES, type ColourPart, type Look, type Part } from "./packs.ts";
+import { TONES } from "./typed.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
@@ -16,6 +17,7 @@ const HELP = `<details class="help">
     <p>Show your face and your avatar pulls the faces you pull and turns as you turn. Your voice and face are read in this browser; only words, how they were said, and a handful of numbers about your face leave it. No recording or picture is kept anywhere.</p>
     <p>Hands too, and your avatar's arms and hands follow yours: a thumbs up, a wave or a peace sign sets off its emote. Raise your hand (<kbd>Shift</kbd> <kbd>R</kbd>) to take a place in the queue to speak.</p>
     <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. Headphones stop it coming back through your microphone.</p>
+    <p>Or type it instead: pick how it's said (excited, calm, asking, sarcastic…) and it goes up like anything said, spoken in your voice. <kbd>*stars*</kbd> or CAPS make a word stand out. Typed messages are marked ⌨.</p>
   </div>
 </details>`;
 
@@ -50,9 +52,10 @@ const MESSAGES: Record<string, string> = {
 // message and its place in it) so its speaker can change it, live.
 const NEW_BUBBLE = 4000; // ms of silence between phrases that starts a new bubble
 const NEW_LINE = 0.7; // seconds of pause inside a phrase that starts a new line
-type Said = { id: number; words: Word[]; at: number; reactions?: Record<number, Record<string, number>> };
+// (one typed rather than said is marked as typed: style.css)
+type Said = { id: number; words: Word[]; at: number; reactions?: Record<number, Record<string, number>>; typed?: true };
 export function phraseHtml(m: Said): string {
-  return `<span class="phrase" data-id="${m.id}">${m.words
+  return `<span class="phrase${m.typed ? " typed" : ""}" data-id="${m.id}"${m.typed ? ' title="Typed"' : ""}>${m.words
     .map((w, i) => {
       const gap = i + 1 < m.words.length ? m.words[i + 1].start - w.end : 0;
       return `<span class="tw" data-i="${i}">${wordHtml(w)}${reactionsHtml(m.reactions?.[i])}</span>${gap > NEW_LINE ? "<br>" : " "}`;
@@ -199,6 +202,29 @@ export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: 
   );
 }
 
+// Typing instead of talking: a message written here goes up word by word
+// and is spoken (for anyone with voices on) like a spoken one, in your
+// voice, the way it's written and in the tone picked (typed.ts). Your voice
+// is the one from the studio, changeable here too. Needs the page's script.
+function typeBox(look: Look): string {
+  const tune = (look.tune ?? {}) as Record<string, number>;
+  const slider = (id: string, label: string): string =>
+    `<label class="slider"><span>${label}</span><input type="range" name="tune.${id}" min="-1" max="1" step="0.05" value="${tune[id] ?? 0}"></label>`;
+  return `<form id="type-box" class="type-box" hidden>
+          <label for="typed" class="visually-hidden">Type instead of talking</label>
+          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type it… *this* stands out"><button type="submit" class="type-send" disabled>Say it</button></div>
+          <fieldset class="tones"><legend class="visually-hidden">How it's said</legend>${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${t.label}</span></label>`).join("")}</fieldset>
+          <details class="type-voice"><summary>Your voice</summary>
+            <div class="type-voice-body">
+              <label class="voice-pick"><span>Voice</span><select name="voice">${VOICES.map((v) => `<option value="${v.id}"${look.voice === v.id ? " selected" : ""}>${esc(v.label)}</option>`).join("")}</select></label>
+              ${slider("voicePitch", "Pitch")}${slider("voiceSpeed", "Speed")}
+              <button type="button" class="type-hear">🔊 Hear it first</button>
+              <p class="hint">*Stars* or CAPS make a word stand out, ! makes it louder, sooo draws it out, (brackets) say it aside, and a ? asks. Everyone with voices on hears it in this voice; it's marked as typed.</p>
+            </div>
+          </details>
+        </form>`;
+}
+
 // One line of the brief record: who, in their colour, what they said, when.
 export const lineHtml = (l: { name: string; seat: number; text: string; until: number; face?: string | null }, now = Date.now()): string =>
   `<li style="--hue:${hueOf(l.seat)}" data-name="${esc(l.name)}" data-until="${l.until}"><strong>${l.face ? `${esc(l.face)} ` : ""}${esc(l.name)}</strong> <span class="said-text">${esc(l.text)}</span> <time data-at="${l.until}">${ago(l.until, now)}</time></li>`;
@@ -244,6 +270,7 @@ export function roomPage(
           <form method="post" action="/hand" class="hand-form"><input type="hidden" name="up" value="${up ? "false" : "true"}"><button id="hand" type="submit" class="hand-toggle" aria-pressed="${up}" title="Raise your hand to speak next (Shift+R)"><span aria-hidden="true">✋</span> <span class="label">${up ? "Lower hand" : "Raise hand"}</span></button></form>
         </div>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
+        ${typeBox(myLook!)}
         <div class="emotes" role="toolbar" aria-label="Emotes: your head does it, for everyone">
           ${EMOTES.map((em) => `<button type="button" data-emote="${em.id}" title="${em.label} (Shift+${em.key})"><span aria-hidden="true">${em.burst || (em.head === "nod" ? "🙂" : "🙅")}</span><span class="emote-label">${em.label}</span></button>`).join("")}
         </div>

@@ -7,7 +7,8 @@ import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { overHead, showRoom } from "./room3d.ts";
-import { canSpeak, duck, echoOf, hearVoices, speak, speaking as voicesSpeaking, type Spoken } from "./speech.ts";
+import { canSpeak, duck, echoOf, hearVoices, speak, speaking as voicesSpeaking, tryVoice, type Spoken } from "./speech.ts";
+import { toneOf, typedWords, type Tone } from "./typed.ts";
 import { EFFECTS, emoteOf, EMOTES, REACTIONS, STYLES, type Look as PackLook } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
@@ -23,7 +24,7 @@ const heardAloud = document.getElementById("heard") as HTMLElement;
 // ---- the stage: each person's words, one at a time, in their spot ----
 
 type StageWord = { html: string; t: number; d: number; gap: number; say?: [number, number, number] };
-type Phrase = { id: number; name: string; hue: number; look?: Look; text: string; at: number; words: StageWord[]; reactions?: Record<number, Record<string, number>> };
+type Phrase = { id: number; name: string; hue: number; look?: Look; text: string; at: number; words: StageWord[]; reactions?: Record<number, Record<string, number>>; typed?: true };
 
 // Each word appears when it was said, but stays up at least SHORTEST_WORD so
 // it can be read: fast speech has words a tenth of a second long, gone before
@@ -267,7 +268,7 @@ setInterval(() => {
 
 function arrive(p: Phrase & { draft?: number }): void {
   remember(p);
-  heardAloud.textContent = `${p.name}: ${p.text}`;
+  heardAloud.textContent = `${p.name}${p.typed ? " (typed)" : ""}: ${p.text}`;
   const spot = spotFor(p, p.look);
   // spoken, for anyone with voices on: not your own back to you, nor what
   // comes again after a dropped connection
@@ -340,7 +341,7 @@ const NEW_BUBBLE = 4000;
 const NEW_LINE = 0.7;
 const THREAD_BUBBLES = 40;
 const phraseHtml = (p: Phrase): string =>
-  `<span class="phrase" data-id="${p.id}">${p.words.map((w, i) => `<span class="tw" data-i="${i}">${w.html}${reactionsHtml(p.reactions?.[i])}</span>${w.gap > NEW_LINE && i + 1 < p.words.length ? "<br>" : " "}`).join("")}</span>`;
+  `<span class="phrase${p.typed ? " typed" : ""}" data-id="${p.id}"${p.typed ? ' title="Typed"' : ""}>${p.words.map((w, i) => `<span class="tw" data-i="${i}">${w.html}${reactionsHtml(p.reactions?.[i])}</span>${w.gap > NEW_LINE && i + 1 < p.words.length ? "<br>" : " "}`).join("")}</span>`;
 const said = new Map<number, Phrase>(); // each phrase on the page, by id, for redrawing
 
 // The real phrase takes the place of its draft (`draft`, the number its
@@ -457,6 +458,7 @@ for (const el of document.querySelectorAll<HTMLElement>(".thread .phrase")) {
     at: 0,
     words: tws.map((t) => ({ html: t.querySelector(".w")?.outerHTML ?? t.innerHTML, t: 0, d: 0, gap: t.nextElementSibling?.nodeName === "BR" ? 1 : 0 })),
     reactions,
+    ...(el.classList.contains("typed") ? { typed: true as const } : {}),
   });
 }
 for (const thread of document.querySelectorAll<HTMLOListElement>(".thread")) thread.scrollTop = 0;
@@ -913,7 +915,7 @@ let hearing: Promise<void> = Promise.resolve(); // so phrases go out in the orde
 // (a moment's outage, a redeploy or the server waking, is waited out:
 // tried again a few times before it's given up, still in order)
 const RETRY_AFTER = [1000, 2000, 3000]; // ms
-async function post(words: Word[], voice: Voice | null, forDraft?: number): Promise<void> {
+async function post(words: Word[], voice: Voice | null, forDraft?: number, typed = false): Promise<void> {
   try {
     let res: Response | null = null;
     for (let i = 0; ; i++) {
@@ -921,7 +923,7 @@ async function post(words: Word[], voice: Voice | null, forDraft?: number): Prom
         res = await fetch("/say", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ words, voice, draft: forDraft }),
+          body: JSON.stringify({ words, voice, draft: forDraft, ...(typed ? { typed } : {}) }),
           // a send that hangs mustn't hold up every phrase after it
           signal: AbortSignal.timeout(15_000),
         });
@@ -945,6 +947,54 @@ async function post(words: Word[], voice: Voice | null, forDraft?: number): Prom
     console.error(err);
     warn("Something you said couldn't be sent. Check your connection.");
   }
+}
+
+// ---- typing instead: written here, said like the rest (typed.ts) ----
+
+const typeBox = document.getElementById("type-box") as HTMLFormElement | null;
+if (typeBox) {
+  typeBox.hidden = false;
+  const input = typeBox.elements.namedItem("text") as HTMLInputElement;
+  const send = typeBox.querySelector<HTMLButtonElement>(".type-send")!;
+  const tone = (): Tone => toneOf((typeBox.elements.namedItem("tone") as RadioNodeList).value);
+  const voiceNow = (): Pick<Look, "voice" | "tune"> => {
+    const v = (typeBox.elements.namedItem("voice") as HTMLSelectElement).value;
+    const n = (id: string): number => Number((typeBox.elements.namedItem(`tune.${id}`) as HTMLInputElement).value) || 0;
+    return { voice: v, tune: { voicePitch: n("voicePitch"), voiceSpeed: n("voiceSpeed") } } as Pick<Look, "voice" | "tune">;
+  };
+  const spoken = (words: Word[]): Spoken[] => words.map((w) => ({ text: w.w, loud: w.loud, pitch: w.pitch ?? 0, stretch: w.stretch, effect: w.effect ?? null }));
+  input.addEventListener("input", () => (send.disabled = !input.value.trim()));
+  typeBox.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const words = typedWords(input.value, tone());
+    if (!words.length) return;
+    input.value = "";
+    send.disabled = true;
+    void post(words, null, undefined, true);
+    // (heard by you too, with voices on: it's your voice saying it)
+    speak(spoken(words), voiceNow());
+  });
+  // tried out in your voice, the way it'll go: what's typed, or a sample
+  typeBox.querySelector(".type-hear")?.addEventListener("click", () => {
+    const words = typedWords(input.value || "Hey, this is *me*. How do I sound?", tone());
+    tryVoice(voiceNow(), spoken(words));
+  });
+  // your voice, kept with your look (the studio's, the same one) a moment
+  // after you stop changing it
+  let saving = 0;
+  typeBox.addEventListener("change", (e) => {
+    const t = e.target as HTMLElement;
+    if (!t.matches("select[name=voice], input[name^='tune.']")) return;
+    clearTimeout(saving);
+    saving = window.setTimeout(async () => {
+      try {
+        const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: voiceNow() }) });
+        if (!res.ok) warn("Your voice didn't save.");
+      } catch {
+        warn("Your voice didn't save. Check your connection.");
+      }
+    }, 400);
+  });
 }
 
 // One of your words is chosen at a time: your latest, unless you've tapped

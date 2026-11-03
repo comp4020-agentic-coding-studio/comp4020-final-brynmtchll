@@ -112,7 +112,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // time each is asked for (not at boot, so a server waking up answers sooner)
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
-const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "speech.ts", "worker.ts", "tap.ts"]);
+const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts"]);
 const stripped = new Map<string, string>();
 const scriptOf = (f: string): string | undefined => {
   if (!SCRIPTS.has(f)) return undefined;
@@ -278,6 +278,7 @@ const phraseOf = (m: Message) => ({
     gap: tenths((m.words[i + 1]?.start ?? w.end) - w.end),
   })),
   reactions: room.reactionsOn(m.id),
+  ...(m.typed ? { typed: true } : {}),
 });
 const event = (m: Message, draft?: number): string =>
   `id: ${m.id}\nevent: said\ndata: ${JSON.stringify({
@@ -288,6 +289,7 @@ const event = (m: Message, draft?: number): string =>
     look: room.lookOf(m.name),
     text: m.text,
     at: m.at,
+    ...(m.typed ? { typed: true } : {}),
     words: m.words.map((w, i) => ({
       html: wordHtml(w),
       t: w.start,
@@ -690,10 +692,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       log(me, "refused", { why: "not-a-message" });
       return json(res, 400, { error: "not-a-message" });
     }
-    const m = room.say(me.id, words, cleanVoice((parsed as { voice?: unknown }).voice), faces.get(me.name) ?? null);
+    // typed rather than said: shaped as asked, shown as typed
+    const typed = (parsed as { typed?: unknown }).typed === true;
+    const m = room.say(me.id, words, cleanVoice((parsed as { voice?: unknown }).voice), faces.get(me.name) ?? null, typed);
     const draft = (parsed as { draft?: unknown }).draft;
     const w = words[0];
-    log(me, "said", {
+    log(me, typed ? "typed" : "said", {
       text: m.text,
       ...(w.effect ? { effect: w.effect } : {}),
       ...(Math.abs(w.loud) >= 6 ? { loud: w.loud } : {}),
