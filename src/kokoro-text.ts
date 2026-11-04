@@ -199,3 +199,38 @@ export function wordSpans(audio: Float32Array, rate: number, units: number[]): [
   bounds.push(seconds);
   return units.map((_, i) => [Math.round(bounds[i] * 1000) / 1000, Math.round(bounds[i + 1] * 1000) / 1000]);
 }
+
+// A stretch of sound made longer without making it lower: WSOLA (waveform
+// similarity overlap-add). Windows of it are laid down further apart than
+// they were taken, each one taken from wherever, near where it should come
+// from, its start best continues what's been laid down already, and
+// crossfaded into it; so the pitch stays as it was and only the time grows.
+// `by` is how many times longer (1.6 is 60% longer).
+export function stretch(audio: Float32Array, rate: number, by: number): Float32Array {
+  if (by <= 1.01 || audio.length < rate * 0.04) return audio;
+  const win = Math.round(rate * 0.03); // 30 ms windows
+  const hop = win >> 1; // laid down every half window
+  const seek = Math.round(rate * 0.012); // looked for within 12 ms
+  const out = new Float32Array(Math.ceil(audio.length * by) + win);
+  const fade = new Float32Array(win).map((_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / win));
+  let taken = 0; // where the last window was taken from
+  let at = 0;
+  const last = audio.length - win;
+  for (; at + win < out.length; at += hop) {
+    const want = Math.min(last, Math.round(at / by));
+    // where near `want` carries on best from the last window's next hop
+    let best = want;
+    if (at > 0 && taken + hop + hop <= audio.length) {
+      let bestScore = -Infinity;
+      const follows = taken + hop;
+      for (let k = Math.max(0, want - seek); k <= Math.min(last, want + seek); k++) {
+        let score = 0;
+        for (let i = 0; i < hop; i += 2) score += audio[k + i] * audio[follows + i];
+        if (score > bestScore) [bestScore, best] = [score, k];
+      }
+    }
+    for (let i = 0; i < win; i++) out[at + i] += audio[best + i] * fade[i];
+    taken = best;
+  }
+  return out.slice(0, Math.min(out.length, Math.round(audio.length * by)));
+}

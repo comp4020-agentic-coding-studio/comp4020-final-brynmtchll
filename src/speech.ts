@@ -19,6 +19,7 @@
 // made to stand out in what it said: louder, higher, or drawn out, where
 // that word is.
 import { voiceOf, type Look } from "./packs.ts";
+import { stretch } from "./kokoro-text.ts";
 import type { Build, FromKokoro, Phrase as KokoroPhrase, ToKokoro } from "./kokoro.ts";
 
 // a word as it comes in a phrase: the word, and how it was said (dB louder
@@ -107,10 +108,10 @@ export function runsOf(words: Spoken[], look: Pick<Look, "voice" | "tune">): Run
 // How a natural voice says a phrase: its words, how fast to ask the model to
 // say them, how fast to play what it says (which moves its pitch too: so to
 // raise a voice without speeding it up, it's asked for slower and played
-// faster), how loud; and for each word how it's moved from that, louder or
-// quieter (gain) and faster or slower (rate: higher and quicker, or lower and
-// drawn out, as a word said that way is).
-export type Shape = { gain: number; rate: number };
+// faster), how loud; and for each word how it's moved from that: louder or
+// quieter (gain), higher or lower (rate, a little: it hurries the word too),
+// and drawn out (stretch: longer, at the same pitch, kokoro-text.ts).
+export type Shape = { gain: number; rate: number; stretch: number };
 export type NaturalPlan = { words: string[]; speed: number; play: number; volume: number; shapes: Shape[] };
 // the model says well between about half and twice its own speed
 const SPEED = { lo: 0.6, hi: 1.7 };
@@ -126,24 +127,25 @@ export function naturalPlan(words: Spoken[], look: Pick<Look, "voice" | "tune">)
   const shapes = said.map((w): Shape => {
     let gain = 1;
     let r = 1;
-    if (w.loud >= STANDS_OUT.loud) [gain, r] = [Math.min(1.8, 1 + w.loud / 12), 1.05];
+    let longer = 1;
+    if (w.loud >= STANDS_OUT.loud) [gain, r] = [Math.min(1.8, 1 + w.loud / 12), 1.03];
     else if (w.loud <= -STANDS_OUT.loud) gain = Math.max(0.45, 1 + w.loud / 16);
     if (Math.abs(w.pitch) >= STANDS_OUT.pitch) r *= 2 ** ((w.pitch * PITCH_SHARE) / 12);
-    if (w.stretch >= STANDS_OUT.stretch) r *= 1 / (1 + w.stretch * 0.3);
-    if (w.effect === "impact") [gain, r] = [Math.max(gain, 1.6), r * 0.94];
+    if (w.stretch >= STANDS_OUT.stretch) longer = 1 + w.stretch * 0.45;
+    if (w.effect === "impact") [gain, longer] = [Math.max(gain, 1.6), longer * 1.1];
     if (w.effect === "whisper") gain = Math.min(gain, 0.45);
-    if (w.effect === "spooky") r *= 0.8;
-    if (w.effect === "sparkle" || w.effect === "rainbow") r *= 1.1;
-    return { gain: round2(gain), rate: round2(clamp(r, 0.6, 1.4)) };
+    if (w.effect === "spooky") [r, longer] = [r * 0.85, longer * 1.25];
+    if (w.effect === "sparkle" || w.effect === "rainbow") r *= 1.08;
+    return { gain: round2(gain), rate: round2(clamp(r, 0.8, 1.2)), stretch: round2(clamp(longer, 1, 2)) };
   });
   // the whole phrase as loud as its words on average, quieter for a hushed voice
-  const volume = round2(hushed ? 0.45 : 0.8);
+  const volume = round2(hushed ? 0.6 : 0.8);
   return { words: said.map((w) => w.text), speed: round2(speed), play: round2(play), volume, shapes };
 }
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 // When each word starts in what's played, once each is played at its own
-// rate: the model's spans (seconds in what it made) through the shapes.
+// rate: the spans (seconds in the sound) through the shapes.
 export function playedSpans(spans: [number, number][], shapes: Shape[], play: number): [number, number][] {
   const out: [number, number][] = [];
   let at = 0;
@@ -310,9 +312,38 @@ function robotise(c: AudioContext, input: AudioNode, out: AudioNode, at: number,
 // over a few milliseconds so nothing clicks). Told as each word starts, and
 // when it ends.
 const EASE = 0.015; // s
-function play(plan: NaturalPlan, made: Made, look: Pick<Look, "voice">, whenStarts?: (i: number) => void, ended?: () => void): void {
+// The sound with each drawn-out word drawn out, and where each word is now.
+export function drawOut(made: Made, shapes: Shape[], rate = RATE): Made {
+  if (!shapes.some((s) => s.stretch > 1)) return made;
+  const parts: Float32Array[] = [];
+  const spans: [number, number][] = [];
+  let from = 0;
+  let at = 0;
+  made.spans.forEach(([a, b], i) => {
+    const [s, e] = [Math.round(a * rate), Math.round(b * rate)];
+    if (s > from) {
+      parts.push(made.audio.subarray(from, s));
+      at += s - from;
+    }
+    const word = stretch(made.audio.slice(s, e), rate, shapes[i]?.stretch ?? 1);
+    parts.push(word);
+    spans.push([at / rate, (at + word.length) / rate]);
+    at += word.length;
+    from = e;
+  });
+  if (from < made.audio.length) parts.push(made.audio.subarray(from));
+  const audio = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let k = 0;
+  for (const p of parts) {
+    audio.set(p, k);
+    k += p.length;
+  }
+  return { audio, spans };
+}
+function play(plan: NaturalPlan, sound: Made, look: Pick<Look, "voice">, whenStarts?: (i: number) => void, ended?: () => void): void {
   const c = audio();
-  if (!c || !made.audio.length) return ended?.();
+  if (!c || !sound.audio.length) return ended?.();
+  const made = drawOut(sound, plan.shapes);
   const v = voiceOf(look.voice);
   const at = Math.max(c.currentTime + 0.05, playingUntil);
   const buf = c.createBuffer(1, made.audio.length, RATE);
@@ -343,7 +374,7 @@ function play(plan: NaturalPlan, made: Made, look: Pick<Look, "voice">, whenStar
     // breathier: the low end taken off
     const thin = c.createBiquadFilter();
     thin.type = "highpass";
-    thin.frequency.value = 700;
+    thin.frequency.value = 400;
     gain.connect(thin).connect(c.destination);
   } else gain.connect(c.destination);
   src.start(at);

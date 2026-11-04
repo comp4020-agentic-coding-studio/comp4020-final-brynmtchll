@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cleanLook, DEFAULT_LOOK, randomLook, SLIDERS, VOICES } from "../src/packs.ts";
-import { echoOf, naturalPlan, playedSpans, remember, runsOf, type Spoken } from "../src/speech.ts";
+import { drawOut, echoOf, naturalPlan, playedSpans, remember, runsOf, type Spoken } from "../src/speech.ts";
 
 // Speaking what people say, checked as what's handed to the browser to say:
 // which words go together, and at what pitch, speed and loudness. How it
@@ -111,10 +111,12 @@ describe("speaking a phrase in a natural voice", () => {
     const plan = naturalPlan([plain("oh this is"), { text: "SO", loud: 9, pitch: 4, stretch: 0 }, { text: "good", loud: 0, pitch: 0, stretch: 1.6 }, { text: "psst", loud: -9, pitch: 0, stretch: 0 }], look)!;
     expect(plan.words).toEqual(["oh this is", "SO", "good", "psst"]);
     const [ordinary, loud, drawn, quiet] = plan.shapes;
-    expect(ordinary).toEqual({ gain: 1, rate: 1 });
+    expect(ordinary).toEqual({ gain: 1, rate: 1, stretch: 1 });
     expect(loud.gain).toBeGreaterThan(1.5);
     expect(loud.rate).toBeGreaterThan(1);
-    expect(drawn.rate).toBeLessThan(0.8);
+    // drawn out: longer, at its own pitch (lower too, it slurred)
+    expect(drawn.stretch).toBeGreaterThan(1.5);
+    expect(drawn.rate).toBe(1);
     expect(quiet.gain).toBeLessThan(0.6);
     expect(naturalPlan([plain(""), plain(" ")], look)).toBeNull();
   });
@@ -134,8 +136,10 @@ describe("speaking a phrase in a natural voice", () => {
         expect(plan.play).toBeGreaterThanOrEqual(0.6);
         expect(plan.play).toBeLessThanOrEqual(1.6);
         for (const sh of plan.shapes) {
-          expect(sh.rate).toBeGreaterThanOrEqual(0.6);
-          expect(sh.rate).toBeLessThanOrEqual(1.4);
+          expect(sh.rate).toBeGreaterThanOrEqual(0.8);
+          expect(sh.rate).toBeLessThanOrEqual(1.2);
+          expect(sh.stretch).toBeGreaterThanOrEqual(1);
+          expect(sh.stretch).toBeLessThanOrEqual(2);
           expect(plan.volume * sh.gain).toBeGreaterThan(0);
         }
       }
@@ -143,19 +147,33 @@ describe("speaking a phrase in a natural voice", () => {
   });
 
   it("whispers a hushed voice or a whispered word quietly", () => {
-    expect(naturalPlan([plain("a secret")], { voice: "whisper", tune: {} })!.volume).toBeLessThanOrEqual(0.45);
+    expect(naturalPlan([plain("a secret")], { voice: "whisper", tune: {} })!.volume).toBeLessThan(naturalPlan([plain("a secret")], look)!.volume);
     const [w] = naturalPlan([{ text: "secret", loud: 0, pitch: 0, stretch: 0, effect: "whisper" }], look)!.shapes;
     expect(w.gain).toBeLessThanOrEqual(0.45);
   });
 
   it("works out where each word is played, once the ones that stood out are played faster or slower", () => {
     const spans: [number, number][] = [[0, 0.4], [0.45, 0.8], [0.8, 1.2]];
-    const played = playedSpans(spans, [{ gain: 1, rate: 1 }, { gain: 1, rate: 0.5 }, { gain: 1, rate: 1 }], 1);
+    const played = playedSpans(spans, [{ gain: 1, rate: 1, stretch: 1 }, { gain: 1, rate: 0.5, stretch: 1 }, { gain: 1, rate: 1, stretch: 1 }], 1);
     // the second word takes twice as long, and the third starts later for it
     expect(played[1][1] - played[1][0]).toBeCloseTo(0.7, 5);
     expect(played[2][0]).toBeCloseTo(1.15, 5);
     // a voice played faster all through takes less time
-    expect(playedSpans(spans, [{ gain: 1, rate: 1 }, { gain: 1, rate: 1 }, { gain: 1, rate: 1 }], 1.25).at(-1)![1]).toBeCloseTo(0.96, 5);
+    expect(playedSpans(spans, [{ gain: 1, rate: 1, stretch: 1 }, { gain: 1, rate: 1, stretch: 1 }, { gain: 1, rate: 1, stretch: 1 }], 1.25).at(-1)![1]).toBeCloseTo(0.96, 5);
+  });
+
+  it("draws a drawn-out word out where it is, and moves the words after it along", () => {
+    const rate = 1000;
+    const audio = new Float32Array(1000).map((_, i) => Math.sin(i / 3));
+    const spans: [number, number][] = [[0, 0.3], [0.3, 0.6], [0.6, 1]];
+    const out = drawOut({ audio, spans }, [{ gain: 1, rate: 1, stretch: 1 }, { gain: 1, rate: 1, stretch: 1.5 }, { gain: 1, rate: 1, stretch: 1 }], rate);
+    expect(out.spans[0]).toEqual([0, 0.3]);
+    expect(out.spans[1][1] - out.spans[1][0]).toBeCloseTo(0.45, 1);
+    expect(out.spans[2][0]).toBeCloseTo(out.spans[1][1], 5);
+    expect(out.audio.length / rate).toBeCloseTo(out.spans[2][1], 2);
+    // nothing drawn out: the very same sound
+    const same = { audio, spans };
+    expect(drawOut(same, spans.map(() => ({ gain: 1, rate: 1, stretch: 1 })), rate)).toBe(same);
   });
 
   it("has a natural voice for every voice but silent, each one Kokoro has", () => {

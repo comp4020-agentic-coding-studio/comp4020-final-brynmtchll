@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fixSounds, normalise, pieces, shareOut, STYLE, styleAt, trim, wordSpans } from "../src/kokoro-text.ts";
+import { fixSounds, normalise, pieces, shareOut, stretch, STYLE, styleAt, trim, wordSpans } from "../src/kokoro-text.ts";
 
 // What the natural voice is given to say, worked out from the words: checked
 // without the model, which only the browser runs.
@@ -68,5 +68,28 @@ describe("text for a natural voice", () => {
     expect(spans[2][0]).toBeGreaterThan(0.75);
     expect(spans[2][0]).toBeLessThan(0.83);
     expect(spans[2][1]).toBeCloseTo(1.2, 2);
+  });
+});
+
+describe("drawing a word out", () => {
+  it("makes it longer without making it lower", () => {
+    const rate = 24_000;
+    const hz = 180;
+    const pcm = new Float32Array(rate * 0.3).map((_, i) => 0.5 * Math.sin((i / rate) * 2 * Math.PI * hz));
+    const out = stretch(pcm, rate, 1.6);
+    expect(out.length / pcm.length).toBeGreaterThan(1.5);
+    expect(out.length / pcm.length).toBeLessThan(1.7);
+    // still 180 Hz: count the rises through zero in the middle of it
+    const mid = out.slice(Math.round(out.length * 0.2), Math.round(out.length * 0.8));
+    let rises = 0;
+    for (let i = 1; i < mid.length; i++) if (mid[i - 1] < 0 && mid[i] >= 0) rises++;
+    expect(rises / (mid.length / rate)).toBeGreaterThan(hz * 0.95);
+    expect(rises / (mid.length / rate)).toBeLessThan(hz * 1.05);
+    // and as loud, not faded by the overlapping
+    let e = 0;
+    for (const x of mid) e += x * x;
+    expect(Math.sqrt(e / mid.length)).toBeGreaterThan(0.3);
+    // not stretched at all: as it was
+    expect(stretch(pcm, rate, 1)).toBe(pcm);
   });
 });
