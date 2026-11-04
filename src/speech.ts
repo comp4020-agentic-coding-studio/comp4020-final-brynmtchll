@@ -47,15 +47,25 @@ const load = (): void => void (voices = synth?.getVoices() ?? []);
 load();
 synth?.addEventListener?.("voiceschanged", load);
 const chosen = new Map<string, SpeechSynthesisVoice | null>();
+// The device's best for a voice: one of its names, in its best-sounding
+// form where there's more than one (macOS's Enhanced and Premium, Edge's
+// Natural ones, which sound far more like people than the rest); then any of
+// those better ones in its accent; then anything in its accent, or English.
+const BETTER = /\b(Premium|Enhanced|Natural|Neural)\b/i;
+const better = (x: SpeechSynthesisVoice): number => (BETTER.test(x.name) ? 1 : 0) + (x.localService ? 0 : 0.1);
+export function bestVoice(v: { names: readonly string[]; lang: string }, all: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  const best = (xs: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null => xs.sort((a, b) => better(b) - better(a))[0] ?? null;
+  for (const n of v.names) {
+    const found = best(all.filter((x) => x.name === n || x.name.startsWith(`${n} `) || x.name.startsWith(`Microsoft ${n} Online`)));
+    if (found) return found;
+  }
+  const accent = all.filter((x) => x.lang.replace("_", "-") === v.lang);
+  return best(accent.filter((x) => BETTER.test(x.name))) ?? best(accent) ?? best(all.filter((x) => x.lang.startsWith("en"))) ?? null;
+}
 function deviceVoice(id: string): SpeechSynthesisVoice | null {
   if (!voices.length) load();
   if (chosen.has(id) && voices.length) return chosen.get(id)!;
-  const v = voiceOf(id);
-  const found =
-    v.names.map((n) => voices.find((x) => x.name === n || x.name.startsWith(`${n} `))).find(Boolean) ??
-    voices.find((x) => x.lang === v.lang) ??
-    voices.find((x) => x.lang.startsWith("en")) ??
-    null;
+  const found = bestVoice(voiceOf(id), voices);
   if (voices.length) chosen.set(id, found);
   return found;
 }
@@ -348,7 +358,33 @@ export function drawOut(made: Made, shapes: Shape[], rate = RATE): Made {
   }
   return { audio, spans };
 }
-function play(plan: NaturalPlan, sound: Made, look: Pick<Look, "voice">, whenStarts?: (i: number) => void, ended?: () => void): void {
+// How open a mouth saying it is (0 to 1), every MOUTH_EVERY while it plays:
+// how loud each moment is against the loudest of the phrase.
+const MOUTH_EVERY = 43; // ms, as a microphone's batches (head3d.ts)
+function mouthOf(c: AudioContext, from: AudioNode, at: number, length: number, told: (level: number) => void): void {
+  const ear = c.createAnalyser();
+  ear.fftSize = 1024;
+  from.connect(ear);
+  const buf = new Float32Array(ear.fftSize);
+  let peak = -30;
+  const tick = (): void => {
+    if (c.currentTime > at + length + 0.1) {
+      told(0);
+      return void from.disconnect(ear);
+    }
+    if (c.currentTime >= at) {
+      ear.getFloatTimeDomainData(buf);
+      let e = 0;
+      for (const x of buf) e += x * x;
+      const db = 10 * Math.log10(e / buf.length + 1e-12);
+      peak = Math.max(peak, db);
+      told(Math.min(1, Math.max(0, (db - (peak - 30)) / 26)));
+    }
+    setTimeout(tick, MOUTH_EVERY);
+  };
+  setTimeout(tick, Math.max(0, (at - c.currentTime) * 1000));
+}
+function play(plan: NaturalPlan, sound: Made, look: Pick<Look, "voice">, whenStarts?: (i: number) => void, ended?: () => void, mouth?: (level: number) => void): void {
   const c = audio();
   if (!c || !sound.audio.length) return ended?.();
   const made = drawOut(sound, plan.shapes);
@@ -387,6 +423,7 @@ function play(plan: NaturalPlan, sound: Made, look: Pick<Look, "voice">, whenSta
   } else gain.connect(c.destination);
   src.start(at);
   playing.add(src);
+  if (mouth) mouthOf(c, gain, at, length, mouth);
   spans.forEach(([a], i) => setTimeout(() => whenStarts?.(i), Math.max(0, (at + a - c.currentTime) * 1000)));
   src.onended = () => {
     playing.delete(src);
@@ -402,7 +439,7 @@ function play(plan: NaturalPlan, sound: Made, look: Pick<Look, "voice">, whenSta
 // microphone turned off mid-word doesn't leave it held for good).
 const DUCK_FOR = 1500; // ms
 let duckTimer = 0;
-type Waiting = { words: Spoken[]; look: Voiced; whenStarts?: (run: Run) => void; at: number };
+type Waiting = { words: Spoken[]; look: Voiced; whenStarts?: (run: Run) => void; mouth?: (level: number) => void; at: number };
 const held: Waiting[] = [];
 const HELD_FOR = 20_000; // ms: held longer than this, it's not news any more
 export function duck(yes: boolean): void {
@@ -410,22 +447,24 @@ export function duck(yes: boolean): void {
   if (yes) duckTimer = setTimeout(() => duck(false), DUCK_FOR) as unknown as number;
   if (ducked === yes) return;
   ducked = yes;
-  if (!yes) for (const w of held.splice(0)) if (Date.now() - w.at < HELD_FOR) speak(w.words, w.look, w.whenStarts);
+  if (!yes) for (const w of held.splice(0)) if (Date.now() - w.at < HELD_FOR) speak(w.words, w.look, w.whenStarts, w.mouth);
 }
 // whether it's saying something now (so a microphone hearing it isn't taken
 // for the listener talking)
 export const speaking = (): boolean => !!synth?.speaking || (!!ctx && ctx.currentTime < playingUntil);
 
 // A phrase, in its speaker's voice, after whatever's being said already.
-// `whenStarts` is told as each run starts (to move their avatar, say).
-export function speak(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void): void {
+// `whenStarts` is told as each run starts, and, said in a natural voice,
+// `mouth` how open a mouth saying it would be as it plays (to move their
+// avatar's with it).
+export function speak(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void, mouth?: (level: number) => void): void {
   if (!on || look.voice === "silent") return;
   if (ducked) {
-    held.push({ words, look, whenStarts, at: Date.now() });
+    held.push({ words, look, whenStarts, mouth, at: Date.now() });
     if (held.length > MOST_WAITING) held.shift();
     return;
   }
-  if (natural.state === "ready") return speakNaturally(words, look, whenStarts);
+  if (natural.state === "ready") return speakNaturally(words, look, whenStarts, mouth);
   // too far behind: start again from this one
   if (waiting >= MOST_WAITING) hush();
   if (!synth) return;
@@ -439,7 +478,7 @@ export function speak(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => 
 // oldest not yet playing is let go rather than everything.
 type Pending = { gen: number; dropped: boolean };
 const pending: Pending[] = [];
-function speakNaturally(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void): void {
+function speakNaturally(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void, mouth?: (level: number) => void): void {
   const plan = naturalPlan(words, look);
   if (!plan) return;
   const mine: Pending = { gen: naturalGen, dropped: false };
@@ -467,6 +506,7 @@ function speakNaturally(words: Spoken[], look: Voiced, whenStarts?: (run: Run) =
         waiting = Math.max(0, waiting - 1);
         said.until = Date.now();
       },
+      mouth,
     );
   });
 }

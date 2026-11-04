@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cleanLook, DEFAULT_LOOK, randomLook, SLIDERS, VOICES } from "../src/packs.ts";
-import { drawOut, echoOf, naturalPlan, playedSpans, remember, runsOf, type Spoken } from "../src/speech.ts";
+import { bestVoice, drawOut, echoOf, naturalPlan, playedSpans, remember, runsOf, type Spoken } from "../src/speech.ts";
 
 // Speaking what people say, checked as what's handed to the browser to say:
 // which words go together, and at what pitch, speed and loudness. How it
@@ -197,5 +197,22 @@ describe("speaking a phrase in a natural voice", () => {
       expect(v.about.length).toBeGreaterThan(2);
     }
     expect(new Set(VOICES.map((v) => v.label)).size).toBe(VOICES.length);
+  });
+});
+
+describe("the device's own voices", () => {
+  const voice = (name: string, lang = "en-US", localService = true) => ({ name, lang, localService, default: false, voiceURI: name }) as SpeechSynthesisVoice;
+  it("takes the better-sounding form of a voice it names, where the device has one", () => {
+    const all = [voice("Samantha"), voice("Samantha (Enhanced)"), voice("Daniel", "en-GB")];
+    expect(bestVoice({ names: ["Samantha"], lang: "en-US" }, all)?.name).toBe("Samantha (Enhanced)");
+    expect(bestVoice({ names: ["Daniel"], lang: "en-GB" }, all)?.name).toBe("Daniel");
+  });
+
+  it("falls back to a better voice in its accent, then any in it, then any English", () => {
+    const all = [voice("Fred"), voice("Microsoft Aria Online (Natural) - English (United States)", "en-US", false), voice("Moira", "en-IE")];
+    expect(bestVoice({ names: ["Nobody"], lang: "en-US" }, all)?.name).toMatch(/Aria Online \(Natural\)/);
+    expect(bestVoice({ names: ["Nobody"], lang: "en-IE" }, all)?.name).toBe("Moira");
+    expect(bestVoice({ names: ["Nobody"], lang: "en-ZA" }, [voice("Fred")])?.name).toBe("Fred");
+    expect(bestVoice({ names: ["Nobody"], lang: "en-US" }, [])).toBeNull();
   });
 });

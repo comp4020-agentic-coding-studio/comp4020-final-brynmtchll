@@ -272,7 +272,11 @@ function arrive(p: Phrase & { draft?: number }): void {
   const spot = spotFor(p, p.look);
   // spoken, for anyone with voices on: not your own back to you, nor what
   // comes again after a dropped connection
-  if (p.name !== myName && p.look && Date.now() - openedAt > CATCHING_UP) speak(spokenOf(p), p.look);
+  // (said in a natural voice, their avatar's mouth moves with it)
+  if (p.name !== myName && p.look && Date.now() - openedAt > CATCHING_UP) {
+    const slot = cardOf(p.name)?.querySelector<HTMLElement>(".spot-avatar");
+    speak(spokenOf(p), p.look, undefined, slot && webgl ? (level) => voiceLevels(slot, [level]) : undefined);
+  }
   addToThread(spot, p, p.draft);
   spot.queue.push({ ...p, arrived: Date.now() });
   if (spot.state !== "playing") play(spot);
@@ -373,7 +377,9 @@ if (voicesBox && (canSpeak || canNatural)) {
   voicesBox.addEventListener("change", () => {
     showNaturalBox();
     hearVoices(voicesBox.checked);
-    say(voicesBox.checked ? "Voices on: what people say is spoken, the way they said it. Headphones stop it coming back through your microphone." : "Voices off.");
+    // (with a word about natural voices, if they're not on and could be)
+    const offer = naturalBox && canNatural && !naturalBox.checked ? ` For voices that sound like people, the same on every device, turn on ✨ Natural (about ${Math.round(willDownload() / 1e6)} MB, once).` : "";
+    say(voicesBox.checked ? `Voices on: what people say is spoken, the way they said it.${offer || " Headphones stop it coming back through your microphone."}` : "Voices off.");
     store(VOICES_KEY, voicesBox.checked ? "on" : "off");
   });
   // remembered as on: ticked, and on from the first tap anywhere (browsers
