@@ -228,9 +228,14 @@ export function hearVoices(yes: boolean): void {
 export type Natural = { state: "off" | "loading" | "ready" | "failed"; loaded?: number; total?: number; build?: Build };
 // whether this device's graphics can run the bigger, faster build (and so
 // which one turning natural voices on would download)
+// (not a phone's, though it may have one: a third of a gigabyte held in a
+// phone's graphics memory is asking for the page to be shut, and a phone's
+// download is often paid for)
 let adapter: Promise<boolean> | undefined;
+const phone = (): boolean => matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 600;
 export const gpuAdapter = (): Promise<boolean> =>
   (adapter ??= (async () => {
+    if (phone()) return false;
     try {
       return !!(await (navigator as unknown as { gpu?: { requestAdapter(): Promise<unknown> } }).gpu?.requestAdapter());
     } catch {
@@ -290,7 +295,7 @@ export function naturalVoices(yes: boolean, fast = false, told?: (n: Natural) =>
     asked.clear();
     kokoro = null;
   };
-  kokoro.postMessage({ type: "load", build: fast ? "fast" : "small" } satisfies ToKokoro);
+  void gpuAdapter().then((gpu) => kokoro?.postMessage({ type: "load", build: fast && gpu ? "fast" : "small" } satisfies ToKokoro));
 }
 type Made = { audio: Float32Array; spans: [number, number][] };
 function generate(phrase: KokoroPhrase): Promise<Made | null> {
