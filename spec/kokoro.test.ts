@@ -8,6 +8,10 @@ describe("text for a natural voice", () => {
     expect(normalise("Dr. Smith paid $5.50 at 3:05 in 1984")).toBe("Doctor Smith paid 5 dollars and 50 cents at 3 oh 5 in 19 84");
     expect(normalise("it’s 2.5 times “better”")).toBe(`it's 2 point 5 times "better"`);
     expect(normalise("pages 3-4")).toBe("pages 3 to 4");
+    // emoji aren't read out; chat shorthand is said letter by letter
+    expect(normalise("so good 😂👍🏽 really")).toBe("so good really");
+    expect(normalise("lol omg that's it")).toBe("L O L O M G that's it");
+    expect(normalise("lollipop")).toBe("lollipop");
   });
 
   it("keeps punctuation between the words to be turned into sounds, so the voice can read it", () => {

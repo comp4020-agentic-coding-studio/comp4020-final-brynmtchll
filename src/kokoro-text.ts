@@ -10,8 +10,14 @@
 
 // The text as it's read: curly quotes plain, titles spelt out, times,
 // years, money and decimals said the way people say them.
+// (emoji aren't said: read out they were "face with tears of joy"; and a
+// few things typed in chat are said letter by letter, as people say them)
+const SPELT = /\b(lol|omg|brb|btw|idk|tbh|imo|irl|fyi|ttyl|wtf)\b/gi;
 export function normalise(text: string): string {
   return text
+    .replace(/\p{Extended_Pictographic}(\u{FE0F}|\u{200D}\p{Extended_Pictographic})*/gu, "")
+    .replace(/[\u{1F3FB}-\u{1F3FF}\u{FE0F}]/gu, "")
+    .replace(SPELT, (m) => m.toUpperCase().split("").join(" "))
     .replace(/[‘’]/g, "'")
     .replace(/[“”«»]/g, '"')
     .replace(/[^\S \n]/g, " ")
