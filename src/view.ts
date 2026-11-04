@@ -1,7 +1,7 @@
 import type { Message, Person } from "./db.ts";
 import { ago, esc, handBadge, hueOf, queueHtml, reactionsHtml, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
-import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SLIDERS, STYLES, VOICES, type ColourPart, type Look, type Part } from "./packs.ts";
+import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SLIDERS, STYLES, VOICES_IN_ORDER, type ColourPart, type Look, type Part } from "./packs.ts";
 import { TONES } from "./typed.ts";
 
 // a working title, here so it changes in one place
@@ -132,7 +132,7 @@ function lookEditor(look: Look): string {
       return `<fieldset class="pick blends"><legend>Mixed with another voice <small>(natural voices only)</small></legend>${PARTS.blend.map((c) => `<label><input type="radio" name="blend" value="${c.id}"${look.blend === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`).join("")}</fieldset>${sliders("Blend")}`;
     // voices, with how each sounds under its name
     if (k === "voice")
-      return `<fieldset class="pick voices"><legend>Voice</legend>${VOICES.map((v) => `<label><input type="radio" name="voice" value="${v.id}"${look.voice === v.id ? " checked" : ""}><span><b>${esc(v.label)}</b><small>${esc(v.about)}</small></span></label>`).join("")}</fieldset>${sliders("Voice")}`;
+      return `<fieldset class="pick voices"><legend>Voice <small>(highest first)</small></legend>${VOICES_IN_ORDER.map((v) => `<label><input type="radio" name="voice" value="${v.id}"${look.voice === v.id ? " checked" : ""}><span><b>${esc(v.label)}</b><small>${esc(v.about)}</small></span></label>`).join("")}</fieldset>${sliders("Voice")}`;
     return `<fieldset class="pick"><legend>${PART_LABELS[k]}</legend>${(PARTS[k] as readonly { id: string; label: string }[])
       .map((c) => `<label><input type="radio" name="${k}" value="${c.id}"${look[k] === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
       .join("")}</fieldset>`;
@@ -226,7 +226,7 @@ function typeBox(look: Look): string {
           <fieldset class="tones"><legend class="visually-hidden">How it's said</legend>${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${t.label}</span></label>`).join("")}</fieldset>
           <details class="type-voice"><summary>Your voice</summary>
             <div class="type-voice-body">
-              <label class="voice-pick"><span>Voice</span><select name="voice">${VOICES.map((v) => `<option value="${v.id}"${look.voice === v.id ? " selected" : ""}>${esc(v.label)}: ${esc(v.about)}</option>`).join("")}</select></label>
+              <label class="voice-pick"><span>Voice</span><select name="voice">${VOICES_IN_ORDER.map((v) => `<option value="${v.id}"${look.voice === v.id ? " selected" : ""}>${esc(v.label)}: ${esc(v.about)}</option>`).join("")}</select></label>
               ${slider("voicePitch", "Pitch")}${slider("voiceSpeed", "Speed")}
               <button type="button" class="type-hear">🔊 Hear it first</button>
               <p class="hint">*Stars* or CAPS make a word stand out, ! makes it louder, sooo draws it out, (brackets) say it aside, and a ? asks. Everyone with voices on hears it in this voice; it's marked as typed.</p>

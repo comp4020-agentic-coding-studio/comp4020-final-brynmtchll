@@ -60,30 +60,42 @@ export const stylesCss = (): string =>
 // `pitch` and `rate` move the natural voice (1 as it is: a character voice
 // is one of the others moved), `device` the device's, whose voices are
 // fewer and so moved further to sound like this one. `about` is how it sounds, from measuring each
-// (decisions-log): how high it sits, how much it moves, how fast it goes.
+// (decisions-log): how high it sits (`hz`, its middle), how much it moves,
+// how fast it goes.
 // "Silent" is never spoken. Ids never go: a look keeps the one it chose.
 export const VOICES = [
-  { id: "warm", label: "Heart", about: "warm, American", kokoro: "af_heart", names: ["Samantha", "Google US English", "Microsoft Aria", "Microsoft Zira", "Karen"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1, rate: 1 } },
-  { id: "bright", label: "Bella", about: "bright, American", kokoro: "af_bella", names: ["Karen", "Tessa", "Google UK English Female", "Microsoft Jenny", "Samantha"], lang: "en-US", pitch: 1, rate: 1.04, device: { pitch: 1.3, rate: 1.06 } },
-  { id: "soft", label: "Nicole", about: "soft and close, American", kokoro: "af_nicole", names: ["Samantha", "Microsoft Aria", "Google US English"], lang: "en-US", pitch: 1, rate: 1.1, device: { pitch: 1.05, rate: 0.92 } },
-  { id: "lively", label: "Kore", about: "lively, American", kokoro: "af_kore", names: ["Allison", "Microsoft Jenny", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1.15, rate: 1.05 } },
-  { id: "easy", label: "Sarah", about: "easygoing, American", kokoro: "af_sarah", names: ["Susan", "Microsoft Michelle", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1.05, rate: 1 } },
-  { id: "emma", label: "Emma", about: "clear, British", kokoro: "bf_emma", names: ["Serena", "Kate", "Google UK English Female", "Microsoft Libby", "Microsoft Hazel"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 1.05, rate: 1 } },
-  { id: "isabella", label: "Isabella", about: "high, British", kokoro: "bf_isabella", names: ["Stephanie", "Google UK English Female", "Microsoft Sonia"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 1.25, rate: 1 } },
-  { id: "deep", label: "Onyx", about: "deep, American", kokoro: "am_onyx", names: ["Daniel", "Google UK English Male", "Microsoft Guy", "Microsoft David", "Rishi", "Fred"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.75, rate: 0.95 } },
-  { id: "steady", label: "Michael", about: "steady, American", kokoro: "am_michael", names: ["Alex", "Tom", "Microsoft Guy", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 1 } },
-  { id: "firm", label: "Fenrir", about: "firm, American", kokoro: "am_fenrir", names: ["Aaron", "Microsoft Davis", "Microsoft David"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.95, rate: 1.02 } },
-  { id: "quick", label: "Puck", about: "playful and quick, American", kokoro: "am_puck", names: ["Rishi", "Reed (English (United States))", "Microsoft Mark", "Google US English"], lang: "en-US", pitch: 1, rate: 1.15, device: { pitch: 1.05, rate: 1.25 } },
-  { id: "story", label: "Fable", about: "a storyteller, British", kokoro: "bm_fable", names: ["Moira", "Daniel", "Google UK English Female", "Microsoft Libby", "Microsoft Hazel"], lang: "en-GB", pitch: 1, rate: 0.95, device: { pitch: 0.95, rate: 0.88 } },
-  { id: "george", label: "George", about: "low, British", kokoro: "bm_george", names: ["Arthur", "Daniel", "Google UK English Male", "Microsoft Ryan"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 0.98 } },
-  { id: "grand", label: "Lewis", about: "deep and slow, British", kokoro: "bm_lewis", names: ["Grandpa (English (United Kingdom))", "Grandpa (English (United States))", "Microsoft George", "Daniel"], lang: "en-GB", pitch: 1, rate: 0.88, device: { pitch: 0.7, rate: 0.85 } },
-  { id: "jolly", label: "Santa", about: "jolly and animated", kokoro: "am_santa", names: ["Ralph", "Fred", "Microsoft David"], lang: "en-US", pitch: 1, rate: 0.95, device: { pitch: 0.85, rate: 0.95 } },
+  { id: "warm", hz: 200, label: "Heart", about: "warm, American", kokoro: "af_heart", names: ["Samantha", "Google US English", "Microsoft Aria", "Microsoft Zira", "Karen"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1, rate: 1 } },
+  { id: "bright", hz: 192, label: "Bella", about: "bright, American", kokoro: "af_bella", names: ["Karen", "Tessa", "Google UK English Female", "Microsoft Jenny", "Samantha"], lang: "en-US", pitch: 1, rate: 1.04, device: { pitch: 1.3, rate: 1.06 } },
+  { id: "soft", hz: 161, label: "Nicole", about: "soft and close, American", kokoro: "af_nicole", names: ["Samantha", "Microsoft Aria", "Google US English"], lang: "en-US", pitch: 1, rate: 1.1, device: { pitch: 1.05, rate: 0.92 } },
+  { id: "lively", hz: 151, label: "Kore", about: "lively, American", kokoro: "af_kore", names: ["Allison", "Microsoft Jenny", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1.15, rate: 1.05 } },
+  { id: "easy", hz: 185, label: "Sarah", about: "easygoing, American", kokoro: "af_sarah", names: ["Susan", "Microsoft Michelle", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1.05, rate: 1 } },
+  { id: "emma", hz: 180, label: "Emma", about: "clear, British", kokoro: "bf_emma", names: ["Serena", "Kate", "Google UK English Female", "Microsoft Libby", "Microsoft Hazel"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 1.05, rate: 1 } },
+  { id: "isabella", hz: 201, label: "Isabella", about: "high, British", kokoro: "bf_isabella", names: ["Stephanie", "Google UK English Female", "Microsoft Sonia"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 1.25, rate: 1 } },
+  { id: "deep", hz: 87, label: "Onyx", about: "deep, American", kokoro: "am_onyx", names: ["Daniel", "Google UK English Male", "Microsoft Guy", "Microsoft David", "Rishi", "Fred"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.75, rate: 0.95 } },
+  { id: "steady", hz: 117, label: "Michael", about: "steady, American", kokoro: "am_michael", names: ["Alex", "Tom", "Microsoft Guy", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 1 } },
+  { id: "firm", hz: 136, label: "Fenrir", about: "firm, American", kokoro: "am_fenrir", names: ["Aaron", "Microsoft Davis", "Microsoft David"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.95, rate: 1.02 } },
+  { id: "quick", hz: 113, label: "Puck", about: "playful and quick, American", kokoro: "am_puck", names: ["Rishi", "Reed (English (United States))", "Microsoft Mark", "Google US English"], lang: "en-US", pitch: 1, rate: 1.15, device: { pitch: 1.05, rate: 1.25 } },
+  { id: "story", hz: 113, label: "Fable", about: "a storyteller, British", kokoro: "bm_fable", names: ["Moira", "Daniel", "Google UK English Female", "Microsoft Libby", "Microsoft Hazel"], lang: "en-GB", pitch: 1, rate: 0.95, device: { pitch: 0.95, rate: 0.88 } },
+  { id: "george", hz: 144, label: "George", about: "low, British", kokoro: "bm_george", names: ["Arthur", "Daniel", "Google UK English Male", "Microsoft Ryan"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 0.98 } },
+  { id: "grand", hz: 88, label: "Lewis", about: "deep and slow, British", kokoro: "bm_lewis", names: ["Grandpa (English (United Kingdom))", "Grandpa (English (United States))", "Microsoft George", "Daniel"], lang: "en-GB", pitch: 1, rate: 0.88, device: { pitch: 0.7, rate: 0.85 } },
+  { id: "jolly", hz: 163, label: "Santa", about: "jolly and animated", kokoro: "am_santa", names: ["Ralph", "Fred", "Microsoft David"], lang: "en-US", pitch: 1, rate: 0.95, device: { pitch: 0.85, rate: 0.95 } },
+  { id: "aoede", hz: 172, label: "Aoede", about: "gentle, American", kokoro: "af_aoede", names: ["Allison", "Microsoft Jenny", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1.1, rate: 0.97 } },
+  { id: "river", hz: 177, label: "River", about: "calm and even, American", kokoro: "af_river", names: ["Ava", "Microsoft Aria", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1.05, rate: 0.95 } },
+  { id: "nova", hz: 160, label: "Nova", about: "middling, American", kokoro: "af_nova", names: ["Zoe", "Microsoft Michelle", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1, rate: 1 } },
+  { id: "alloy", hz: 140, label: "Alloy", about: "low and level, American", kokoro: "af_alloy", names: ["Susan", "Microsoft Aria", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 1 } },
+  { id: "alice", hz: 230, label: "Alice", about: "high and lively, British", kokoro: "bf_alice", names: ["Kate", "Google UK English Female", "Microsoft Sonia"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 1.3, rate: 1.02 } },
+  { id: "eric", hz: 151, label: "Eric", about: "light, American", kokoro: "am_eric", names: ["Tom", "Microsoft Andrew", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1, rate: 1 } },
+  { id: "liam", hz: 117, label: "Liam", about: "brisk, American", kokoro: "am_liam", names: ["Evan", "Microsoft Brian", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 1.08 } },
+  { id: "adam", hz: 115, label: "Adam", about: "flat, American", kokoro: "am_adam", names: ["Alex", "Microsoft Guy", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.85, rate: 1 } },
+  { id: "daniel", hz: 125, label: "Daniel", about: "plain, British", kokoro: "bm_daniel", names: ["Daniel", "Google UK English Male", "Microsoft Ryan"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 1 } },
   { id: "tiny", label: "Tiny", about: "small and squeaky", kokoro: "af_jessica", names: ["Junior", "Flo (English (United States))", "Microsoft Ana", "Google US English"], lang: "en-US", pitch: 1.45, rate: 1.1, device: { pitch: 1.65, rate: 1.15 } },
   { id: "robot", label: "Robot", about: "a robot", kokoro: "am_echo", names: ["Trinoids", "Zarvox", "Fred", "Microsoft David"], lang: "en-US", pitch: 0.8, rate: 1, device: { pitch: 0.4, rate: 1 }, robot: true },
   { id: "whisper", label: "Whisper", about: "hushed", kokoro: "af_nicole", names: ["Whisper", "Microsoft Zira"], lang: "en-US", pitch: 1, rate: 0.95, device: { pitch: 1.1, rate: 0.9 }, hushed: true },
   { id: "silent", label: "Silent", about: "not spoken", kokoro: "", names: [], lang: "", pitch: 1, rate: 1, device: { pitch: 1, rate: 1 } },
-] as const satisfies readonly (Choice & { about: string; kokoro: string; names: readonly string[]; lang: string; pitch: number; rate: number; device: { pitch: number; rate: number }; robot?: true; hushed?: true })[];
+] as const satisfies readonly (Choice & { hz?: number; about: string; kokoro: string; names: readonly string[]; lang: string; pitch: number; rate: number; device: { pitch: number; rate: number }; robot?: true; hushed?: true })[];
 export type VoiceChoice = (typeof VOICES)[number];
+// to choose from: the natural voices highest first, then the characters
+export const VOICES_IN_ORDER = [...VOICES].sort((a, b) => ("hz" in b ? b.hz : -1) - ("hz" in a ? a.hz : -1));
 export const voiceOf = (id: unknown): VoiceChoice => VOICES.find((v) => v.id === id) ?? VOICES[0];
 
 // ---- moments ----
@@ -204,7 +216,7 @@ export const PARTS = {
   // another voice mixed into theirs (natural voices only: each is a set of
   // numbers, and two can be mixed into one between them), as much as the
   // voiceBlend slider says
-  blend: [{ id: "none", label: "None" }, ...VOICES.filter((v) => v.kokoro && v.id !== "robot").map(({ id, label }) => ({ id, label }))],
+  blend: [{ id: "none", label: "None" }, ...[...VOICES].filter((v) => "hz" in v).sort((a, b) => ("hz" in b ? b.hz : 0) - ("hz" in a ? a.hz : 0)).map(({ id, label }) => ({ id, label }))],
   // what they're wearing below the head, which shows with their arms
   top: [
     { id: "tee", label: "T-shirt" },
