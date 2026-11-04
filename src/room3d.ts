@@ -48,6 +48,7 @@ type Room = {
   camera: T;
   post: Post | null;
   dust: T; // the specks in the sunlight, turning as time goes
+  fairy: T; // the lights along the rail, twinkling
   seats: Seat[];
   // the camera as drawn: where it stands and looks, eased towards the shot
   eye: { at: number[]; look: number[] } | null;
@@ -326,7 +327,7 @@ function kit(THREE: T, scene: T, merge: (g: T[]) => T): Kit & { done: (shadows: 
 
 const mat = (THREE: T, color: number | string, rough = 0.7, extra: Record<string, unknown> = {}): T => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, ...extra });
 
-function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lamp: T; sun: T; dust: T } {
+function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lamp: T; sun: T; dust: T; fairy: T } {
   scene.background = new THREE.Color(0x141824);
   scene.fog = new THREE.Fog(0x141824, 46, 90);
   // light from above and below: warm from the ceiling, cool off the floor
@@ -483,6 +484,43 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
   dust.frustumCulled = false;
   dust.renderOrder = 3;
   scene.add(dust);
+  // a string of warm lights hung in swags from the curtain rod, across the
+  // top of the window, each bulb twinkling in its own time (one draw for
+  // the bulbs, one for the wire)
+  const bulbs: number[] = [];
+  const wire: number[] = [];
+  const railY = win.y + win.h / 2 + 1.3;
+  const swags = 4;
+  const span = (win.w + 6) / swags;
+  for (let i = 0; i < swags; i++) {
+    const x0 = win.x - win.w / 2 - 3 + i * span;
+    for (let j = 0; j <= 24; j++) {
+      const t = j / 24;
+      const x = x0 + t * span;
+      const y = railY - Math.sin(t * Math.PI) * 1.5;
+      wire.push(x, y, backZ + 1.6);
+      if (j > 0 && j < 24) wire.push(x, y, backZ + 1.6);
+      if (j % 3 === 1) bulbs.push(x, y - 0.2, backZ + 1.7);
+    }
+  }
+  const wireGeo = new THREE.BufferGeometry();
+  wireGeo.setAttribute("position", new THREE.Float32BufferAttribute(wire, 3));
+  scene.add(new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x1c1a17 })));
+  const bulbGeo = new THREE.BufferGeometry();
+  bulbGeo.setAttribute("position", new THREE.Float32BufferAttribute(bulbs, 3));
+  const fairy = new THREE.Points(bulbGeo, new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, size: { value: 1 } },
+    // (bright past 1, so the glow takes them; each its own warm tint)
+    vertexShader: "uniform float time; uniform float size; varying float vOn; varying vec3 vTint; void main() { float s = fract(sin(dot(position.xy, vec2(12.9898, 78.233))) * 43758.5453); vOn = 0.65 + 0.35 * sin(time * (0.7 + s * 0.9) + s * 40.0); vTint = mix(vec3(1.0, 0.72, 0.38), vec3(1.0, 0.86, 0.6), s); vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = size * 900.0 / -mv.z; gl_Position = projectionMatrix * mv; }",
+    fragmentShader: "varying float vOn; varying vec3 vTint; void main() { float d = length(gl_PointCoord - 0.5); float core = smoothstep(0.09, 0.03, d); float halo = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(vTint * (core * 3.0 + pow(halo, 3.0) * 0.55) * vOn, 1.0); }",
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    toneMapped: false,
+  }));
+  fairy.renderOrder = 3;
+  scene.add(fairy);
   // pictures on the wall, framed
   const darkWood = mat(THREE, 0x3a2a1f, 0.5);
   for (const [x, y, w, h, paint] of [[13, 15, 6, 4.4, print], [19.5, 16.2, 3.2, 4.2, lines]] as const) {
@@ -603,7 +641,7 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
     scene.add(b);
   }
   k.done(new Set([wood, velvet, leafA, leafB, terracotta, tableWood, darkWood, brass, ...books]));
-  return { lamp, sun, dust };
+  return { lamp, sun, dust, fairy };
 }
 
 // A chair for a seat: a soft, rounded armchair, in a colour from a few, on
@@ -838,8 +876,10 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.renderer.shadowMap.needsUpdate = true;
   }
   // (still, with reduced motion)
-  if (!still.matches) r.dust.material.uniforms.time.value = now / 1000;
-  r.dust.material.uniforms.size.value = r.renderer.getPixelRatio();
+  for (const m of [r.dust.material, r.fairy.material]) {
+    if (!still.matches) m.uniforms.time.value = now / 1000;
+    m.uniforms.size.value = r.renderer.getPixelRatio();
+  }
   if (r.post && r.quality > 0) {
     r.post.finish.uniforms.time.value = (now % 1000) / 10;
     r.post.composer.render(dt);
@@ -1120,7 +1160,7 @@ export const overHead = (slot: HTMLElement): HTMLElement | null => room?.labels.
 // keep its own copy of every head on the GPU for as long as the page is
 // open (three.js keeps a renderer alive while anything it drew is), so each
 // visit to the room would add one.
-let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post" | "dust"> | null = null;
+let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post" | "dust" | "fairy"> | null = null;
 let roundedBox: T = null;
 // phones and small screens start plain (and work up if they keep up easily)
 const startQuality = (): Quality => (matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 600 ? 0 : 1);
@@ -1174,10 +1214,10 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
       scene.environmentIntensity = 0.4;
       pmrem.dispose();
-      const { dust } = furnish(THREE, scene, mergeGeometries, RoundedBoxGeometry);
+      const { dust, fairy } = furnish(THREE, scene, mergeGeometries, RoundedBoxGeometry);
       const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 140);
       const post = await postFor(THREE, renderer, scene, camera);
-      kept = { THREE, renderer, scene, camera, canvas, post, dust };
+      kept = { THREE, renderer, scene, camera, canvas, post, dust, fairy };
       seatsKept = [];
     }
     room = {
