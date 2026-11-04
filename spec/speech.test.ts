@@ -121,6 +121,14 @@ describe("speaking a phrase in a natural voice", () => {
     expect(naturalPlan([plain(""), plain(" ")], look)).toBeNull();
   });
 
+  it("ends a phrase asking when its last word rose, and with force when it was loud, unless it says how it ends already", () => {
+    const end = (w: Spoken) => naturalPlan([plain("you are coming"), w], look)!.words.at(-1);
+    expect(end({ text: "tonight", loud: 0, pitch: 0, stretch: 0, rise: 5 })).toBe("tonight?");
+    expect(end({ text: "tonight", loud: 9, pitch: 0, stretch: 0 })).toBe("tonight!");
+    expect(end({ text: "tonight.", loud: 0, pitch: 0, stretch: 0, rise: 5 })).toBe("tonight.");
+    expect(end({ text: "tonight", loud: 0, pitch: 0, stretch: 0, rise: 1 })).toBe("tonight");
+  });
+
   it("raises or lowers a voice without speeding it up or slowing it down, within what the model says well", () => {
     for (const voicePitch of [-1, 0, 1]) {
       const plan = naturalPlan([plain("hello")], { voice: "warm", tune: { voicePitch } })!;

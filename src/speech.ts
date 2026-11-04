@@ -28,12 +28,15 @@ import type { Build, FromKokoro, Phrase as KokoroPhrase, ToKokoro } from "./koko
 
 // a word as it comes in a phrase: the word, and how it was said (dB louder
 // than their usual, semitones higher, how drawn out), and any effect on it
-export type Spoken = { text: string; loud: number; pitch: number; stretch: number; effect?: string | null };
+// (and how far its pitch moved through it, semitones: a phrase's last word
+// rising is a question asked, whether or not it was heard with a "?")
+export type Spoken = { text: string; loud: number; pitch: number; stretch: number; rise?: number; effect?: string | null };
 
 // how much of how it was said to put into how it's spoken: all of it is too
 // much (a word said four semitones up, spoken a whole four up, sounds silly)
 const PITCH_SHARE = 0.5;
 const STANDS_OUT = { loud: 5, pitch: 3, stretch: 0.8 };
+const RISES = 3; // semitones up through a last word: asked
 const MOST_RUN = 6; // words spoken together
 const MOST_WAITING = 3; // phrases: more than this behind, the oldest goes
 
@@ -158,7 +161,14 @@ export function naturalPlan(words: Spoken[], look: Voiced): NaturalPlan | null {
   const other = look.blend && look.blend !== "none" ? voiceOf(look.blend).kokoro : "";
   const mix = round2(((tuned(look, "voiceBlend") + 1) / 2) * 0.5);
   const blend = other && other !== v.kokoro && mix > 0 ? { voice: other, mix } : undefined;
-  return { words: said.map((w) => w.text), speed: round2(speed), play: round2(play), volume, shapes, ...(blend ? { blend } : {}) };
+  // how the phrase ends, for the model to read: rising, asked; loud, said with force
+  const out = said.map((w) => w.text);
+  const last = said.at(-1)!;
+  if (!/[.!?…]["')\]]*$/.test(last.text)) {
+    if ((last.rise ?? 0) >= RISES) out[out.length - 1] += "?";
+    else if (last.loud >= STANDS_OUT.loud * 1.4) out[out.length - 1] += "!";
+  }
+  return { words: out, speed: round2(speed), play: round2(play), volume, shapes, ...(blend ? { blend } : {}) };
 }
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 

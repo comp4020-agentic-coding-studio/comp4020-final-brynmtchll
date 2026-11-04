@@ -23,7 +23,7 @@ const heardAloud = document.getElementById("heard") as HTMLElement;
 
 // ---- the stage: each person's words, one at a time, in their spot ----
 
-type StageWord = { html: string; t: number; d: number; gap: number; say?: [number, number, number] };
+type StageWord = { html: string; t: number; d: number; gap: number; say?: [number, number, number, number?] };
 type Phrase = { id: number; name: string; hue: number; look?: Look; text: string; at: number; words: StageWord[]; reactions?: Record<number, Record<string, number>>; typed?: true };
 
 // Each word appears when it was said, but stays up at least SHORTEST_WORD so
@@ -299,8 +299,8 @@ function spokenOf(p: Phrase): Spoken[] {
     // (a drawn-out word's extra letters are for the eye)
     for (const held of scratch.querySelectorAll(".held")) held.remove();
     const fx = scratch.querySelector<HTMLElement>(".w")?.className.match(/fx-(\w+)/)?.[1] ?? null;
-    const [loud, pitch, stretch] = w.say ?? [0, 0, 0];
-    return { text: scratch.textContent ?? "", loud, pitch, stretch, effect: fx };
+    const [loud, pitch, stretch, rise = 0] = w.say ?? [0, 0, 0];
+    return { text: scratch.textContent ?? "", loud, pitch, stretch, rise, effect: fx };
   });
 }
 
@@ -1034,7 +1034,7 @@ if (typeBox) {
     const n = (id: string): number => Number((typeBox.elements.namedItem(`tune.${id}`) as HTMLInputElement).value) || 0;
     return { ...mine, voice: v, tune: { ...(mine.tune ?? {}), voicePitch: n("voicePitch"), voiceSpeed: n("voiceSpeed") } } as Voiced;
   };
-  const spoken = (words: Word[]): Spoken[] => words.map((w) => ({ text: w.w, loud: w.loud, pitch: w.pitch ?? 0, stretch: w.stretch, effect: w.effect ?? null }));
+  const spoken = (words: Word[]): Spoken[] => words.map((w) => ({ text: w.w, loud: w.loud, pitch: w.pitch ?? 0, stretch: w.stretch, rise: w.rise, effect: w.effect ?? null }));
   input.addEventListener("input", () => (send.disabled = !input.value.trim()));
   typeBox.addEventListener("submit", (e) => {
     e.preventDefault();

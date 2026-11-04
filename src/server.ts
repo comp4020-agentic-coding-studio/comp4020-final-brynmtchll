@@ -296,7 +296,7 @@ const event = (m: Message, draft?: number): string =>
       d: tenths(w.end - w.start),
       gap: tenths((m.words[i + 1]?.start ?? w.end) - w.end),
       // how it was said, for speaking it: as the word's drawing already says
-      say: [Math.round(w.loud), Math.round(w.pitch ?? 0), tenths(w.stretch)],
+      say: [Math.round(w.loud), Math.round(w.pitch ?? 0), tenths(w.stretch), Math.round(w.rise)],
     })),
   })}\n\n`;
 
