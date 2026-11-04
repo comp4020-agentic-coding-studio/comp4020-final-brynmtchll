@@ -715,7 +715,7 @@ function chair(THREE: T, i: number, RoundedBox: T): T {
 // A glow round what's brightest (bloom), then tone mapping, a little
 // darkening at the edges, and a little noise so the dark gradients don't
 // band.
-type Post = { composer: T; bloom: T; ao: T; finish: T; setSize: (w: number, h: number) => void };
+type Post = { composer: T; bloom: T; ao: T; focus: T; finish: T; setSize: (w: number, h: number) => void };
 async function postFor(THREE: T, renderer: T, scene: T, camera: T): Promise<Post | null> {
   try {
     const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { ShaderPass }, { GTAOPass }] = await Promise.all([
@@ -758,6 +758,45 @@ async function postFor(THREE: T, renderer: T, scene: T, camera: T): Promise<Post
     const aoSize = ao.setSize.bind(ao);
     ao.setSize = (w: number, h: number) => aoSize(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
     composer.addPass(ao);
+    // in close on someone (the speaker view), what's nearer and further than
+    // them a little soft, as a lens focused on them has it: blurred by how
+    // far each pixel is from that distance, read from the depth the shading
+    // above already drew (so it's only there when that is)
+    const focus = new ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null }, tDepth: { value: null }, near: { value: 0.5 }, far: { value: 140 },
+        at: { value: 12 }, depth: { value: 6 }, most: { value: 0 }, texel: { value: new THREE.Vector2(1, 1) },
+      },
+      vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: `
+        uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform float near; uniform float far;
+        uniform float at; uniform float depth; uniform float most; uniform vec2 texel;
+        varying vec2 vUv;
+        float dist(vec2 uv) { float z = texture2D(tDepth, uv).x * 2.0 - 1.0; return 2.0 * near * far / (far + near - z * (far - near)); }
+        // how blurred, in pixels, at a distance (nothing within the
+        // focused depth, then more, to at most most; less for what's
+        // nearer, which is only ever the table's things and the edge of
+        // the front row, than for the room behind)
+        float blur(float d) { float off = d - at; return most * (off < 0.0 ? 0.5 : 1.0) * smoothstep(0.0, 1.0, (abs(off) - depth * 0.5) / (depth * 1.5)); }
+        void main() {
+          vec4 c = texture2D(tDiffuse, vUv);
+          float r = blur(dist(vUv));
+          if (r < 0.3) { gl_FragColor = c; return; }
+          // a disc of taps, each kept only as far as its own blur reaches
+          // (so a sharp face doesn't bleed into the soft room behind it)
+          vec4 sum = c; float n = 1.0;
+          for (int i = 0; i < 16; i++) {
+            float a = float(i) * 2.39996;
+            float k = sqrt((float(i) + 0.5) / 16.0);
+            vec2 o = vec2(cos(a), sin(a)) * k * r * texel;
+            float w = smoothstep(0.0, 1.0, blur(dist(vUv + o)) / max(0.001, k * r));
+            sum += texture2D(tDiffuse, vUv + o) * w; n += w;
+          }
+          gl_FragColor = sum / n;
+        }`,
+    });
+    focus.enabled = false;
+    composer.addPass(focus);
     const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.5, 1.6);
     composer.addPass(bloom);
     const finish = new ShaderPass({
@@ -785,7 +824,13 @@ async function postFor(THREE: T, renderer: T, scene: T, camera: T): Promise<Post
     // (the renderer's own tone mapping is the finish's job now)
     finish.material.toneMapped = false;
     composer.addPass(finish);
-    return { composer, bloom, ao, finish, setSize: (w, h) => composer.setSize(w, h) };
+    return {
+      composer, bloom, ao, focus, finish,
+      setSize: (w, h) => {
+        composer.setSize(w, h);
+        focus.uniforms.texel.value.set(1 / Math.max(1, w), 1 / Math.max(1, h));
+      },
+    };
   } catch (err) {
     console.warn("room: drawing it plainly", err);
     return null;
@@ -960,6 +1005,14 @@ function draw(heads: RoomHead[], THREE: T): void {
   if (r.post && r.quality > 0) {
     r.post.finish.uniforms.time.value = (now % 1000) / 10;
     r.post.ao.enabled = r.quality > 1;
+    // (focused on whoever the speaker view is on, where it's looking, and
+    // coming in and out of focus as the view changes)
+    const f = r.post.focus.uniforms;
+    const soft = r.view === "speaker" && r.quality > 1 ? 6 * r.renderer.getPixelRatio() : 0;
+    f.most.value += (soft - f.most.value) * (still.matches ? 1 : 1 - Math.exp(-4 * dt));
+    f.at.value = Math.hypot(shot.at[0] - shot.look[0], shot.at[1] - shot.look[1], shot.at[2] - shot.look[2]);
+    f.tDepth.value = r.post.ao.depthTexture;
+    r.post.focus.enabled = r.post.ao.enabled && f.most.value > 0.3;
     r.post.composer.render(dt);
   } else r.renderer.render(r.scene, r.camera);
   // (the scene comes up once there's something drawn in it: style.css)
