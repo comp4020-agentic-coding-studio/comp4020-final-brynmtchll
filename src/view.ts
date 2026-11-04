@@ -189,7 +189,7 @@ export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: 
     `${APP}: your avatar`,
     `<main class="studio">
   <h1 class="visually-hidden">Your avatar</h1>
-  <section class="stage-3d" aria-label="Preview">
+  <section class="stage-3d" aria-label="Preview" style="--hue:${hue}">
     <div class="preview spot mine" data-name="${esc(me.name)}" style="--hue:${hue}" data-words="${st.id}" data-font="${st.font}" data-look="${esc(JSON.stringify(look))}">
       <span class="spot-avatar preview-head">${avatarSvg(look, REST, `${me.name}'s avatar`)}</span>
       <p class="preview-name"><span class="who">${esc(me.name)}</span></p>
