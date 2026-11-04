@@ -299,6 +299,9 @@ main.room {
 /* (on a phone, shorter: your controls are under it, and a screen's worth of
    empty card pushes them out of reach) */
 @media (max-width: 600px) { .mine-card .spot { --card-h: min(320px, 42vh); padding: 16px 18px 0 20px; } }
+/* (and until you've said something, only as tall as your head and name:
+   an empty card above the controls is just a gap) */
+@media (max-width: 600px) { .mine-card .spot:not(:has(.bubble)) { --card-h: 168px; } }
 .mine-card .spot-avatar { width: 88px; height: 88px; }
 .mine-card .spot-name { font-size: 1.0625rem; }
 .mine-card .spot-word { margin-top: 14px; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
@@ -552,26 +555,48 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 
 /* ---- the brief record of what's been said lately ---- */
 
-.record-wrap { padding: 14px 18px; }
-.record-wrap summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.record-wrap { padding: 14px 20px; transition: background-color 0.2s; }
+.record-wrap summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; margin: -14px -20px; padding: 14px 20px; border-radius: var(--radius); }
+.record-wrap summary:hover h2 { color: var(--ink); }
 .record-wrap summary::-webkit-details-marker { display: none; }
-.record-wrap summary::after { content: "▸"; color: var(--muted); transition: rotate 0.2s; }
+.record-wrap summary::after { content: "▸"; color: var(--muted); transition: rotate 0.2s var(--ease); }
 .record-wrap[open] summary::after { rotate: 90deg; }
-.record { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; font-size: 0.9375rem; }
-.record li { --person: oklch(var(--person-l) var(--person-c) var(--hue)); }
-.record strong { color: var(--person); margin-right: 6px; }
-.record time { color: var(--faint); font-size: 0.8125rem; margin-left: 6px; }
+.record-wrap[open] summary { margin-bottom: 0; }
+/* a timeline: a mark in their colour, their name in a column, what they
+   said, and when, at the end of the line */
+.record { list-style: none; margin: 8px 0 2px; padding: 0; display: grid; gap: 2px; font-size: 0.9375rem; max-height: 22rem; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.record li { --person: oklch(var(--person-l) var(--person-c) var(--hue)); display: grid; grid-template-columns: minmax(6rem, 10rem) minmax(0, max-content) auto; justify-content: start; align-items: baseline; gap: 12px; padding: 6px 10px 6px 14px; border-radius: 10px; position: relative; animation: card-in 0.4s var(--ease) both; }
+.record li::before { content: ""; position: absolute; left: 2px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--person); opacity: 0.7; }
+.record li:hover { background: color-mix(in oklab, var(--surface-2) 70%, transparent); }
+.record strong { color: var(--person); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.record .said-text { color: color-mix(in oklab, var(--ink) 90%, var(--muted)); overflow-wrap: anywhere; }
+.record time { color: var(--faint); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 600px) {
+  .record li { grid-template-columns: minmax(0, 1fr) auto; justify-content: stretch; row-gap: 0; }
+  .record .said-text { grid-column: 1 / -1; grid-row: 2; }
+}
 
 /* ---- how it works, behind a "?" in the header ---- */
 
 .top nav { align-items: center; }
 .help { position: relative; }
-.help summary { list-style: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); font-weight: 700; font-size: 0.875rem; cursor: pointer; }
+.help summary { list-style: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); font-weight: 700; font-size: 0.875rem; cursor: pointer; transition: color 0.15s, border-color 0.15s, background-color 0.15s, transform 0.15s; }
+.help summary:hover { color: var(--ink); border-color: var(--faint); }
+.help summary:active { transform: scale(0.94); }
 .help summary::-webkit-details-marker { display: none; }
-.help[open] summary { color: var(--ink); border-color: var(--faint); }
-.help-body { position: absolute; right: 0; top: 42px; z-index: 20; width: min(360px, calc(100vw - 32px)); padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); font-size: 0.9375rem; color: var(--ink); }
-.help-body p { margin: 0 0 10px; }
-.help-body p:last-child { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.help[open] summary { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+/* a panel of glass under the "?", each paragraph a step with its own mark */
+.help-body { position: absolute; right: 0; top: 44px; z-index: 20; width: min(400px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px; display: grid; gap: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow), 0 24px 60px -20px rgb(0 0 0 / 0.55); font-size: 0.875rem; line-height: 1.55; color: var(--ink); transform-origin: calc(100% - 17px) -8px; animation: pop-in 0.22s var(--ease) both; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+@keyframes pop-in { from { opacity: 0; scale: 0.96; translate: 0 -4px; } }
+.help-body p { margin: 0; padding-left: 30px; position: relative; color: color-mix(in oklab, var(--ink) 85%, var(--muted)); }
+.help-body p::before { position: absolute; left: 0; top: 0; width: 22px; text-align: center; font-size: 0.9375rem; }
+.help-body p:nth-child(1)::before { content: "🎙️" / ""; }
+.help-body p:nth-child(2)::before { content: "✏️" / ""; }
+.help-body p:nth-child(3)::before { content: "🙂" / ""; }
+.help-body p:nth-child(4)::before { content: "✋" / ""; }
+.help-body p:nth-child(5)::before { content: "🔊" / ""; }
+.help-body p:nth-child(6)::before { content: "⌨️" / ""; }
+.help-body kbd { font-size: 0.6875rem; padding: 0 5px; }
 
 /* ---- how each word was said ----
 
@@ -648,17 +673,31 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 /* the effect buttons show what they do */
 .fx-button .w { font-size: inherit; transform: none; opacity: 1; margin: 0; display: inline; }
 @media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .talk.recording .dot, .caret, .bubble.draft, .phrase.settled, .spot, .spot.speaking, .queue, .room3d, .hero-words .w, .room-hint { animation: none; }
+  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .talk.recording .dot, .caret, .bubble.draft, .phrase.settled, .spot, .spot.speaking, .queue, .room3d, .hero-words .w, .room-hint, .help-body { animation: none; }
 }
 
 /* ---- the README page ---- */
 
-main.prose { max-width: 70ch; margin: 0 auto; padding: 8px 20px 48px; }
-.prose h1 { font-size: 2.25rem; letter-spacing: -0.03em; line-height: 1.1; }
-.prose h2 { font-size: 1.25rem; letter-spacing: -0.01em; text-transform: none; color: var(--ink); margin: 2em 0 0.5em; }
-.prose img { max-width: 100%; }
-.prose blockquote { margin: 1em 0; padding: 10px 16px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 12px 12px 0; color: var(--muted); }
-.prose code { font: 0.875em ui-monospace, Menlo, monospace; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size: 1.0625rem; line-height: 1.7; color: color-mix(in oklab, var(--ink) 88%, var(--muted)); }
+/* the name, big and in the display face, with the line under it as a lede */
+.prose h1 { font-family: var(--display); font-size: clamp(3rem, 2rem + 4vw, 4.5rem); font-weight: 780; letter-spacing: -0.045em; line-height: 1; margin: 0.4em 0 0.25em; color: var(--ink); }
+.prose h1 + p { font-size: clamp(1.25rem, 1rem + 0.8vw, 1.5rem); line-height: 1.45; letter-spacing: -0.01em; color: var(--ink); margin: 0 0 1.4em; text-wrap: balance; }
+.prose h2 { font-family: var(--display); font-size: 1.625rem; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; text-transform: none; color: var(--ink); margin: 2.4em 0 0.6em; padding-top: 1.2em; border-top: 1px solid var(--line); }
+.prose h3 { font-size: 1.125rem; letter-spacing: -0.01em; color: var(--ink); margin: 1.8em 0 0.4em; }
+.prose p, .prose ul, .prose ol { margin: 0 0 1em; }
+.prose ul, .prose ol { padding-left: 1.25em; }
+.prose li { margin: 0 0 0.55em; padding-left: 0.2em; }
+.prose li::marker { color: var(--accent); }
+.prose strong { color: var(--ink); font-weight: 650; }
+.prose a { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 3px; transition: text-decoration-color 0.15s; }
+.prose a:hover { text-decoration-color: var(--accent); }
+.prose img { max-width: 100%; border-radius: 12px; }
+.prose blockquote { margin: 1.2em 0; padding: 14px 18px; border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--surface); border-radius: 4px 14px 14px 4px; color: var(--muted); font-size: 0.9375rem; line-height: 1.6; }
+.prose blockquote p { margin: 0; }
+.prose code { font: 0.85em ui-monospace, "SF Mono", Menlo, monospace; background: var(--surface-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; color: var(--ink); }
+.prose pre { overflow-x: auto; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.prose pre code { background: none; border: 0; padding: 0; }
+.prose hr { border: 0; border-top: 1px solid var(--line); margin: 2.4em 0; }
 
 /* ---- emotes and reactions ---- */
 
