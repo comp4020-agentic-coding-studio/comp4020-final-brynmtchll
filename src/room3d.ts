@@ -47,6 +47,7 @@ type Room = {
   scene: T;
   camera: T;
   post: Post | null;
+  dust: T; // the specks in the sunlight, turning as time goes
   seats: Seat[];
   // the camera as drawn: where it stands and looks, eased towards the shot
   eye: { at: number[]; look: number[] } | null;
@@ -325,7 +326,7 @@ function kit(THREE: T, scene: T, merge: (g: T[]) => T): Kit & { done: (shadows: 
 
 const mat = (THREE: T, color: number | string, rough = 0.7, extra: Record<string, unknown> = {}): T => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, ...extra });
 
-function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lamp: T; sun: T } {
+function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lamp: T; sun: T; dust: T } {
   scene.background = new THREE.Color(0x141824);
   scene.fog = new THREE.Fog(0x141824, 46, 90);
   // light from above and below: warm from the ceiling, cool off the floor
@@ -425,6 +426,63 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
     k.add(g, curtain, [win.x + side * (win.w / 2 + 2.4), win.y - 1.2, backZ + 1.2]);
   }
   k.add(new THREE.CylinderGeometry(0.12, 0.12, win.w + 10, 10), mat(THREE, 0x2b2f3a, 0.35, { metalness: 0.6 }), [win.x, win.y + win.h / 2 + 1.4, backZ + 1.2], [0, 0, Math.PI / 2]);
+  // the sun coming in: shafts of light from each pane down towards the
+  // floor, faint, brightest at the window and fading as they go, and dust
+  // turning slowly in them (drawn added onto what's behind, so they only
+  // ever lighten, and never hide anyone)
+  const shaftMat = new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(0xffc68a) }, strength: { value: 0.09 } },
+    vertexShader: "varying float vAlong; varying vec3 vNormal; varying vec3 vView; void main() { vAlong = uv.y; vec4 mv = modelViewMatrix * vec4(position, 1.0); vNormal = normalize(normalMatrix * normal); vView = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
+    // (along it, from the window (v=1) to the floor (v=0), fading; and
+    // brightest where it's seen through its middle, nothing at its rim, so
+    // it reads as a soft column of light, not as a shape)
+    fragmentShader: "uniform vec3 color; uniform float strength; varying float vAlong; varying vec3 vNormal; varying vec3 vView; void main() { float along = smoothstep(0.0, 0.85, vAlong) * smoothstep(1.0, 0.94, vAlong); float face = abs(dot(normalize(vNormal), normalize(vView))); gl_FragColor = vec4(color * strength * along * pow(face, 2.5), 1.0); }",
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+    fog: false,
+    toneMapped: false,
+  });
+  // the way the sun's light goes, from the window into the room and down
+  const toward = new THREE.Vector3().subVectors(sun.target.position, sun.position).normalize();
+  for (const [px, py] of [[-0.25, 0.25], [0.25, 0.25], [-0.25, -0.2], [0.25, -0.2]] as const) {
+    // (round, a pane's worth wide where it comes in, wider where it lands)
+    const len = 30;
+    const g = new THREE.CylinderGeometry(2.6, 3.8, len, 24, 1, true);
+    g.translate(0, -len / 2, 0);
+    const m = new THREE.Mesh(g, shaftMat);
+    m.position.set(win.x + px * win.w, win.y + py * win.h, backZ + 0.8);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), toward);
+    m.renderOrder = 2;
+    scene.add(m);
+  }
+  // dust: a few hundred specks drifting in the light (one draw)
+  const specks = 200;
+  const dustAt = new Float32Array(specks * 3);
+  const rnd = seeded(11);
+  for (let i = 0; i < specks; i++) {
+    const t = rnd() * 26;
+    dustAt[i * 3] = win.x + (rnd() - 0.5) * win.w * 0.9 + toward.x * t;
+    dustAt[i * 3 + 1] = win.y + (rnd() - 0.5) * win.h * 0.8 + toward.y * t;
+    dustAt[i * 3 + 2] = backZ + 0.6 + toward.z * t;
+  }
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute("position", new THREE.BufferAttribute(dustAt, 3));
+  const dustMat = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(0xffe2b8) }, size: { value: 1 } },
+    vertexShader: "uniform float time; uniform float size; varying float vFade; void main() { vec3 p = position; float s = fract(sin(dot(position.xy, vec2(12.9898, 78.233))) * 43758.5453); p += vec3(sin(time * 0.13 + s * 40.0), sin(time * 0.09 + s * 25.0) * 0.6, cos(time * 0.11 + s * 31.0)) * 0.9; vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_PointSize = size * (1.0 + s * 1.6) * 60.0 / -mv.z; vFade = (0.25 + 0.75 * (sin(time * (0.4 + s) + s * 6.28) * 0.5 + 0.5)) * smoothstep(60.0, 20.0, -mv.z); gl_Position = projectionMatrix * mv; }",
+    fragmentShader: "uniform vec3 color; varying float vFade; void main() { float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(color * a * a * vFade * 0.42, 1.0); }",
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    toneMapped: false,
+  });
+  const dust = new THREE.Points(dustGeo, dustMat);
+  dust.frustumCulled = false;
+  dust.renderOrder = 3;
+  scene.add(dust);
   // pictures on the wall, framed
   const darkWood = mat(THREE, 0x3a2a1f, 0.5);
   for (const [x, y, w, h, paint] of [[13, 15, 6, 4.4, print], [19.5, 16.2, 3.2, 4.2, lines]] as const) {
@@ -545,7 +603,7 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
     scene.add(b);
   }
   k.done(new Set([wood, velvet, leafA, leafB, terracotta, tableWood, darkWood, brass, ...books]));
-  return { lamp, sun };
+  return { lamp, sun, dust };
 }
 
 // A chair for a seat: a soft, rounded armchair, in a colour from a few, on
@@ -779,6 +837,9 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.shadowFrame = 0;
     r.renderer.shadowMap.needsUpdate = true;
   }
+  // (still, with reduced motion)
+  if (!still.matches) r.dust.material.uniforms.time.value = now / 1000;
+  r.dust.material.uniforms.size.value = r.renderer.getPixelRatio();
   if (r.post && r.quality > 0) {
     r.post.finish.uniforms.time.value = (now % 1000) / 10;
     r.post.composer.render(dt);
@@ -1059,7 +1120,7 @@ export const overHead = (slot: HTMLElement): HTMLElement | null => room?.labels.
 // keep its own copy of every head on the GPU for as long as the page is
 // open (three.js keeps a renderer alive while anything it drew is), so each
 // visit to the room would add one.
-let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post"> | null = null;
+let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post" | "dust"> | null = null;
 let roundedBox: T = null;
 // phones and small screens start plain (and work up if they keep up easily)
 const startQuality = (): Quality => (matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 600 ? 0 : 1);
@@ -1113,10 +1174,10 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
       scene.environmentIntensity = 0.4;
       pmrem.dispose();
-      furnish(THREE, scene, mergeGeometries, RoundedBoxGeometry);
+      const { dust } = furnish(THREE, scene, mergeGeometries, RoundedBoxGeometry);
       const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 140);
       const post = await postFor(THREE, renderer, scene, camera);
-      kept = { THREE, renderer, scene, camera, canvas, post };
+      kept = { THREE, renderer, scene, camera, canvas, post, dust };
       seatsKept = [];
     }
     room = {
