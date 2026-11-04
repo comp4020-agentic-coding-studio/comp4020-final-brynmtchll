@@ -706,6 +706,16 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
   .w.fx-sparkle::after { color: #f08c00; }
   .w.fx-glow { animation-name: glow-light; }
 }
+/* (the room is dusk whatever the page is: what's over it keeps the dark
+   page's colours and effects, light on dark) */
+@media (prefers-color-scheme: light) {
+  .room-labels { --person-l: 0.8; --person-c: 0.13; }
+  .room-labels .w.fx-rainbow { background-image: linear-gradient(90deg, #ff5e5e, #ffb84d, #f7e463, #5ee08a, #4db8ff, #a77bff, #ff5e5e); }
+  .room-labels .w.fx-spooky { color: #9cff9c; text-shadow: 0 0.06em 0.12em #0a3d0a, 0 0 0.4em #3cff3c88; }
+  .room-labels .w.fx-sparkle { color: #fff3b0; text-shadow: 0 0 0.25em #ffd84d; }
+  .room-labels .w.fx-sparkle::after { color: #fff; }
+  .room-labels .w.fx-glow { animation-name: glow; }
+}
 @keyframes glow-light {
   from { text-shadow: 0 0 0.12em color-mix(in srgb, var(--person, currentColor) 45%, transparent); }
   to { text-shadow: 0 0 0.3em color-mix(in srgb, var(--person, currentColor) 70%, transparent); }
