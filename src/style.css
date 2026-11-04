@@ -473,6 +473,11 @@ main.room {
   main.in-room .mine-card .spot { --card-h: 240px; padding: 16px 18px 0 20px; }
   main.in-room .mine-card .spot-word { font-size: clamp(1.75rem, 1.2rem + 1.4vw, 2.5rem); }
   main.in-room .room3d { height: min(76vh, 860px); }
+  /* (the narrow side: the emotes as faces alone, two rows of eight, their
+     names on hover) */
+  main.in-room .emotes { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+  main.in-room .emotes button { justify-content: center; padding: 0; aspect-ratio: 1; min-height: 0; }
+  main.in-room .emote-label { display: none; }
 }
 main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .live { margin: 0; font-size: 0.8125rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
