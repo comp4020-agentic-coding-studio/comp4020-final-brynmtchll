@@ -346,6 +346,10 @@ export function words(chunks: Heard[], seconds: number): Timed[] {
       out.push({ w, start: c.timestamp[0], end });
     }
   }
+  // a "You" on its own after a sentence has ended, with nothing after it, is
+  // Whisper's (the live site had "I'm sorry. You", "I'm going to go. You");
+  // nobody ends a phrase on a capitalised, unpunctuated "You" like that
+  if (out.length > 1 && out.at(-1)!.w === "You" && /[.!?]$/.test(out.at(-2)!.w)) out.pop();
   return unloop(out, seconds);
 }
 

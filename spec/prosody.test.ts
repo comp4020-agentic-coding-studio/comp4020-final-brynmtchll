@@ -151,6 +151,15 @@ describe("hearing how a word was said", () => {
     expect(unloop(said(Array.from({ length: 80 }, (_, i) => `w${i}`).join(" ")), 2).length).toBeLessThanOrEqual(14);
   });
 
+  it("drops the lone \"You\" Whisper adds after a sentence, and keeps a you that was said", () => {
+    const chunk = (text: string, at: number) => ({ text: ` ${text}`, timestamp: [at, at + 0.3] as [number, number] });
+    const text = (cs: { text: string; timestamp: [number, number] }[]) => heard(cs, 3).map((w) => w.w).join(" ");
+    expect(text([chunk("I'm", 0), chunk("sorry.", 0.3), chunk("You", 1)])).toBe("I'm sorry.");
+    expect(text([chunk("this", 0), chunk("is", 0.3), chunk("for", 0.6), chunk("you", 0.9)])).toBe("this is for you");
+    expect(text([chunk("Thank", 0), chunk("you.", 0.3)])).toBe("Thank you.");
+    expect(text([chunk("Hey.", 0), chunk("You!", 0.4)])).toBe("Hey. You!");
+  });
+
   it("drops Whisper's usual inventions when there's no voice under them, and keeps them said aloud", () => {
     for (const t of ["Thank you.", "you", "Thanks for watching!", "Mmm-hmm-hmm.", "Hmm."]) expect(invented(t, false), t).toBe(true);
     expect(invented("Thank you.", true)).toBe(false);
