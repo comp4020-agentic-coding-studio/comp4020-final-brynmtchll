@@ -31,7 +31,7 @@
 // the room).
 import { roomView, type RoomHead } from "./head3d.ts";
 import { seatPlaces } from "./seats.ts";
-import { facing, fovFor, held, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type View } from "./camera.ts";
+import { facing, fovFor, held, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type Vec3, type View } from "./camera.ts";
 
 type T = any;
 
@@ -53,8 +53,10 @@ type Room = {
   fairy: T; // the lights along the rail, twinkling
   spot: T; // the light on whoever's talking
   seats: Seat[];
-  // the camera as drawn: where it stands and looks, eased towards the shot
-  eye: { at: number[]; look: number[] } | null;
+  // the camera as drawn: the shot it's framing and how far it's turned
+  // (yaw, pitch, zoom), each sprung towards where it's going, and how fast
+  // each of the nine is moving
+  eye: { at: number[]; look: number[]; turn: number[]; v: number[] } | null;
   view: View;
   turn: Turn; // as the watcher's dragged it
   focus: HTMLElement | null; // who the speaker view is on
@@ -900,15 +902,24 @@ function draw(heads: RoomHead[], THREE: T): void {
   // view's leaning would otherwise loosen it, a little, every time someone
   // spoke)
   if (dragging || r.spin.yaw || r.spin.pitch) r.turn = held(framed, r.turn);
-  const shot = turned(framed, r.turn);
-  r.eye ??= { at: [...shot.at], look: [...shot.look] };
-  const k = still.matches ? 1 : 1 - Math.exp(-(dragging || r.spin.yaw || r.spin.pitch ? 14 : r.view === "follow" ? 2.5 : 3.2) * dt);
-  for (let i = 0; i < 3; i++) {
-    r.eye.at[i] += (shot.at[i] - r.eye.at[i]) * k;
-    r.eye.look[i] += (shot.look[i] - r.eye.look[i]) * k;
+  // (on springs, critically damped: they gather speed and settle, where
+  // easing a share of the way each frame set off at full speed, a jolt
+  // every time the view changed or someone else spoke. The shot and the
+  // turn are sprung apart and turned after, so the camera swings round on
+  // its arc, never across it, through a wall.)
+  const goal = [...framed.at, ...framed.look, r.turn.yaw, r.turn.pitch, r.turn.zoom];
+  r.eye ??= { at: [...framed.at], look: [...framed.look], turn: [r.turn.yaw, r.turn.pitch, r.turn.zoom], v: goal.map(() => 0) };
+  const now9 = [...r.eye.at, ...r.eye.look, ...r.eye.turn];
+  const stiff = r.view === "follow" ? 4 : 5;
+  const byHand = dragging || r.spin.yaw || r.spin.pitch ? 30 : 9;
+  for (let i = 0; i < 9; i++) {
+    if (still.matches) [now9[i], r.eye.v[i]] = [goal[i], 0];
+    else [now9[i], r.eye.v[i]] = sprung(now9[i], r.eye.v[i], goal[i], i < 6 ? stiff : byHand, dt);
   }
-  r.camera.position.set(...r.eye.at);
-  r.camera.lookAt(...r.eye.look);
+  r.eye = { at: now9.slice(0, 3), look: now9.slice(3, 6), turn: now9.slice(6), v: r.eye.v };
+  const shot = turned({ at: r.eye.at as Vec3, look: r.eye.look as Vec3 }, { yaw: now9[6], pitch: now9[7], zoom: now9[8] });
+  r.camera.position.set(...shot.at);
+  r.camera.lookAt(...shot.look);
   r.camera.updateMatrixWorld();
   // the sun's shadows, drawn again only every few frames (they take every
   // head and chair drawn a second time; a head's shadow a frame or two
@@ -1029,6 +1040,16 @@ function adapt(r: Room, dt: number): void {
     else r.quality = 1;
   }
   r.slow = { frames: 0, over: 0, since: t };
+}
+
+// One step of a critically damped spring from `at` (moving at `v`) towards
+// `to`: where it is and how fast it's going after `dt` seconds. (Exact for
+// any step, so a slow frame doesn't overshoot.)
+function sprung(at: number, v: number, to: number, w: number, dt: number): [number, number] {
+  const off = at - to;
+  const e = Math.exp(-w * dt);
+  const k = v + w * off;
+  return [to + (off + k * dt) * e, (v - w * k * dt) * e];
 }
 
 // ---- the camera, by hand ----
