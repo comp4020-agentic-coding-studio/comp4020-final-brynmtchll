@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inside, LEVEL, MOST_YAW, ROOM, shotFor, turned, VIEWS, type Vec3 } from "../src/camera.ts";
+import { held, inside, LEVEL, MOST_YAW, ROOM, shotFor, turned, VIEWS, type Vec3 } from "../src/camera.ts";
 import { seatPlaces } from "../src/seats.ts";
 
 // Where the room's camera goes, checked as numbers: every view, however
@@ -53,6 +53,22 @@ describe("the room's camera", () => {
     for (const yaw of [-5, 5]) {
       const s = turned(shotFor("follow", places, 16 / 9, -1, 2), { ...LEVEL, yaw });
       expect(Math.abs(Math.atan2(s.at[0] - s.look[0], s.at[2] - s.look[2]))).toBeLessThanOrEqual(MOST_YAW + 1e-6);
+    }
+  });
+
+  it("holds a turn to what the shot can show, so dragging back moves it at once", () => {
+    const places = seatPlaces(5, 16 / 9);
+    for (const view of VIEWS) {
+      const shot = shotFor(view, places, 16 / 9, -1, 2);
+      for (const yaw of [-5, 5]) {
+        const t = held(shot, { ...LEVEL, yaw });
+        // as far round as an unheld turn goes...
+        expect(turned(shot, t).at[0]).toBeCloseTo(turned(shot, { ...LEVEL, yaw }).at[0], 6);
+        // ...and a little back from there is a little back on the screen
+        const back = turned(shot, { ...t, yaw: t.yaw - Math.sign(yaw) * 0.05 });
+        expect(Math.abs(back.at[0] - turned(shot, t).at[0])).toBeGreaterThan(0.01);
+      }
+      expect(held(shot, LEVEL)).toEqual(LEVEL);
     }
   });
 

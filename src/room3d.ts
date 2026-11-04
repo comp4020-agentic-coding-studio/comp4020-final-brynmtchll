@@ -30,7 +30,7 @@
 // the room).
 import { roomView, type RoomHead } from "./head3d.ts";
 import { seatPlaces } from "./seats.ts";
-import { fovFor, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Turn, type View } from "./camera.ts";
+import { fovFor, held, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type View } from "./camera.ts";
 
 type T = any;
 
@@ -65,6 +65,10 @@ type Room = {
   quality: Quality;
   pixels: number; // a share of the screen's own pixel ratio
   shadowFrame: number;
+  // how fast it was being turned when let go (per second), so it glides to
+  // a stop rather than stopping dead
+  spin: { yaw: number; pitch: number };
+  framed: Shot | null; // the shot for the view, before it's turned
 };
 
 let room: Room | null = null;
@@ -745,13 +749,22 @@ function draw(heads: RoomHead[], THREE: T): void {
   // the camera: the shot for the view, turned as the watcher has it, eased
   // there (quickly while they drag, gently as the view changes or follows
   // someone)
+  if (!dragging && (r.spin.yaw || r.spin.pitch)) {
+    glide(r, dt);
+  }
   const talking = sitting.findIndex((x) => x.speaking);
   if (talking >= 0) r.focus = sitting[talking].slot;
   let focus = r.focus ? sitting.findIndex((x) => x.slot === r.focus) : -1;
   if (focus < 0) focus = sitting.findIndex((x) => x.mine);
-  const shot = turned(shotFor(r.view, places, r.camera.aspect, talking, focus), r.turn);
+  const framed = shotFor(r.view, places, r.camera.aspect, talking, focus);
+  r.framed = framed;
+  // (what it can show, held to while it's dragged or gliding: the follow
+  // view's leaning would otherwise loosen it, a little, every time someone
+  // spoke)
+  if (dragging || r.spin.yaw || r.spin.pitch) r.turn = held(framed, r.turn);
+  const shot = turned(framed, r.turn);
   r.eye ??= { at: [...shot.at], look: [...shot.look] };
-  const k = still.matches ? 1 : 1 - Math.exp(-(dragging ? 14 : r.view === "follow" ? 2.5 : 3.2) * dt);
+  const k = still.matches ? 1 : 1 - Math.exp(-(dragging || r.spin.yaw || r.spin.pitch ? 14 : r.view === "follow" ? 2.5 : 3.2) * dt);
   for (let i = 0; i < 3; i++) {
     r.eye.at[i] += (shot.at[i] - r.eye.at[i]) * k;
     r.eye.look[i] += (shot.look[i] - r.eye.look[i]) * k;
@@ -875,6 +888,22 @@ function adapt(r: Room, dt: number): void {
 
 // ---- the camera, by hand ----
 
+// a turn, turned further (within how far it can go)
+const turnedFrom = (r: Room, yaw: number, pitch: number): Turn => {
+  const t = { ...r.turn, yaw: Math.max(-MOST_YAW * 2, Math.min(MOST_YAW * 2, r.turn.yaw + yaw)), pitch: Math.max(-RISE[1], Math.min(RISE[1], r.turn.pitch + pitch)) };
+  return r.framed ? held(r.framed, t) : t;
+};
+// after a flick: turning on at the speed it was let go, slowing (to a tenth
+// in about half a second), and stopping at the edge it can't turn past
+function glide(r: Room, dt: number): void {
+  const before = r.turn;
+  r.turn = turnedFrom(r, r.spin.yaw * dt, r.spin.pitch * dt);
+  const fade = Math.exp(-4.5 * dt);
+  r.spin = { yaw: r.turn.yaw === before.yaw ? 0 : r.spin.yaw * fade, pitch: r.turn.pitch === before.pitch ? 0 : r.spin.pitch * fade };
+  if (Math.abs(r.spin.yaw) < 0.01 && Math.abs(r.spin.pitch) < 0.01) r.spin = { yaw: 0, pitch: 0 };
+  turnedByHand();
+}
+
 let dragging = false;
 function control(r: Room, box: HTMLElement): void {
   if (box.dataset.controlled) return;
@@ -884,9 +913,16 @@ function control(r: Room, box: HTMLElement): void {
   let pinch = 0;
   const turnBy = (dx: number, dy: number): void => {
     if (!room) return;
-    const t = room.turn;
-    room.turn = { ...t, yaw: Math.max(-MOST_YAW * 2, Math.min(MOST_YAW * 2, t.yaw - dx * 0.006)), pitch: Math.max(-RISE[1], Math.min(RISE[1], t.pitch + dy * 0.005)) };
+    room.turn = turnedFrom(room, -dx * 0.006, dy * 0.005);
     turnedByHand();
+  };
+  // how fast the drag is going, smoothed over the last few moves
+  let moved = { t: 0, yaw: 0, pitch: 0 };
+  const track = (dx: number, dy: number): void => {
+    const now = performance.now();
+    const dt = Math.max(1, now - moved.t) / 1000;
+    const k = Math.min(1, dt / 0.05);
+    moved = { t: now, yaw: moved.yaw + ((-dx * 0.006) / dt - moved.yaw) * k, pitch: moved.pitch + ((dy * 0.005) / dt - moved.pitch) * k };
   };
   const zoomBy = (f: number): void => {
     if (!room) return;
@@ -901,6 +937,9 @@ function control(r: Room, box: HTMLElement): void {
       canvas.setPointerCapture(e.pointerId);
       dragging = true;
       box.classList.add("dragging");
+      // (caught: a glide stops where it's held)
+      if (room) room.spin = { yaw: 0, pitch: 0 };
+      moved = { t: performance.now(), yaw: 0, pitch: 0 };
     }
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
@@ -919,12 +958,20 @@ function control(r: Room, box: HTMLElement): void {
       if (pinch > 0) zoomBy(pinch / d);
       pinch = d;
       turnBy((now.x - was.x) / 2, (now.y - was.y) / 2);
-    } else turnBy(now.x - was.x, now.y - was.y);
+      track((now.x - was.x) / 2, (now.y - was.y) / 2);
+    } else {
+      turnBy(now.x - was.x, now.y - was.y);
+      track(now.x - was.x, now.y - was.y);
+    }
   });
   const up = (e: PointerEvent): void => {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = 0;
     if (pointers.size === 0) {
+      // let go while still moving (not after a pause): it carries on, slowing
+      // (at most about a turn of 70 degrees a second: a hard flick is a glide, not a spin)
+      const most = 1.2;
+      if (dragging && room && !still.matches && performance.now() - moved.t < 80) room.spin = { yaw: Math.max(-most, Math.min(most, moved.yaw)), pitch: Math.max(-most, Math.min(most, moved.pitch)) };
       dragging = false;
       box.classList.remove("dragging");
     }
@@ -939,7 +986,7 @@ function control(r: Room, box: HTMLElement): void {
     zoomBy(Math.exp(e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015)));
   }, { passive: false });
   canvas.addEventListener("dblclick", () => {
-    if (room) room.turn = LEVEL;
+    if (room) (room.turn = LEVEL), (room.spin = { yaw: 0, pitch: 0 });
     turnedByHand();
   });
   // the keyboard: arrows turn it, + and - zoom, 0 puts it back (on the room
@@ -969,7 +1016,7 @@ function control(r: Room, box: HTMLElement): void {
     if (VIEWS.includes(v)) setView(v);
   });
   box.querySelector(".room-reset")?.addEventListener("click", () => {
-    if (room) room.turn = LEVEL;
+    if (room) (room.turn = LEVEL), (room.spin = { yaw: 0, pitch: 0 });
     turnedByHand();
   });
 }
@@ -984,6 +1031,7 @@ function setView(v: View): void {
   if (!room) return;
   room.view = v;
   room.turn = LEVEL;
+  room.spin = { yaw: 0, pitch: 0 };
   turnedByHand();
   for (const i of room.overlay.closest(".room3d")?.querySelectorAll<HTMLInputElement>(".room-views input") ?? []) i.checked = i.value === v;
   try {
@@ -1087,6 +1135,8 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       slow: { frames: 0, over: 0, since: performance.now() },
       quality: startQuality(),
       shadowFrame: 0,
+      spin: { yaw: 0, pitch: 0 },
+      framed: null,
       pixels: 1,
     };
     const box = canvas.closest<HTMLElement>(".room3d");

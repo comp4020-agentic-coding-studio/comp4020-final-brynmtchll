@@ -91,6 +91,17 @@ export function turned(s: Shot, t: Turn): Shot {
   return { at: inside(s.look, at), look: s.look };
 }
 
+// A turn held to what the shot can show: no more round or up and down than
+// turned() will go from where the shot stands. (Dragged on past an edge,
+// the turn piles up unseen, and dragging back does nothing until it's
+// unwound.)
+export function held(s: Shot, t: Turn): Turn {
+  const off = [s.at[0] - s.look[0], s.at[1] - s.look[1], s.at[2] - s.look[2]];
+  const yaw0 = Math.atan2(off[0], off[2]);
+  const rise0 = Math.atan2(off[1], Math.hypot(off[0], off[2]));
+  return { yaw: clamp(t.yaw, -MOST_YAW - yaw0, MOST_YAW - yaw0), pitch: clamp(t.pitch, RISE[0] - rise0, RISE[1] - rise0), zoom: clamp(t.zoom, ZOOM[0], ZOOM[1]) };
+}
+
 // `at`, brought towards `from` (which is inside) until it's inside the room too
 export function inside(from: Vec3, at: Vec3): Vec3 {
   const lo = [-ROOM.x, ROOM.floor, ROOM.back];
