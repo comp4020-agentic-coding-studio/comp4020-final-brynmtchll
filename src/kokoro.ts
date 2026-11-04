@@ -50,7 +50,7 @@ const progress = (p: Progress): void => {
 };
 let loading: Build = "small";
 
-type Model = (inputs: Record<string, unknown>) => Promise<{ waveform: { data: Float32Array } }>;
+type Model = ((inputs: Record<string, unknown>) => Promise<{ waveform: { data: Float32Array } }>) & { dispose?: () => Promise<unknown> };
 type Tokenizer = (text: string, o: { truncation: boolean }) => { input_ids: { dims: number[] } };
 let loaded: Promise<{ model: Model; tokenizer: Tokenizer; build: Build }> | undefined;
 async function gpuWorks(): Promise<boolean> {
@@ -89,7 +89,8 @@ const VOICE_ID = /^[ab][fm]_[a-z]+$/;
 const CACHE = "said-kokoro-voices";
 async function fetchVoice(id: string): Promise<Float32Array> {
   const url = `https://huggingface.co/${MODEL}/resolve/main/voices/${id}.bin`;
-  const cache = await caches.open(CACHE).catch(() => null);
+  // (no cache where the page isn't secure, say a phone on the local network)
+  const cache = typeof caches === "undefined" ? null : await caches.open(CACHE).catch(() => null);
   const kept = await cache?.match(url);
   if (kept) return new Float32Array(await kept.arrayBuffer());
   let last: unknown;
@@ -177,27 +178,28 @@ scope.onmessage = (e) => {
       if (m.type === "load") {
         let { build } = await load(m.build);
         // The first phrase takes seconds longer than the rest (the model
-        // settling in): one said now, unheard, so the first heard isn't late
-        // (but not waited on for long: ready is ready). If what comes out of
-        // the GPU build is silence (the half-size ones were, on the GPU it
-        // was measured on), the small one is used instead.
-        // (each length of phrase is new to the GPU the first time: a short,
-        // a middling and a long one, so most phrases after are quick)
-        const hello = async (): Promise<unknown> => {
-          let first: unknown = null;
-          for (const words of [["Hello", "there,", "how", "are", "you?"], ["Okay."], ["So", "I", "was", "thinking", "we", "could", "maybe", "get", "some", "lunch", "together", "tomorrow,", "what", "do", "you", "reckon?"]]) {
-            const r = await Promise.race([say({ words, voice: "af_heart", speed: 1 }).catch(() => null), new Promise((r) => setTimeout(r, 20_000, "slow"))]);
+        // settling in): one said now, unheard, so the first heard isn't
+        // late. On the GPU each length of phrase is new the first time, so
+        // a short, a middling and a long one there. If what comes out of the
+        // GPU build is silence (the half-size ones were, on the GPU it was
+        // measured on), the small one is used instead.
+        const WARM = [["Hello", "there,", "how", "are", "you?"], ["Okay."], ["So", "I", "was", "thinking", "we", "could", "maybe", "get", "some", "lunch", "together", "tomorrow,", "what", "do", "you", "reckon?"]];
+        const hello = async (n: number): Promise<{ audio: Float32Array } | null> => {
+          let first: { audio: Float32Array } | null = null;
+          for (const words of WARM.slice(0, n)) {
+            const r = await Promise.race([say({ words, voice: "af_heart", speed: 1 }).catch(() => null), new Promise<null>((r) => setTimeout(r, 60_000, null))]);
             first ??= r;
-            if (r === "slow" || !r) break;
+            if (!r) break;
           }
           return first;
         };
-        const heard = await hello();
-        if (build === "fast" && heard !== "slow" && !(heard as { audio?: Float32Array } | null)?.audio?.length) {
+        const heard = await hello(build === "fast" ? 3 : 1);
+        if (build === "fast" && !heard?.audio.length) {
+          await (await loaded)?.model.dispose?.().catch(() => {});
           loaded = undefined;
           files.clear();
           build = (await load("small")).build;
-          await hello();
+          await hello(1);
         }
         return scope.postMessage({ type: "ready", build });
       }

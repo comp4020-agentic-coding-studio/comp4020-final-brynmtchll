@@ -290,6 +290,7 @@ export function naturalVoices(yes: boolean, fast = false, told?: (n: Natural) =>
     }
   };
   kokoro.onerror = () => {
+    kokoro?.terminate();
     set({ state: "failed" });
     for (const done of asked.values()) done(null);
     asked.clear();
@@ -298,11 +299,20 @@ export function naturalVoices(yes: boolean, fast = false, told?: (n: Natural) =>
   void gpuAdapter().then((gpu) => kokoro?.postMessage({ type: "load", build: fast && gpu ? "fast" : "small" } satisfies ToKokoro));
 }
 type Made = { audio: Float32Array; spans: [number, number][] };
+// (one that never comes back, a GPU lost say, is given up on)
+const MAKING_FOR = 15_000; // ms
 function generate(phrase: KokoroPhrase): Promise<Made | null> {
   if (!kokoro || natural.state !== "ready") return Promise.resolve(null);
   const id = nextAsk++;
   return new Promise((resolve) => {
-    asked.set(id, resolve);
+    const timer = setTimeout(() => {
+      asked.delete(id);
+      resolve(null);
+    }, MAKING_FOR);
+    asked.set(id, (made) => {
+      clearTimeout(timer);
+      resolve(made);
+    });
     kokoro!.postMessage({ type: "say", id, phrase } satisfies ToKokoro);
   });
 }
@@ -315,7 +325,8 @@ const playing = new Set<AudioScheduledSourceNode>();
 let naturalGen = 0; // bumped by a hush, so what was being made for before it isn't played
 function stopNatural(): void {
   naturalGen++;
-  pending.length = 0;
+  toMake.length = 0;
+  madeWhileDucked.length = 0;
   for (const n of playing) {
     try {
       n.stop();
@@ -412,21 +423,25 @@ function play(plan: NaturalPlan, sound: Made, look: Pick<Look, "voice">, whenSta
   const gain = c.createGain();
   src.connect(gain);
   const spans = playedSpans(made.spans, plan.shapes, plan.play);
-  src.playbackRate.setValueAtTime(plan.play, at);
-  gain.gain.setValueAtTime(plan.volume, at);
-  plan.shapes.forEach((shape, i) => {
-    const span = spans[i];
-    if (!span || (shape.gain === 1 && shape.rate === 1)) return;
-    const [a, b] = span;
-    src.playbackRate.setValueAtTime(plan.play, at + Math.max(0, a - EASE));
-    src.playbackRate.linearRampToValueAtTime(plan.play * shape.rate, at + a + EASE);
-    src.playbackRate.setValueAtTime(plan.play * shape.rate, at + Math.max(a + EASE, b - EASE));
-    src.playbackRate.linearRampToValueAtTime(plan.play, at + b + EASE);
-    gain.gain.setValueAtTime(plan.volume, at + Math.max(0, a - EASE));
-    gain.gain.linearRampToValueAtTime(Math.min(1, plan.volume * shape.gain), at + a + EASE);
-    gain.gain.setValueAtTime(Math.min(1, plan.volume * shape.gain), at + Math.max(a + EASE, b - EASE));
-    gain.gain.linearRampToValueAtTime(plan.volume, at + b + EASE);
-  });
+  // one line through every word: at each edge between words, from the one
+  // level to the next over 2 EASE (so words that stand out side by side go
+  // straight from one to the other, without a step back between)
+  const rateOf = (i: number): number => plan.play * (plan.shapes[i]?.rate ?? 1);
+  const gainOf = (i: number): number => Math.min(1, plan.volume * (plan.shapes[i]?.gain ?? 1));
+  src.playbackRate.setValueAtTime(rateOf(0), at);
+  gain.gain.setValueAtTime(gainOf(0), at);
+  let last = at;
+  for (let i = 1; i < spans.length; i++) {
+    if (rateOf(i) === rateOf(i - 1) && gainOf(i) === gainOf(i - 1)) continue;
+    const edge = at + spans[i][0];
+    const from = Math.max(last, edge - EASE);
+    const to = Math.max(from + 0.001, edge + EASE);
+    src.playbackRate.setValueAtTime(rateOf(i - 1), from);
+    src.playbackRate.linearRampToValueAtTime(rateOf(i), to);
+    gain.gain.setValueAtTime(gainOf(i - 1), from);
+    gain.gain.linearRampToValueAtTime(gainOf(i), to);
+    last = to;
+  }
   const length = spans.length ? Math.max(spans.at(-1)![1], made.audio.length / RATE / plan.play) : made.audio.length / RATE / plan.play;
   if ("robot" in v && v.robot) robotise(c, gain, c.destination, at, at + length + 0.1);
   else if ("hushed" in v && v.hushed) {
@@ -462,7 +477,9 @@ export function duck(yes: boolean): void {
   if (yes) duckTimer = setTimeout(() => duck(false), DUCK_FOR) as unknown as number;
   if (ducked === yes) return;
   ducked = yes;
-  if (!yes) for (const w of held.splice(0)) if (Date.now() - w.at < HELD_FOR) speak(w.words, w.look, w.whenStarts, w.mouth);
+  if (yes) return;
+  for (const m of madeWhileDucked.splice(0)) playMade(m.job, m.made);
+  for (const w of held.splice(0)) if (Date.now() - w.at < HELD_FOR) speak(w.words, w.look, w.whenStarts, w.mouth);
 }
 // whether it's saying something now (so a microphone hearing it isn't taken
 // for the listener talking)
@@ -489,41 +506,70 @@ export function speak(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => 
 // In a natural voice: made by the model (in order, one phrase at a time),
 // then played after what's playing. One the model can't make is said by the
 // device instead.
-// Too far behind (more than MOST_WAITING phrases made or playing), the
-// oldest not yet playing is let go rather than everything.
-type Pending = { gen: number; dropped: boolean };
-const pending: Pending[] = [];
+// Phrases for a natural voice wait here, made one at a time in the order
+// they came (so one let go is never made: on the small build each takes
+// seconds), at most MOST_WAITING of them, the oldest let go past that. One
+// made while you're talking waits till you stop. One that would start more
+// than BEHIND_BY after it's made is let go too: news by then is old. One the
+// model can't make (nothing back, or nothing in it) the device says; a few of
+// those in a row and natural voices are given up on here.
+type ToMake = { words: Spoken[]; look: Voiced; plan: NaturalPlan; whenStarts?: (run: Run) => void; mouth?: (level: number) => void };
+const toMake: ToMake[] = [];
+const madeWhileDucked: { job: ToMake; made: Made }[] = [];
+let making = false;
+let failedInARow = 0;
+const BEHIND_BY = 6; // s
 function speakNaturally(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void, mouth?: (level: number) => void): void {
   const plan = naturalPlan(words, look);
   if (!plan) return;
-  const mine: Pending = { gen: naturalGen, dropped: false };
-  pending.push(mine);
-  const waitingNow = pending.filter((p) => !p.dropped);
-  if (waitingNow.length > MOST_WAITING) waitingNow[0].dropped = true;
-  waiting++;
-  const gen = naturalGen;
-  const said: Said = { words: plan.words.flatMap(wordsOf), until: Infinity };
-  void generate({ words: plan.words, voice: voiceOf(look.voice).kokoro || "af_heart", speed: plan.speed, ...(plan.blend ? { blend: plan.blend } : {}) }).then((made) => {
-    pending.splice(pending.indexOf(mine), 1);
-    if (gen !== naturalGen || mine.dropped) return void (waiting = Math.max(0, waiting - 1));
-    if (!made) {
-      waiting = Math.max(0, waiting - 1);
-      if (synth) speakOnDevice(words, look, whenStarts);
-      return;
+  toMake.push({ words, look, plan, whenStarts, mouth });
+  if (toMake.length > MOST_WAITING) toMake.shift();
+  void makeNext();
+}
+async function makeNext(): Promise<void> {
+  if (making) return;
+  making = true;
+  try {
+    for (let job = toMake.shift(); job; job = toMake.shift()) {
+      const gen = naturalGen;
+      const made = await generate({ words: job.plan.words, voice: voiceOf(job.look.voice).kokoro || "af_heart", speed: job.plan.speed, ...(job.plan.blend ? { blend: job.plan.blend } : {}) });
+      if (gen !== naturalGen) continue;
+      if (!made?.audio.length) {
+        if (++failedInARow >= 3) {
+          failedInARow = 0;
+          kokoro?.terminate();
+          kokoro = null;
+          set({ state: "failed" });
+        }
+        if (synth) speakOnDevice(job.words, job.look, job.whenStarts);
+        continue;
+      }
+      failedInARow = 0;
+      if (ducked) madeWhileDucked.push({ job, made });
+      else playMade(job, made);
     }
-    keep(said);
-    play(
-      plan,
-      made,
-      look,
-      (i) => whenStarts?.({ text: plan.words[i], pitch: plan.play * plan.shapes[i].rate, rate: plan.speed * plan.play * plan.shapes[i].rate, volume: plan.volume * plan.shapes[i].gain }),
-      () => {
-        waiting = Math.max(0, waiting - 1);
-        said.until = Date.now();
-      },
-      mouth,
-    );
-  });
+  } finally {
+    making = false;
+  }
+}
+function playMade(job: ToMake, made: Made): void {
+  const c = audio();
+  if (c && playingUntil - c.currentTime > BEHIND_BY) return;
+  const { plan } = job;
+  const said: Said = { words: plan.words.flatMap(wordsOf), until: Infinity };
+  keep(said);
+  waiting++;
+  play(
+    plan,
+    made,
+    job.look,
+    (i) => job.whenStarts?.({ text: plan.words[i], pitch: plan.play * plan.shapes[i].rate, rate: plan.speed * plan.play * plan.shapes[i].rate, volume: plan.volume * plan.shapes[i].gain }),
+    () => {
+      waiting = Math.max(0, waiting - 1);
+      said.until = Date.now();
+    },
+    job.mouth,
+  );
 }
 
 function speakOnDevice(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void): void {

@@ -229,7 +229,9 @@ export function stretch(audio: Float32Array, rate: number, by: number): Float32A
         if (score > bestScore) [bestScore, best] = [score, k];
       }
     }
-    for (let i = 0; i < win; i++) out[at + i] += audio[best + i] * fade[i];
+    // (the first window has none before it to overlap: its rising half at
+    // full weight, so the word doesn't fade in)
+    for (let i = 0; i < win; i++) out[at + i] += audio[best + i] * (at === 0 && i < hop ? 1 : fade[i]);
     taken = best;
   }
   return out.slice(0, Math.min(out.length, Math.round(audio.length * by)));

@@ -340,7 +340,8 @@ function showNatural(n: Natural): void {
   else if (n.state === "failed") {
     warn("Natural voices couldn't load here, so this device's own voices are speaking.");
     naturalBox.checked = false;
-    store(NATURAL_KEY, "off");
+    // (not tried again by itself next time; the smaller build, if chosen, stays chosen)
+    if (recall(NATURAL_KEY) !== "small") store(NATURAL_KEY, "off");
   }
 }
 // (the GPU build where the graphics can run it, unless the smaller was asked for)
@@ -377,6 +378,9 @@ if (voicesBox && (canSpeak || canNatural)) {
   voicesBox.addEventListener("change", () => {
     showNaturalBox();
     hearVoices(voicesBox.checked);
+    // voices off takes natural ones with them, for now (they're still chosen,
+    // for when voices are on again)
+    if (naturalBox?.checked) naturalOn(voicesBox.checked);
     // (with a word about natural voices, if they're not on and could be)
     const offer = naturalBox && canNatural && !naturalBox.checked ? ` For voices that sound like people, the same on every device, turn on ✨ Natural (about ${Math.round(willDownload() / 1e6)} MB, once).` : "";
     say(voicesBox.checked ? `Voices on: what people say is spoken, the way they said it.${offer || " Headphones stop it coming back through your microphone."}` : "Voices off.");
@@ -389,11 +393,14 @@ if (voicesBox && (canSpeak || canNatural)) {
     showNaturalBox();
     const natural = !!naturalBox && canNatural && recall(NATURAL_KEY) !== null && recall(NATURAL_KEY) !== "off";
     if (natural) naturalBox!.checked = true;
-    const start = (): void => {
-      if (!voicesBox.checked) return;
-      hearVoices(true);
-      if (natural && naturalBox!.checked) naturalOn(true);
-    };
+    // (after the tap's own click: a first tap that turns voices off doesn't
+    // start anything)
+    const start = (): void =>
+      void setTimeout(() => {
+        if (!voicesBox.checked) return;
+        hearVoices(true);
+        if (natural && naturalBox!.checked) naturalOn(true);
+      });
     addEventListener("pointerdown", start, { once: true, capture: true });
     addEventListener("keydown", start, { once: true, capture: true });
   }

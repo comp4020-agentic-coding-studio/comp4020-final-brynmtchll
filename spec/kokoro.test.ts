@@ -91,5 +91,9 @@ describe("drawing a word out", () => {
     expect(Math.sqrt(e / mid.length)).toBeGreaterThan(0.3);
     // not stretched at all: as it was
     expect(stretch(pcm, rate, 1)).toBe(pcm);
+    // and it doesn't fade in where it starts
+    const flat = stretch(new Float32Array(rate * 0.2).fill(0.5), rate, 1.5);
+    expect(flat[10]).toBeCloseTo(0.5, 2);
+    expect(Math.min(...flat.slice(0, Math.round(rate * 0.25)))).toBeGreaterThan(0.45);
   });
 });

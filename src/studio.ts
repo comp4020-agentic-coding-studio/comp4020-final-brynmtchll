@@ -224,7 +224,8 @@ form.addEventListener("input", (e) => {
 });
 form.addEventListener("change", (e) => {
   const t = e.target as HTMLInputElement;
-  if (t.name === "look-tab" || !t.name) return;
+  // (the natural-voice switches are this browser's, not the look's)
+  if (t.name === "look-tab" || t.id === "studio-natural" || t.id === "studio-small") return;
   if (t.name === "extra" || t.name === "more") limitMore();
   apply(fromForm());
 });
