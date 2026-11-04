@@ -144,16 +144,51 @@ async function setUp(): Promise<T> {
   renderer.setPixelRatio(1);
   renderer.setSize(LARGEST, LARGEST, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // as the room does: bright things roll off rather than clip, colours as
+  // chosen (room3d.ts)
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.toneMappingExposure = 1.0;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(28, 1, 0.1, 50);
   camera.position.set(0, 0.12, 4.9);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x334466, 1.4));
-  const key = new THREE.DirectionalLight(0xffffff, 2.2);
-  key.position.set(1.5, 2, 3);
+  // A soft light from all round (a lit room, blurred: three.js's
+  // RoomEnvironment), so a face is shaded gently round its curve, not lit
+  // flat from the front; then a warm key light from above to one side, a
+  // little fill from the other and a cool light behind, picking out the
+  // edge of the head against the card.
+  try {
+    // @ts-expect-error: resolved by the page's import map
+    const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.22;
+    pmrem.dispose();
+  } catch {
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x334466, 1.2));
+  }
+  scene.add(new THREE.HemisphereLight(0xfff4e8, 0x1a2036, 0.25));
+  // (casting a soft shadow: the hair's on the brow, the nose's on the
+  // cheek, the chin's on the neck, which is what gives a face its shape)
+  const key = new THREE.DirectionalLight(0xfff0e0, 3.1);
+  key.position.set(2.4, 2.8, 2.2);
+  key.castShadow = true;
+  key.shadow.mapSize.set(512, 512);
+  Object.assign(key.shadow.camera, { left: -3, right: 3, top: 3, bottom: -4, near: 0.5, far: 12 });
+  key.shadow.bias = -0.001;
+  key.shadow.normalBias = 0.05;
+  key.shadow.radius = 4;
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0x8ab4ff, 1.2);
-  rim.position.set(-2, 1, -2);
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.3);
+  fill.position.set(-2.5, 0.2, 2);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0x9cc0ff, 2.2);
+  rim.position.set(-2, 1.5, -2.5);
   scene.add(rim);
+  const rim2 = new THREE.DirectionalLight(0xffd2b0, 1.1);
+  rim2.position.set(2.4, 0.6, -2);
+  scene.add(rim2);
   requestAnimationFrame(frame);
   return THREE;
 }
@@ -763,6 +798,9 @@ function build(THREE: T, look: Look): Head {
   // the shoulders, arms and hands, built beside the head rather than in it:
   // they don't turn when the head does
   const body = buildBody(THREE, look, skin, t);
+  // everything solid casts a shadow and takes one (not a see-through thing,
+  // stubble or a blush, which would cast one as dark as a solid's)
+  for (const part of [root, body?.root]) part?.traverse((o: T) => void (o.isMesh && ((o.castShadow = !o.material.transparent), (o.receiveShadow = true))));
 
   return { body, root, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush" || (look.more ?? []).includes("blush"), sleepy: look.eyes === "sleepy", browY: 0.44 + t("browHeight") * 0.07 + t("eyeHeight") * 0.08, look: JSON.stringify(look), fit };
 }
