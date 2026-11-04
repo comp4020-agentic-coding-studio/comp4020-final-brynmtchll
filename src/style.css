@@ -294,7 +294,7 @@ main.room {
 @keyframes caret { 50% { opacity: 0; } }
 
 /* yours, on the left: bigger, with the controls under it */
-.me { display: grid; gap: 14px; align-content: start; }
+.me { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
 .mine-card .spot { --card-h: 460px; padding: 22px 26px 0 28px; }
 /* (on a phone, shorter: your controls are under it, and a screen's worth of
    empty card pushes them out of reach) */
@@ -327,11 +327,11 @@ main.room {
 .controls .voices-toggle[hidden] { display: none; }
 .talk { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 22px; border-radius: 999px; background: var(--ink); color: var(--bg); border-color: var(--ink); box-shadow: 0 8px 24px -10px rgb(255 255 255 / 0.25); }
 .talk:hover:not(:disabled) { background: color-mix(in oklab, var(--ink) 88%, var(--accent)); border-color: transparent; }
-/* on a phone: the microphone across the width, the rest two to a row */
+/* on a phone: the microphone across the width, the rest sharing each row
+   between them (however many are showing, no row half empty) */
 @media (max-width: 600px) {
-  .controls { display: grid; grid-template-columns: 1fr 1fr; }
-  .controls .talk { grid-column: 1 / -1; min-height: 52px; font-size: 1.0625rem; }
-  .controls :is(.face-toggle, .hand-toggle, .voices-toggle) { width: 100%; padding: 10px 12px; }
+  .controls .talk { flex: 1 1 100%; min-height: 52px; font-size: 1.0625rem; }
+  .controls :is(.face-toggle, .hand-toggle, .voices-toggle) { flex: 1 1 auto; padding: 10px 14px; }
   .controls .hand-form { display: contents; }
 }
 .talk .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
@@ -400,7 +400,10 @@ main.room {
 .hero-line + .hero-line .w:nth-child(1) { animation-delay: 0.36s; } .hero-line + .hero-line .w:nth-child(2) { animation-delay: 0.48s; }
 .join-card h2 { font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .join-card .fine { font-size: 1rem; max-width: 46ch; margin-top: 10px; }
-.join { display: flex; gap: 8px; margin-top: 22px; max-width: 520px; }
+.join { display: flex; gap: 8px; margin-top: 22px; max-width: 520px; min-width: 0; }
+/* (the card's one column no wider than the card: a text box's own width
+   would push it past the padding on a phone) */
+.join-card { grid-template-columns: minmax(0, 1fr); }
 .join input { flex: 1; min-width: 0; font: inherit; font-size: 1.0625rem; padding: 12px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--ink); min-height: 52px; transition: border-color 0.18s, box-shadow 0.18s; }
 .join input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
 .join button { background: var(--accent); border-color: var(--accent); color: #0b1020; padding: 12px 26px; border-radius: 999px; min-height: 52px; font-size: 1.0625rem; box-shadow: 0 10px 28px -12px var(--accent); }
@@ -483,6 +486,12 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 /* (no arrow keys to press on a touch screen) */
 @media (hover: none) { .edit-hint .keys { display: none; } }
 .edit-tools button { display: flex; align-items: center; gap: 6px; padding: 6px 10px; min-height: 38px; font-size: 0.8125rem; }
+/* on a phone, the effects three to a row, all one width */
+@media (max-width: 600px) {
+  .edit-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .edit-hint { grid-column: 1 / -1; }
+  .edit-tools button { min-height: 44px; padding: 6px 8px; }
+}
 
 /* ---- your avatar's look ---- */
 
@@ -670,6 +679,18 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 /* a glint at its corner, twinkling */
 .w.fx-sparkle::after { content: "✦"; position: absolute; top: -0.45em; right: -0.5em; font-size: 0.55em; color: #fff; text-shadow: 0 0 0.4em #ffd84d; animation: sparkle 1.2s ease-in-out infinite; }
 @keyframes sparkle { 0%, 100% { opacity: 0.2; scale: 0.6; rotate: 0deg; } 50% { opacity: 1; scale: 1.1; rotate: 45deg; } }
+/* on a light page: the same effects in deeper colours, so they still read */
+@media (prefers-color-scheme: light) {
+  .w.fx-rainbow { background-image: linear-gradient(90deg, #e03131, #e8590c, #d9a400, #2f9e44, #1971c2, #7048e8, #e03131); }
+  .w.fx-spooky { color: #2b8a3e; text-shadow: 0 0 0.35em #8ce99a; }
+  .w.fx-sparkle { color: #b07d00; text-shadow: 0 0 0.3em #ffe066; }
+  .w.fx-sparkle::after { color: #f08c00; }
+  .w.fx-glow { animation-name: glow-light; }
+}
+@keyframes glow-light {
+  from { text-shadow: 0 0 0.12em color-mix(in srgb, var(--person, currentColor) 45%, transparent); }
+  to { text-shadow: 0 0 0.3em color-mix(in srgb, var(--person, currentColor) 70%, transparent); }
+}
 /* the effect buttons show what they do */
 .fx-button .w { font-size: inherit; transform: none; opacity: 1; margin: 0; display: inline; }
 @media (prefers-reduced-motion: reduce) {
@@ -713,7 +734,7 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 }
 /* typing instead: a box and Say it, how it's said under it, your voice
    folded away below */
-.type-box { display: grid; gap: 8px; }
+.type-box { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .type-box[hidden] { display: none; }
 .type-row { display: flex; gap: 8px; }
 .type-row input { flex: 1; min-width: 0; font: inherit; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); min-height: 44px; }
@@ -727,6 +748,18 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 .tones label > span { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 0.8125rem; color: var(--muted); }
 .tones input:checked + span { border-color: var(--accent); color: var(--accent); }
 .tones input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tones label > span { transition: border-color 0.15s, color 0.15s, background-color 0.15s, transform 0.12s var(--ease); }
+.tones label:hover > span { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); color: var(--ink); }
+.tones label:active > span { transform: scale(0.96); }
+.tones input:checked + span { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+/* on a phone, one row that slides sideways under a finger, fading out
+   at the edge to show there's more */
+@media (max-width: 600px) {
+  .tones { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -12px; padding: 2px 12px; scroll-padding: 0 12px; scroll-snap-type: x proximity; mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 28px), transparent); }
+  .tones::-webkit-scrollbar { display: none; }
+  .tones label { flex: none; scroll-snap-align: start; }
+  .tones label > span { min-height: 40px; padding: 4px 12px; white-space: nowrap; }
+}
 .type-voice summary { cursor: pointer; font-size: 0.8125rem; color: var(--muted); width: fit-content; }
 .type-voice-body { display: grid; gap: 8px; margin-top: 8px; max-width: 420px; }
 .type-voice .slider { grid-template-columns: 60px minmax(0, 1fr); }
@@ -740,7 +773,12 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 .emotes { display: flex; flex-wrap: wrap; gap: 6px; }
 .emotes button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 0.8125rem; }
 .emotes button span:first-child { font-size: 1.1em; }
-@media (max-width: 600px) { .emote-label { display: none; } }
+/* on a phone, the faces alone, in two even rows */
+@media (max-width: 600px) {
+  .emote-label { display: none; }
+  .emotes { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+  .emotes button { justify-content: center; padding: 0; aspect-ratio: 1; min-height: 0; }
+}
 
 /* reactions on a word: a little row of emoji just under it */
 .tw { position: relative; }
@@ -839,6 +877,13 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px 
 /* the way there, from the room */
 .customise-link { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 12px 20px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font-weight: 600; text-decoration: none; }
 .customise-link:hover { border-color: var(--accent); color: var(--accent); }
+/* what you can do besides talk, each in a quiet panel of its own with a
+   small heading (the toolbars are named for a screen reader already) */
+.me :is(.type-box, .emotes, .edit-tools) { padding: 12px; border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.me :is(.emotes, .edit-tools)::before { flex-basis: 100%; grid-column: 1 / -1; margin: 0 0 2px 2px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+.me .emotes::before { content: "Emotes" / ""; }
+.me .edit-tools::before { content: "Change a word" / ""; }
+.me .edit-hint { margin-left: 2px; }
 @media (max-width: 860px) {
   main.studio { grid-template-columns: minmax(0, 1fr); padding: 0 12px 32px; gap: 12px; }
   .stage-3d { top: 0; z-index: 5; padding: 8px; border-radius: 0 0 var(--radius) var(--radius); }
