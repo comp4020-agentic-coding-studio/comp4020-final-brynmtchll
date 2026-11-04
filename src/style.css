@@ -478,6 +478,10 @@ main.room {
 .room-name[data-hand]::after { content: " ✋ " attr(data-hand); color: var(--hand); }
 .room-word { color: var(--person); font-size: clamp(1.25rem, 0.9rem + 1.6vw, 2.25rem); line-height: 1.1; text-align: center; text-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 18px rgb(0 0 0 / 0.55); }
 .room-word:empty { display: none; }
+/* each word over a head comes up as it does on the card: from a little
+   below, faded in, with the spring its style gives it (each is a new
+   element, so it plays for each) */
+.room-word .w { animation: arrive calc(0.2s + var(--style-motion, 0) * 0.2s) cubic-bezier(0.2, calc(1.2 + var(--style-motion, 0) * 0.8), 0.4, 1) both; }
 .room-label:not(.mine) .room-word[data-id] { pointer-events: auto; cursor: pointer; }
 /* In the room, on a wide screen, the room is the place: it takes the wide
    side, and you (already sitting in it) go to the narrow one, your card
@@ -723,7 +727,7 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 /* the effect buttons show what they do */
 .fx-button .w { font-size: inherit; transform: none; opacity: 1; margin: 0; display: inline; }
 @media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .talk.recording .dot, .caret, .bubble.draft, .phrase.settled, .spot, .spot.speaking, .queue, .room3d, .hero-words .w, .room-hint, .help-body { animation: none; }
+  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .room-word .w, .talk.recording .dot, .caret, .bubble.draft, .phrase.settled, .spot, .spot.speaking, .queue, .room3d, .hero-words .w, .room-hint, .help-body { animation: none; }
 }
 
 /* ---- the README page ---- */
