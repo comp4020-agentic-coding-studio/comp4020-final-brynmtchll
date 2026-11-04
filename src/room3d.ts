@@ -775,7 +775,7 @@ function label(r: Room, slot: HTMLElement): HTMLElement {
   let el = r.labels.get(slot);
   if (el) return el;
   el = document.createElement("div");
-  el.className = "room-label";
+  el.className = "room-label quiet"; // (shown, if it is to be, once it is where its head is)
   el.setAttribute("aria-hidden", "true"); // the cards say it all for a screen reader
   el.innerHTML = `<span class="room-name"></span><span class="room-word words"></span>`;
   r.overlay.append(el);
@@ -905,6 +905,8 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.post.finish.uniforms.time.value = (now % 1000) / 10;
     r.post.composer.render(dt);
   } else r.renderer.render(r.scene, r.camera);
+  // (the scene comes up once there's something drawn in it: style.css)
+  if (!r.canvas.hasAttribute("data-drawn")) r.canvas.setAttribute("data-drawn", "");
   // names and words over heads, where each head is on the screen now
   const rect = r.canvas.getBoundingClientRect();
   const v = new THREE.Vector3();
@@ -1198,6 +1200,7 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
         seat.group.visible = false;
       }
       for (const el of room.labels.values()) el.remove();
+      room.canvas.removeAttribute("data-drawn");
       room = null;
     }
     await roomView(null);
