@@ -264,7 +264,8 @@ led to. Claude chose how to build each; what to build was yours.
      darker corners. Shading where things meet (GTAO) was tried at three
      strengths and dropped: it left a grainy halo along every edge against
      the window. A screen slower than about 40 frames a second loses the
-     glow, then pixels; phones start without it.
+     glow, then pixels; phones start without it. (GTAO came back on 5
+     November with other settings: see the end of this item.)
    - Views: Everyone (as before: everyone, leaning to whoever's talking),
      Speaker (close on whoever's talking, typed or said), Wide (from a front
      corner), Above. Drag, scroll or pinch, or the keyboard, to turn and
@@ -292,6 +293,30 @@ led to. Claude chose how to build each; what to build was yours.
      once placed (they had all shown at the top for a moment)
      ([`c4bc696`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/c4bc696)). On a light page, the words over heads keep the dark
      page's colours, as the room is dark either way ([`0c6b622`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0c6b622)).
+   - The camera moves on springs (critically damped): it gathers speed and
+     settles, about 1.2 s for a change of view, with no overshoot; before,
+     it set off at full speed. The shot and the turn are sprung separately
+     and combined after, as a first try springing the camera's position
+     directly cut across the arc of a drag and through a wall
+     ([`e954e9b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e954e9b)).
+   - Shading where things meet (GTAO), at half size, with a smaller
+     radius than the dropped try, solid things only (the shafts of light
+     and soft shadows left out), blended at 0.75. Four settings compared
+     side by side; larger radii darkened faces round the eyes. It is the
+     first thing a slow screen drops, back only 30 s after; phones never
+     have it. 12 people, phone size, processor slowed four times: 37 to 40
+     frames a second with it, 48 to 50 once dropped ([`e2757f5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e2757f5)).
+   - In the speaker view, the room nearer and further than the speaker is
+     a little soft (depth of field, from the depth GTAO already draws):
+     half as soft nearer than further. 16.6 ms a frame with and without at
+     1920x1080, 2x ([`fdab177`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/fdab177)).
+   - Someone new rises a little into their seat; everyone moved along, as
+     rows fill or close up, glides to their new place (they had jumped)
+     ([`3b4f7db`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/3b4f7db)).
+   - On a phone, in the room: the room is first, your controls under it, and
+     your own card isn't shown (the room had been below a screen of
+     controls); the room box is a little shorter (112% of the width, was
+     125%) ([`9745fa7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/9745fa7)).
 
 7. **The rest of the page, more polished.** Same request (4 to 5 November).
    - Type: Inter for reading, Bricolage Grotesque for headings and the
