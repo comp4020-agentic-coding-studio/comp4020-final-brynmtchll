@@ -649,6 +649,27 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
     b.renderOrder = 1;
     scene.add(b);
   }
+  // and a small one on the table under each thing on it, so they sit on it
+  // rather than float (two draws: the blots are merged)
+  const onTable: T[] = [];
+  for (const [x, z, d] of [[-3.5, -3.4, 1.5], [4.2, -3.6, 1.5], [-1.6, -3.4, 1.5], [3, -4.9, 2.6], [0.6, -4.6, 1.7]] as const) {
+    const g = new THREE.PlaneGeometry(d * 1.15, d);
+    g.rotateX(-Math.PI / 2);
+    g.translate(x, FLOOR + 2.835, z);
+    onTable.push(g);
+  }
+  // (tighter and darker than the floor's: a thing standing on a table)
+  const tight = painted(THREE, 128, 128, (g, w, h) => {
+    const grad = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    grad.addColorStop(0, "rgb(0 0 0 / 0.7)");
+    grad.addColorStop(0.35, "rgb(0 0 0 / 0.5)");
+    grad.addColorStop(1, "rgb(0 0 0 / 0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+  });
+  const tableBlots = new THREE.Mesh(merge(onTable), new THREE.MeshBasicMaterial({ map: tight, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  tableBlots.renderOrder = 1;
+  scene.add(tableBlots);
   k.done(new Set([wood, velvet, leafA, leafB, terracotta, tableWood, darkWood, brass, ...books]));
   return { lamp, sun, dust, fairy, spot };
 }
