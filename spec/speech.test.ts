@@ -176,6 +176,20 @@ describe("speaking a phrase in a natural voice", () => {
     expect(drawOut(same, spans.map(() => ({ gain: 1, rate: 1, stretch: 1 })), rate)).toBe(same);
   });
 
+  it("mixes another voice into a natural one, up to half and half, and none for a voice mixed with itself", () => {
+    const none = naturalPlan([plain("hi")], { voice: "warm", tune: {} })!;
+    expect(none.blend).toBeUndefined();
+    const some = naturalPlan([plain("hi")], { voice: "warm", blend: "deep", tune: { voiceBlend: 0 } })!;
+    expect(some.blend).toEqual({ voice: "am_onyx", mix: 0.25 });
+    expect(naturalPlan([plain("hi")], { voice: "warm", blend: "deep", tune: { voiceBlend: 1 } })!.blend!.mix).toBe(0.5);
+    expect(naturalPlan([plain("hi")], { voice: "warm", blend: "deep", tune: { voiceBlend: -1 } })!.blend).toBeUndefined();
+    expect(naturalPlan([plain("hi")], { voice: "warm", blend: "warm", tune: {} })!.blend).toBeUndefined();
+    // a look takes only a voice on offer to mix in
+    expect(cleanLook({ blend: "deep" })).toMatchObject({ blend: "deep" });
+    expect(cleanLook({ blend: "am_onyx" })).toBeNull();
+    expect(cleanLook({ tune: { voiceBlend: 0.4 } })!.tune).toEqual({ voiceBlend: 0.4 });
+  });
+
   it("has a natural voice for every voice but silent, each one Kokoro has", () => {
     for (const v of VOICES) {
       if (v.id === "silent") continue;

@@ -108,9 +108,9 @@ const SECTIONS: { label: string; parts: (Part | ColourPart)[]; sliders?: string 
   { label: "Wearing", parts: ["extra", "extraColour"] },
   { label: "Body", parts: ["top", "topColour"], sliders: "Body" },
   { label: "Words", parts: ["words"] },
-  { label: "Voice", parts: ["voice"], sliders: "Voice" },
+  { label: "Voice", parts: ["voice", "blend"] },
 ];
-const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing", top: "Top", voice: "Voice" };
+const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing", top: "Top", voice: "Voice", blend: "Mix in" };
 
 // Everything someone can choose about how they look, in tabs: for each
 // part a row of choices, for each colour a row of swatches and a picker for
@@ -127,9 +127,12 @@ function lookEditor(look: Look): string {
         .map((v) => `<label><input type="radio" name="${k}" value="${v}"${look[k] === v ? " checked" : ""}><span><span class="swatch" style="background:${v}"></span><span class="visually-hidden">${v}</span></span></label>`)
         .join("")}<label class="any-colour" title="Any colour"><input type="radio" name="${k}" value="${esc(look[k])}"${custom ? " checked" : ""} data-custom><span><input type="color" value="${esc(look[k])}" data-for="${k}" aria-label="Any ${c.label.toLowerCase()} colour"></span></label></fieldset>`;
     }
+    // another voice mixed in, and how much (natural voices only)
+    if (k === "blend")
+      return `<fieldset class="pick blends"><legend>Mixed with another voice <small>(natural voices only)</small></legend>${PARTS.blend.map((c) => `<label><input type="radio" name="blend" value="${c.id}"${look.blend === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`).join("")}</fieldset>${sliders("Blend")}`;
     // voices, with how each sounds under its name
     if (k === "voice")
-      return `<fieldset class="pick voices"><legend>Voice</legend>${VOICES.map((v) => `<label><input type="radio" name="voice" value="${v.id}"${look.voice === v.id ? " checked" : ""}><span><b>${esc(v.label)}</b><small>${esc(v.about)}</small></span></label>`).join("")}</fieldset>`;
+      return `<fieldset class="pick voices"><legend>Voice</legend>${VOICES.map((v) => `<label><input type="radio" name="voice" value="${v.id}"${look.voice === v.id ? " checked" : ""}><span><b>${esc(v.label)}</b><small>${esc(v.about)}</small></span></label>`).join("")}</fieldset>${sliders("Voice")}`;
     return `<fieldset class="pick"><legend>${PART_LABELS[k]}</legend>${(PARTS[k] as readonly { id: string; label: string }[])
       .map((c) => `<label><input type="radio" name="${k}" value="${c.id}"${look[k] === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
       .join("")}</fieldset>`;
@@ -138,7 +141,7 @@ function lookEditor(look: Look): string {
   const sliders = (group: string): string => {
     const these = SLIDERS.filter((sl) => sl.group === group);
     return these.length
-      ? `<fieldset class="sliders"><legend>Shape</legend>${these
+      ? `<fieldset class="sliders">${group === "Blend" || group === "Voice" ? "" : "<legend>Shape</legend>"}${these
           .map((sl) => `<label class="slider"><span>${esc(sl.label)}</span><input type="range" name="tune.${sl.id}" min="-1" max="1" step="0.05" value="${tune[sl.id] ?? 0}"><button type="button" class="reset" data-reset="${sl.id}" aria-label="Reset ${esc(sl.label.toLowerCase())}">↺</button></label>`)
           .join("")}</fieldset>`
       : "";

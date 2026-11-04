@@ -7,7 +7,7 @@ import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { overHead, showRoom } from "./room3d.ts";
-import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken } from "./speech.ts";
+import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
 import { toneOf, typedWords, type Tone } from "./typed.ts";
 import { EFFECTS, emoteOf, EMOTES, REACTIONS, STYLES, type Look as PackLook } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
@@ -1020,10 +1020,13 @@ if (typeBox) {
   const input = typeBox.elements.namedItem("text") as HTMLInputElement;
   const send = typeBox.querySelector<HTMLButtonElement>(".type-send")!;
   const tone = (): Tone => toneOf((typeBox.elements.namedItem("tone") as RadioNodeList).value);
-  const voiceNow = (): Pick<Look, "voice" | "tune"> => {
+  // your voice as the box has it, with the rest of your look (a voice mixed
+  // in, from the studio)
+  const voiceNow = (): Voiced => {
+    const mine = JSON.parse(document.querySelector<HTMLElement>(".spot.mine")?.dataset.look ?? "{}") as Partial<Look>;
     const v = (typeBox.elements.namedItem("voice") as HTMLSelectElement).value;
     const n = (id: string): number => Number((typeBox.elements.namedItem(`tune.${id}`) as HTMLInputElement).value) || 0;
-    return { voice: v, tune: { voicePitch: n("voicePitch"), voiceSpeed: n("voiceSpeed") } } as Pick<Look, "voice" | "tune">;
+    return { ...mine, voice: v, tune: { ...(mine.tune ?? {}), voicePitch: n("voicePitch"), voiceSpeed: n("voiceSpeed") } } as Voiced;
   };
   const spoken = (words: Word[]): Spoken[] => words.map((w) => ({ text: w.w, loud: w.loud, pitch: w.pitch ?? 0, stretch: w.stretch, effect: w.effect ?? null }));
   input.addEventListener("input", () => (send.disabled = !input.value.trim()));
@@ -1051,7 +1054,8 @@ if (typeBox) {
     clearTimeout(saving);
     saving = window.setTimeout(async () => {
       try {
-        const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: voiceNow() }) });
+        const { voice, tune } = voiceNow();
+        const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: { voice, tune: { voicePitch: tune?.voicePitch ?? 0, voiceSpeed: tune?.voiceSpeed ?? 0 } } }) });
         if (!res.ok) warn("Your voice didn't save.");
       } catch {
         warn("Your voice didn't save. Check your connection.");

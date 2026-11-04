@@ -23,7 +23,8 @@ export type Build = "small" | "fast";
 // how fast (1 as the voice is). What comes back is the sound, the quiet
 // either side trimmed off, and where each word is in it (seconds), so a word
 // that stood out can be made to stand out in it (speech.ts).
-export type Phrase = { words: string[]; voice: string; speed: number };
+// (`blend`: another voice mixed in, `mix` of it, up to a half)
+export type Phrase = { words: string[]; voice: string; speed: number; blend?: { voice: string; mix: number } };
 export type ToKokoro = { type: "load"; build: Build } | { type: "say"; id: number; phrase: Phrase };
 export type FromKokoro =
   | { type: "loading"; loaded: number; total: number; build: Build }
@@ -124,14 +125,19 @@ async function sounds(text: string, american: boolean): Promise<string> {
 // The longest stretch the model says at once, in its own tokens (it takes
 // 510): a phrase longer than that is said a sentence or so at a time.
 const MOST = 400;
-async function sayPart(words: string[], voice: string, speed: number): Promise<{ audio: Float32Array; spans: [number, number][] }> {
+async function sayPart(words: string[], voice: string, speed: number, blend?: Phrase["blend"]): Promise<{ audio: Float32Array; spans: [number, number][] }> {
   const { model, tokenizer } = await load("small");
   const ph = await sounds(words.join(" "), voice[0] === "a");
   if (!ph) return { audio: new Float32Array(0), spans: words.map(() => [0, 0]) };
   const { input_ids } = tokenizer(ph, { truncation: true });
-  const all = await styles(voice);
   const at = styleAt(input_ids.dims.at(-1)!);
-  const style = all.slice(at, at + STYLE);
+  const style = (await styles(voice)).slice(at, at + STYLE);
+  // another voice mixed in: each a set of numbers, so a voice between them
+  const mix = Math.min(0.5, Math.max(0, blend?.mix ?? 0));
+  if (blend && mix > 0 && VOICE_ID.test(blend.voice) && blend.voice !== voice) {
+    const other = (await styles(blend.voice)).subarray(at, at + STYLE);
+    for (let i = 0; i < STYLE; i++) style[i] = style[i] * (1 - mix) + other[i] * mix;
+  }
   const { waveform } = await model({ input_ids, style: new Tensor("float32", style, [1, STYLE]), speed: new Tensor("float32", [Math.min(2, Math.max(0.5, speed))], [1]) });
   const audio = trim(waveform.data, RATE);
   return { audio, spans: wordSpans(audio, RATE, shareOut(words, ph)) };
@@ -149,7 +155,7 @@ async function say(phrase: Phrase): Promise<{ audio: Float32Array; spans: [numbe
       letters = 0;
     }
   }
-  const made = await Promise.all(parts.filter((p) => p.length).map((p) => sayPart(p, voice, phrase.speed)));
+  const made = await Promise.all(parts.filter((p) => p.length).map((p) => sayPart(p, voice, phrase.speed, phrase.blend)));
   const gap = Math.round(RATE * 0.25);
   const audio = new Float32Array(made.reduce((a, m) => a + m.audio.length, 0) + gap * (made.length - 1));
   const spans: [number, number][] = [];

@@ -273,9 +273,11 @@ const hearSample = (): void =>
     { text: "good", loud: 2, pitch: 2, stretch: 1.6 },
   ]);
 document.getElementById("hear-voice")?.addEventListener("click", hearSample);
-// a voice chosen is heard straight away, so they can be gone through by ear
+// a voice chosen (or mixed in, or how much) is heard straight away, so they
+// can be gone through by ear
 form.addEventListener("change", (e) => {
-  if ((e.target as HTMLInputElement).name === "voice") setTimeout(hearSample, 50);
+  const name = (e.target as HTMLInputElement).name;
+  if (name === "voice" || name === "blend" || name === "tune.voiceBlend") setTimeout(hearSample, 50);
 });
 
 // Natural voices, here too, so you hear the one everyone with them on will

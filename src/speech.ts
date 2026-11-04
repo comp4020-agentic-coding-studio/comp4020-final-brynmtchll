@@ -20,6 +20,10 @@
 // that word is.
 import { voiceOf, type Look } from "./packs.ts";
 import { stretch } from "./kokoro-text.ts";
+
+// what's needed of someone's look to say their words: their voice, its
+// sliders, and any voice mixed into it
+export type Voiced = Pick<Look, "voice" | "tune"> & { blend?: string };
 import type { Build, FromKokoro, Phrase as KokoroPhrase, ToKokoro } from "./kokoro.ts";
 
 // a word as it comes in a phrase: the word, and how it was said (dB louder
@@ -65,7 +69,7 @@ export type Run = { text: string; pitch: number; rate: number; volume: number };
 
 // A phrase as runs, each with what the browser takes: pitch (0 to 2, 1 as
 // the voice is), rate (1 as the voice is) and volume (0 to 1).
-export function runsOf(words: Spoken[], look: Pick<Look, "voice" | "tune">): Run[] {
+export function runsOf(words: Spoken[], look: Voiced): Run[] {
   const v = voiceOf(look.voice);
   // their pitch and speed sliders: each an octave's quarter either way, a
   // third faster or slower
@@ -112,10 +116,10 @@ export function runsOf(words: Spoken[], look: Pick<Look, "voice" | "tune">): Run
 // quieter (gain), higher or lower (rate, a little: it hurries the word too),
 // and drawn out (stretch: longer, at the same pitch, kokoro-text.ts).
 export type Shape = { gain: number; rate: number; stretch: number };
-export type NaturalPlan = { words: string[]; speed: number; play: number; volume: number; shapes: Shape[] };
+export type NaturalPlan = { words: string[]; speed: number; play: number; volume: number; shapes: Shape[]; blend?: { voice: string; mix: number } };
 // the model says well between about half and twice its own speed
 const SPEED = { lo: 0.6, hi: 1.7 };
-export function naturalPlan(words: Spoken[], look: Pick<Look, "voice" | "tune">): NaturalPlan | null {
+export function naturalPlan(words: Spoken[], look: Voiced): NaturalPlan | null {
   const said = words.filter((w) => w.text.trim());
   if (!said.length) return null;
   const v = voiceOf(look.voice);
@@ -140,7 +144,11 @@ export function naturalPlan(words: Spoken[], look: Pick<Look, "voice" | "tune">)
   });
   // the whole phrase as loud as its words on average, quieter for a hushed voice
   const volume = round2(hushed ? 0.6 : 0.8);
-  return { words: said.map((w) => w.text), speed: round2(speed), play: round2(play), volume, shapes };
+  // another voice mixed in, up to half and half (past that it's the other)
+  const other = look.blend && look.blend !== "none" ? voiceOf(look.blend).kokoro : "";
+  const mix = round2(((tuned(look, "voiceBlend") + 1) / 2) * 0.5);
+  const blend = other && other !== v.kokoro && mix > 0 ? { voice: other, mix } : undefined;
+  return { words: said.map((w) => w.text), speed: round2(speed), play: round2(play), volume, shapes, ...(blend ? { blend } : {}) };
 }
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -394,7 +402,7 @@ function play(plan: NaturalPlan, sound: Made, look: Pick<Look, "voice">, whenSta
 // microphone turned off mid-word doesn't leave it held for good).
 const DUCK_FOR = 1500; // ms
 let duckTimer = 0;
-type Waiting = { words: Spoken[]; look: Pick<Look, "voice" | "tune">; whenStarts?: (run: Run) => void; at: number };
+type Waiting = { words: Spoken[]; look: Voiced; whenStarts?: (run: Run) => void; at: number };
 const held: Waiting[] = [];
 const HELD_FOR = 20_000; // ms: held longer than this, it's not news any more
 export function duck(yes: boolean): void {
@@ -410,7 +418,7 @@ export const speaking = (): boolean => !!synth?.speaking || (!!ctx && ctx.curren
 
 // A phrase, in its speaker's voice, after whatever's being said already.
 // `whenStarts` is told as each run starts (to move their avatar, say).
-export function speak(words: Spoken[], look: Pick<Look, "voice" | "tune">, whenStarts?: (run: Run) => void): void {
+export function speak(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void): void {
   if (!on || look.voice === "silent") return;
   if (ducked) {
     held.push({ words, look, whenStarts, at: Date.now() });
@@ -431,7 +439,7 @@ export function speak(words: Spoken[], look: Pick<Look, "voice" | "tune">, whenS
 // oldest not yet playing is let go rather than everything.
 type Pending = { gen: number; dropped: boolean };
 const pending: Pending[] = [];
-function speakNaturally(words: Spoken[], look: Pick<Look, "voice" | "tune">, whenStarts?: (run: Run) => void): void {
+function speakNaturally(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void): void {
   const plan = naturalPlan(words, look);
   if (!plan) return;
   const mine: Pending = { gen: naturalGen, dropped: false };
@@ -441,7 +449,7 @@ function speakNaturally(words: Spoken[], look: Pick<Look, "voice" | "tune">, whe
   waiting++;
   const gen = naturalGen;
   const said: Said = { words: plan.words.flatMap(wordsOf), until: Infinity };
-  void generate({ words: plan.words, voice: voiceOf(look.voice).kokoro || "af_heart", speed: plan.speed }).then((made) => {
+  void generate({ words: plan.words, voice: voiceOf(look.voice).kokoro || "af_heart", speed: plan.speed, ...(plan.blend ? { blend: plan.blend } : {}) }).then((made) => {
     pending.splice(pending.indexOf(mine), 1);
     if (gen !== naturalGen || mine.dropped) return void (waiting = Math.max(0, waiting - 1));
     if (!made) {
@@ -463,7 +471,7 @@ function speakNaturally(words: Spoken[], look: Pick<Look, "voice" | "tune">, whe
   });
 }
 
-function speakOnDevice(words: Spoken[], look: Pick<Look, "voice" | "tune">, whenStarts?: (run: Run) => void): void {
+function speakOnDevice(words: Spoken[], look: Voiced, whenStarts?: (run: Run) => void): void {
   if (!synth) return;
   const runs = runsOf(words, look);
   if (!runs.length) return;
@@ -533,7 +541,7 @@ const keep = (said: Said): void => {
 export const remember = (text: string, now = Date.now()): void => keep({ words: wordsOf(text), until: now });
 
 // For trying a voice out (the studio): this said in it, now, voices on or not.
-export function tryVoice(look: Pick<Look, "voice" | "tune">, words: Spoken[]): void {
+export function tryVoice(look: Voiced, words: Spoken[]): void {
   if (!synth && natural.state !== "ready") return;
   void audio()?.resume();
   hush();

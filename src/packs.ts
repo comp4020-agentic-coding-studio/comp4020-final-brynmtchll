@@ -201,6 +201,10 @@ export const PARTS = {
   ],
   // how their words sound, to anyone listening
   voice: VOICES.map(({ id, label }) => ({ id, label })),
+  // another voice mixed into theirs (natural voices only: each is a set of
+  // numbers, and two can be mixed into one between them), as much as the
+  // voiceBlend slider says
+  blend: [{ id: "none", label: "None" }, ...VOICES.filter((v) => v.kokoro && v.id !== "robot").map(({ id, label }) => ({ id, label }))],
   // what they're wearing below the head, which shows with their arms
   top: [
     { id: "tee", label: "T-shirt" },
@@ -268,6 +272,7 @@ export const SLIDERS = [
   { id: "neck", label: "Neck", group: "Body" },
   { id: "voicePitch", label: "Pitch", group: "Voice" },
   { id: "voiceSpeed", label: "Speed", group: "Voice" },
+  { id: "voiceBlend", label: "How much of it", group: "Blend" },
 ] as const satisfies readonly (Choice & { group: string })[];
 export type Slider = (typeof SLIDERS)[number]["id"];
 export type Tune = Partial<Record<Slider, number>>;
@@ -291,6 +296,7 @@ export const DEFAULT_LOOK: Look = {
   extra: "none",
   top: "tee",
   voice: "warm",
+  blend: "none",
   words: "plain",
   skin: COLOURS.skin.swatches[0],
   hairColour: COLOURS.hairColour.swatches[1],
