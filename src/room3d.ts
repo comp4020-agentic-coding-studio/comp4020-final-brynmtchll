@@ -16,7 +16,8 @@
 // It's lit as a room at dusk: warm light from the window low across the
 // floor, a lamp glowing in the corner, and light from all round (a room
 // blurred into light, three.js's RoomEnvironment), with a soft shadow on the
-// floor under each chair and the table. Then, where the screen can afford
+// floor under each chair and the table, and a soft light from above on
+// whoever's talking. Then, where the screen can afford
 // it, a glow round what's brightest (bloom: the window, the lamp) and a
 // gentle darkening at the edges. A screen that can't keep up loses those,
 // then draws at fewer pixels; a phone starts without. (Shading where things
@@ -30,7 +31,7 @@
 // the room).
 import { roomView, type RoomHead } from "./head3d.ts";
 import { seatPlaces } from "./seats.ts";
-import { fovFor, held, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type View } from "./camera.ts";
+import { facing, fovFor, held, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type View } from "./camera.ts";
 
 type T = any;
 
@@ -38,6 +39,7 @@ type T = any;
 const MOST_SEATS = 12;
 const CROWD = 6; // more than this, and only some are named over their heads
 const FLOOR = -5.2; // where the floor is, below a seated head's middle
+const SPOT = 55; // how bright the light on whoever's talking is
 
 type Seat = { group: T; chair: T; riser: T; holds: RoomHead | null };
 type Quality = 0 | 1; // 0: plain; 1: a glow and darker edges
@@ -49,6 +51,7 @@ type Room = {
   post: Post | null;
   dust: T; // the specks in the sunlight, turning as time goes
   fairy: T; // the lights along the rail, twinkling
+  spot: T; // the light on whoever's talking
   seats: Seat[];
   // the camera as drawn: where it stands and looks, eased towards the shot
   eye: { at: number[]; look: number[] } | null;
@@ -327,7 +330,7 @@ function kit(THREE: T, scene: T, merge: (g: T[]) => T): Kit & { done: (shadows: 
 
 const mat = (THREE: T, color: number | string, rough = 0.7, extra: Record<string, unknown> = {}): T => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, ...extra });
 
-function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lamp: T; sun: T; dust: T; fairy: T } {
+function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lamp: T; sun: T; dust: T; fairy: T; spot: T } {
   scene.background = new THREE.Color(0x141824);
   scene.fog = new THREE.Fog(0x141824, 46, 90);
   // light from above and below: warm from the ceiling, cool off the floor
@@ -351,6 +354,12 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
   const bounce = new THREE.DirectionalLight(0xffd9b0, 0.5);
   bounce.position.set(-20, 6, 4);
   scene.add(bounce);
+  // a soft light from above and in front onto whoever's talking, coming up
+  // as they start and going down after they stop (there all along, at
+  // nothing between, as adding a light remakes every material's shader)
+  const spot = new THREE.SpotLight(0xfff2de, 0, 40, 0.2, 0.9, 1.2);
+  spot.position.set(0, 12, 0);
+  scene.add(spot, spot.target);
 
   const k = kit(THREE, scene, merge);
   // the floor: boards, a little sheen
@@ -641,7 +650,7 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
     scene.add(b);
   }
   k.done(new Set([wood, velvet, leafA, leafB, terracotta, tableWood, darkWood, brass, ...books]));
-  return { lamp, sun, dust, fairy };
+  return { lamp, sun, dust, fairy, spot };
 }
 
 // A chair for a seat: a soft, rounded armchair, in a colour from a few, on
@@ -854,6 +863,18 @@ function draw(heads: RoomHead[], THREE: T): void {
   if (focus < 0) focus = sitting.findIndex((x) => x.mine);
   const framed = shotFor(r.view, places, r.camera.aspect, talking, focus);
   r.framed = framed;
+  // the light on whoever's talking: over to them, and up, as they start;
+  // down, where it was, after they stop
+  const lit = places[talking];
+  if (lit) {
+    const f = facing(lit);
+    const ease = r.spot.intensity < 1 || still.matches ? 1 : 1 - Math.exp(-6 * dt);
+    const to = [lit.x + f[0] * 3, lit.y + 14, lit.z + f[2] * 3];
+    const on = [lit.x, lit.y - 1, lit.z];
+    r.spot.position.set(...r.spot.position.toArray().map((n: number, i: number) => n + (to[i] - n) * ease));
+    r.spot.target.position.set(...r.spot.target.position.toArray().map((n: number, i: number) => n + (on[i] - n) * ease));
+  }
+  r.spot.intensity += ((lit ? SPOT : 0) - r.spot.intensity) * (still.matches ? 1 : 1 - Math.exp(-(lit ? 4 : 1.5) * dt));
   // (what it can show, held to while it's dragged or gliding: the follow
   // view's leaning would otherwise loosen it, a little, every time someone
   // spoke)
@@ -1160,7 +1181,7 @@ export const overHead = (slot: HTMLElement): HTMLElement | null => room?.labels.
 // keep its own copy of every head on the GPU for as long as the page is
 // open (three.js keeps a renderer alive while anything it drew is), so each
 // visit to the room would add one.
-let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post" | "dust" | "fairy"> | null = null;
+let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post" | "dust" | "fairy" | "spot"> | null = null;
 let roundedBox: T = null;
 // phones and small screens start plain (and work up if they keep up easily)
 const startQuality = (): Quality => (matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 600 ? 0 : 1);
@@ -1214,10 +1235,10 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
       scene.environmentIntensity = 0.4;
       pmrem.dispose();
-      const { dust, fairy } = furnish(THREE, scene, mergeGeometries, RoundedBoxGeometry);
+      const { dust, fairy, spot } = furnish(THREE, scene, mergeGeometries, RoundedBoxGeometry);
       const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 140);
       const post = await postFor(THREE, renderer, scene, camera);
-      kept = { THREE, renderer, scene, camera, canvas, post, dust, fairy };
+      kept = { THREE, renderer, scene, camera, canvas, post, dust, fairy, spot };
       seatsKept = [];
     }
     room = {
