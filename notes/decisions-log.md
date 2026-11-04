@@ -227,6 +227,10 @@ led to. Claude chose how to build each; what to build was yours.
      ([`82bb3ad`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/82bb3ad)). Heads' mouths move with the natural voice as it plays,
      and the device's voices prefer their better-sounding versions
      ([`58f7ec1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/58f7ec1)).
+   - A review of it (a subagent, read-only) found a colour picked in the
+     studio no longer kept, phrases for a voice made even once let go, and
+     no limit on falling behind; fixed, with phrases now made one at a time
+     ([`10504a4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/10504a4)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
