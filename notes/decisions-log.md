@@ -204,6 +204,30 @@ led to. Claude chose how to build each; what to build was yours.
    pitch and speed are in the box too, the same ones the studio keeps.
    Typed messages are marked ⌨ and aren't counted in someone's usual voice.
 
+4. **Better voices, more of them.** "ok i want voice quality to be improved
+   and more selectable for different voices", then "work hard and long on
+   improving this" (3 November). The voices were each device's own, robotic
+   on many and different on every one.
+   - Natural voices, opt-in beside "Hear voices": Kokoro (82M parameters,
+     Apache-2.0) run in the browser, the same on every device; only words go
+     in, nothing is sent ([`1c8497f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/1c8497f)). Measured first in headless Chrome on
+     an M4 Pro: the full-size build on the GPU (326 MB) makes a phrase in
+     about a quarter of a second, heard about 0.3 s after it's said in the
+     room (median of 16); the 8-bit CPU build (92 MB) 2.5 to 3.5 s a phrase;
+     the half-size GPU builds came out silent. Whisper heard all 28 English
+     voices back word for word. The GPU build where it can run, the small
+     one otherwise and on phones ([`ba73bff`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/ba73bff)).
+   - Said whole, then shaped: in pieces, Whisper heard "oh this is so good"
+     as "so, gone good". A word that stood out is made louder, a little
+     higher, or drawn out at its own pitch where it is in the sound
+     ([`1c8497f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/1c8497f), [`e281037`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e281037)); a phrase whose last word rose is given
+     a "?" for the model to read ([`78963db`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/78963db)).
+   - Choice: 27 voices, each described from measuring it and listed highest
+     first ([`1c8497f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/1c8497f), [`a76ed3a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/a76ed3a)); any two mixed, up to half and half
+     ([`82bb3ad`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/82bb3ad)). Heads' mouths move with the natural voice as it plays,
+     and the device's voices prefer their better-sounding versions
+     ([`58f7ec1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/58f7ec1)).
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Bryn's M4 Pro in headless Chrome.
