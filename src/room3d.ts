@@ -65,6 +65,9 @@ type Room = {
   canvas: HTMLCanvasElement;
   at: Map<HTMLElement, { x: number; y: number }>;
   seatOf: Map<HTMLElement, number>;
+  // where each person's seat is drawn (x, y, z and turn), gliding to its
+  // place, and how far they've come up into it, as they sit down
+  sat: Map<HTMLElement, { at: number[]; grown: number }>;
   activeAt: Map<HTMLElement, number>; // when each was last talking or had a hand up
   last: number;
   // how long frames are taking, to draw less when they're slow
@@ -924,11 +927,25 @@ function draw(heads: RoomHead[], THREE: T): void {
     }
     if (!who) return void (seat.holds = null);
     const p = places[i];
-    seat.group.position.set(p.x, p.y, p.z);
-    seat.group.rotation.y = p.turn;
-    seat.riser.visible = p.y > 0.05;
-    seat.riser.scale.y = Math.max(0.01, p.y);
-    seat.riser.position.set(0, FLOOR - p.y / 2, -1.5);
+    // (someone new: comes up where they sit; someone moved along, as the
+    // rows fill or close up: glides there, chair and all)
+    const to = [p.x, p.y, p.z, p.turn];
+    let was = r.sat.get(who.slot);
+    if (!was || still.matches) was = { at: to, grown: was?.grown ?? (still.matches ? 1 : 0) };
+    else {
+      const k = 1 - Math.exp(-7 * dt);
+      was.at = was.at.map((n, j) => n + (to[j] - n) * k);
+    }
+    was.grown = still.matches ? 1 : Math.min(1, was.grown + dt * 2.6);
+    r.sat.set(who.slot, was);
+    const up = 1 - (1 - was.grown) ** 3;
+    const [x, y, z, turn] = was.at;
+    seat.group.position.set(x, y - (1 - up) * 1.2, z);
+    seat.group.rotation.y = turn;
+    seat.group.scale.setScalar(0.85 + 0.15 * up);
+    seat.riser.visible = y > 0.05;
+    seat.riser.scale.y = Math.max(0.01, y);
+    seat.riser.position.set(0, FLOOR - y / 2, -1.5);
     // (a head3d frame takes the head out of any scene it's in, to draw it
     // in its card; here it isn't, so it stays put between frames)
     if (who.root.parent !== seat.group) {
@@ -1096,7 +1113,10 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.labels.delete(slot);
     r.at.delete(slot);
   }
-  for (const m of [r.activeAt, r.seatOf]) for (const slot of m.keys()) if (!slot.isConnected) m.delete(slot);
+  for (const m of [r.activeAt, r.seatOf, r.sat]) for (const slot of m.keys()) if (!slot.isConnected) m.delete(slot);
+  // (someone not sitting now, in a room with more people than seats, sits
+  // down afresh when they're back)
+  for (const slot of r.sat.keys()) if (!seen.has(slot)) r.sat.delete(slot);
 }
 
 // Drawing less on a screen that can't keep up: frames taking over 24 ms (a
@@ -1383,6 +1403,7 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       overlay,
       at: new Map(),
       seatOf: new Map(),
+      sat: new Map(),
       activeAt: new Map(),
       last: performance.now(),
       slow: { frames: 0, over: 0, since: performance.now(), dropped: -Infinity },
