@@ -42,7 +42,7 @@ const FLOOR = -5.2; // where the floor is, below a seated head's middle
 const SPOT = 55; // how bright the light on whoever's talking is
 
 type Seat = { group: T; chair: T; riser: T; holds: RoomHead | null };
-type Quality = 0 | 1; // 0: plain; 1: a glow and darker edges
+type Quality = 0 | 1 | 2; // 0: plain; 1: a glow and darker edges; 2: and shade where things touch
 type Room = {
   THREE: T;
   renderer: T;
@@ -68,7 +68,7 @@ type Room = {
   activeAt: Map<HTMLElement, number>; // when each was last talking or had a hand up
   last: number;
   // how long frames are taking, to draw less when they're slow
-  slow: { frames: number; over: number; since: number };
+  slow: { frames: number; over: number; since: number; dropped: number };
   quality: Quality;
   pixels: number; // a share of the screen's own pixel ratio
   shadowFrame: number;
@@ -715,10 +715,10 @@ function chair(THREE: T, i: number, RoundedBox: T): T {
 // A glow round what's brightest (bloom), then tone mapping, a little
 // darkening at the edges, and a little noise so the dark gradients don't
 // band.
-type Post = { composer: T; bloom: T; finish: T; setSize: (w: number, h: number) => void };
+type Post = { composer: T; bloom: T; ao: T; finish: T; setSize: (w: number, h: number) => void };
 async function postFor(THREE: T, renderer: T, scene: T, camera: T): Promise<Post | null> {
   try {
-    const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { ShaderPass }] = await Promise.all([
+    const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { ShaderPass }, { GTAOPass }] = await Promise.all([
       // @ts-expect-error: resolved by the page's import map
       import("three/addons/postprocessing/EffectComposer.js"),
       // @ts-expect-error: resolved by the page's import map
@@ -727,6 +727,8 @@ async function postFor(THREE: T, renderer: T, scene: T, camera: T): Promise<Post
       import("three/addons/postprocessing/UnrealBloomPass.js"),
       // @ts-expect-error: resolved by the page's import map
       import("three/addons/postprocessing/ShaderPass.js"),
+      // @ts-expect-error: resolved by the page's import map
+      import("three/addons/postprocessing/GTAOPass.js"),
     ]);
     // drawn in linear light, at half-float, so the glow works on real
     // brightness (only the sky and the lamp are over 1), then tone mapped
@@ -734,6 +736,28 @@ async function postFor(THREE: T, renderer: T, scene: T, camera: T): Promise<Post
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
     const composer = new EffectComposer(renderer, target);
     composer.addPass(new RenderPass(scene, camera));
+    // shade where things nearly touch, as light can't get in there: under a
+    // chin, between a body and its chair, where a chair meets the floor
+    // (ambient occlusion, worked out from what's drawn). Drawn at half size,
+    // and blurred, it costs a frame a few milliseconds; only what's solid
+    // counts (a shaft of light, or a soft shadow, would shade what's behind
+    // it)
+    // (near, and soft: further out, faces went grubby round the eyes)
+    const ao = new GTAOPass(scene, camera, 1, 1, {}, { radius: 1, distanceExponent: 2, thickness: 0.6, distanceFallOff: 0.5, scale: 1, samples: 16 }, { rings: 3, samples: 16, radius: 10 });
+    ao.blendIntensity = 0.75;
+    const solid = ao._overrideVisibility.bind(ao);
+    ao._overrideVisibility = () => {
+      solid();
+      scene.traverse((o: T) => {
+        if (o.isMesh && o.visible && o.material?.transparent) {
+          o.visible = false;
+          ao._visibilityCache.push(o);
+        }
+      });
+    };
+    const aoSize = ao.setSize.bind(ao);
+    ao.setSize = (w: number, h: number) => aoSize(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
+    composer.addPass(ao);
     const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.5, 1.6);
     composer.addPass(bloom);
     const finish = new ShaderPass({
@@ -761,7 +785,7 @@ async function postFor(THREE: T, renderer: T, scene: T, camera: T): Promise<Post
     // (the renderer's own tone mapping is the finish's job now)
     finish.material.toneMapped = false;
     composer.addPass(finish);
-    return { composer, bloom, finish, setSize: (w, h) => composer.setSize(w, h) };
+    return { composer, bloom, ao, finish, setSize: (w, h) => composer.setSize(w, h) };
   } catch (err) {
     console.warn("room: drawing it plainly", err);
     return null;
@@ -935,6 +959,7 @@ function draw(heads: RoomHead[], THREE: T): void {
   }
   if (r.post && r.quality > 0) {
     r.post.finish.uniforms.time.value = (now % 1000) / 10;
+    r.post.ao.enabled = r.quality > 1;
     r.post.composer.render(dt);
   } else r.renderer.render(r.scene, r.camera);
   // (the scene comes up once there's something drawn in it: style.css)
@@ -1023,8 +1048,10 @@ function draw(heads: RoomHead[], THREE: T): void {
 
 // Drawing less on a screen that can't keep up: frames taking over 24 ms (a
 // screen that should be doing 60 managing about 40) for most of two seconds
-// drop the glow, then draw at fewer pixels; and frames well under, for long
-// enough, bring them back a step at a time.
+// drop the shading where things touch, then the glow, then draw at fewer
+// pixels; and frames well under, for long enough, bring them back a step at
+// a time (the shading only half a minute after it was last too much, so a
+// screen that can only just do without it doesn't flicker in and out of it).
 function adapt(r: Room, dt: number): void {
   if (document.hidden) return;
   r.slow.frames++;
@@ -1032,14 +1059,17 @@ function adapt(r: Room, dt: number): void {
   const t = performance.now();
   if (t - r.slow.since < 2000) return;
   const share = r.slow.over / Math.max(1, r.slow.frames);
+  let dropped = r.slow.dropped;
   if (share > 0.5) {
-    if (r.quality > 0) r.quality = 0;
+    if (r.quality === 2) dropped = t;
+    if (r.quality > 0) r.quality--;
     else if (r.pixels > 0.6) r.pixels = Math.max(0.6, r.pixels - 0.2);
   } else if (share < 0.05 && r.slow.frames > 100) {
     if (r.pixels < 1) r.pixels = Math.min(1, r.pixels + 0.2);
-    else r.quality = 1;
+    else if (r.quality === 0) r.quality = 1;
+    else if (r.quality === 1 && t - dropped > 30000 && !phone()) r.quality = 2;
   }
-  r.slow = { frames: 0, over: 0, since: t };
+  r.slow = { frames: 0, over: 0, since: t, dropped };
 }
 
 // One step of a critically damped spring from `at` (moving at `v`) towards
@@ -1228,7 +1258,10 @@ export const overHead = (slot: HTMLElement): HTMLElement | null => room?.labels.
 let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post" | "dust" | "fairy" | "spot"> | null = null;
 let roundedBox: T = null;
 // phones and small screens start plain (and work up if they keep up easily)
-const startQuality = (): Quality => (matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 600 ? 0 : 1);
+// (a phone starts plain, and never shades where things touch: it can, but
+// not for long before it's hot)
+const phone = (): boolean => matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 600;
+const startQuality = (): Quality => (phone() ? 0 : 2);
 export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLElement | null): Promise<boolean> {
   if (!canvas || !overlay) {
     if (room) {
@@ -1299,7 +1332,7 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       seatOf: new Map(),
       activeAt: new Map(),
       last: performance.now(),
-      slow: { frames: 0, over: 0, since: performance.now() },
+      slow: { frames: 0, over: 0, since: performance.now(), dropped: -Infinity },
       quality: startQuality(),
       shadowFrame: 0,
       spin: { yaw: 0, pitch: 0 },
