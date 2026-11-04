@@ -284,7 +284,7 @@ export function spotAt(i: number): { x: number; y: number } {
 // two people in a test room the same pink. Saturation and lightness are
 // style.css's, set per theme so every hue reads against the background.
 const GOLDEN_ANGLE = 137.508;
-export const hueOf = (seat: number): number => Math.round((20 + seat * GOLDEN_ANGLE) % 360);
+export const hueOf = (seat: number): number => Math.round((20 + seat * GOLDEN_ANGLE) % 360) % 360;
 
 
 export const ago = (at: number, now: number = Date.now()): string => {

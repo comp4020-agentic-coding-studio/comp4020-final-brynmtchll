@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TONES, typedWords } from "../src/typed.ts";
-import { clean, LIMITS } from "../src/voice.ts";
+import { clean, hueOf, LIMITS } from "../src/voice.ts";
 
 // A message typed instead of said, given the shape of a spoken one: what the
 // writing and the tone picked make of each word, and that it's always a
@@ -74,4 +74,15 @@ describe("a typed message, shaped the way it's written", () => {
     expect(typedWords("  ")).toEqual([]);
     expect(typedWords("*** ... !!!")).toEqual([]);
   });
+});
+
+// (a seat's colour, however long the room has been going: once rounded, the
+// 602nd seat's came to 360, past the end of the wheel)
+it("gives every seat a hue from 0 to 359", () => {
+  for (let seat = 0; seat < 5000; seat++) {
+    const h = hueOf(seat);
+    expect(h).toBeGreaterThanOrEqual(0);
+    expect(h).toBeLessThan(360);
+    expect(Number.isInteger(h)).toBe(true);
+  }
 });
