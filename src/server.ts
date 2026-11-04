@@ -112,7 +112,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // time each is asked for (not at boot, so a server waking up answers sooner)
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
-const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts"]);
+const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts"]);
 const stripped = new Map<string, string>();
 const scriptOf = (f: string): string | undefined => {
   if (!SCRIPTS.has(f)) return undefined;

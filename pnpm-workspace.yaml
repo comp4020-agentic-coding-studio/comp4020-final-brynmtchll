@@ -1,3 +1,6 @@
 # esbuild (used by Vitest) needs its postinstall to set up its native binary.
 allowBuilds:
   esbuild: true
+  # onnxruntime-node (the checks' speech detector) ships its binaries; its
+  # postinstall only fetches GPU extras it doesn't need
+  onnxruntime-node: false
