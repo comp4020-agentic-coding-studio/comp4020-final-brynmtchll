@@ -275,6 +275,47 @@ led to. Claude chose how to build each; what to build was yours.
      people at 1440x900; 51 with 8 at phone size with the processor slowed
      four times (44 before the sun's shadows were redrawn every other frame
      rather than every frame).
+   - The camera, let go mid-drag, glides to a stop rather than stopping
+     dead; dragged past the edge of where it can go, it turns back as soon
+     as it's dragged the other way ([`a86ead9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/a86ead9)).
+   - More in the room: soft shafts of sun through the window with dust
+     drifting in them ([`efaf24c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/efaf24c)), fairy lights in swags across the
+     top of the window, each bulb twinkling in its own time
+     ([`c18b751`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/c18b751)), a soft light that comes up on whoever's talking and
+     goes down after ([`50a9cfb`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/50a9cfb)), and a small soft shadow under each
+     thing on the table ([`7f02c7d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/7f02c7d)). Each drawn as one or two draws.
+     With 12 people at phone size and the processor slowed four times:
+     46 to 52 frames a second before and after each (measured at
+     [`a86ead9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/a86ead9) and after [`50a9cfb`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/50a9cfb); varies run to run).
+   - Switching to the room: the box shows a slow-moving dusk until the
+     first frame is drawn, then fades it up; names over heads show only
+     once placed (they had all shown at the top for a moment)
+     ([`c4bc696`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/c4bc696)). On a light page, the words over heads keep the dark
+     page's colours, as the room is dark either way ([`0c6b622`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0c6b622)).
+
+7. **The rest of the page, more polished.** Same request (4 to 5 November).
+   - Type: Inter for reading, Bricolage Grotesque for headings and the
+     name (variable fonts, from jsdelivr); the join card's headline drawn
+     the way the app draws speech; cards tinted with each person's colour,
+     breathing while they speak; away cards short and after everyone here
+     ([`c211045`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/c211045)).
+   - Heads in cards lit as the room is: light from all round, a warm key
+     light casting a soft shadow, a cool rim light, Neutral tone mapping
+     ([`84d0d7f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/84d0d7f)). With 11 others all talking and the processor slowed
+     four times, cards drew at 59.7 frames a second before, 55.1 with a
+     1024 shadow map, 60.2 with 512 (kept).
+   - Studio: saved looks, tabs as a grid, sliders, a glow behind the head
+     ([`8cf510d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/8cf510d)); the avatar fades out at the bottom of its frame
+     rather than being cut off ([`b0bf480`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b0bf480)). Help, About and Lately
+     restyled ([`409d5fe`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/409d5fe)).
+   - Your controls in panels (typing and tone, emotes, changing a word); on
+     a phone, the microphone across the width, tones as a row that slides,
+     emotes and word effects as even grids ([`713d712`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/713d712),
+     [`eebcf44`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/eebcf44)). Cards two to a row are shorter, and your own card is
+     short until there's something to show under it ([`24d5a36`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/24d5a36)).
+   - Found on the way: a seat's colour could come to 360 (past the end of
+     the colour wheel) from the 602nd seat on; fixed, with a check
+     ([`91e966e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/91e966e)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
