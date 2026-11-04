@@ -52,25 +52,37 @@ export const stylesCss = (): string =>
 
 // ---- voices ----
 
-// How someone's words sound to whoever has voices on (speech.ts): a voice
-// of a few, each a way of sounding rather than a particular recording, since
-// each listener's device has its own voices: `names` are the ones to look
-// for, best first (macOS, Windows, Android and Chrome's own), and `lang` the
-// accent to fall back on, at the voice's own pitch and speed (1 as the
-// device speaks). Each listener's device says it a little differently; the
-// pitch and speed make it theirs anywhere. "Silent" is never spoken.
+// How someone's words sound to whoever has voices on (speech.ts). Each is
+// one of Kokoro's natural voices (`kokoro`, the same on every device, for a
+// listener who's turned them on), and a way of sounding on the device's own
+// voices otherwise: `names` the ones to look for, best first (macOS,
+// Windows, Android and Chrome's own), `lang` the accent to fall back on.
+// `pitch` and `rate` move the natural voice (1 as it is: a character voice
+// is one of the others moved), `device` the device's, whose voices are
+// fewer and so moved further to sound like this one. `about` is how it sounds, from measuring each
+// (decisions-log): how high it sits, how much it moves, how fast it goes.
+// "Silent" is never spoken. Ids never go: a look keeps the one it chose.
 export const VOICES = [
-  { id: "warm", label: "Warm", names: ["Samantha", "Google US English", "Microsoft Aria", "Microsoft Zira", "Karen"], lang: "en-US", pitch: 1, rate: 1 },
-  { id: "deep", label: "Deep", names: ["Daniel", "Google UK English Male", "Microsoft Guy", "Microsoft David", "Rishi", "Fred"], lang: "en-GB", pitch: 0.75, rate: 0.95 },
-  { id: "bright", label: "Bright", names: ["Karen", "Tessa", "Google UK English Female", "Microsoft Jenny", "Samantha"], lang: "en-AU", pitch: 1.3, rate: 1.06 },
-  { id: "story", label: "Storyteller", names: ["Moira", "Daniel", "Google UK English Female", "Microsoft Libby", "Microsoft Hazel"], lang: "en-IE", pitch: 0.95, rate: 0.88 },
-  { id: "quick", label: "Quick", names: ["Rishi", "Reed (English (United States))", "Microsoft Mark", "Google US English"], lang: "en-IN", pitch: 1.05, rate: 1.25 },
-  { id: "grand", label: "Grand", names: ["Grandpa (English (United Kingdom))", "Grandpa (English (United States))", "Microsoft George", "Daniel"], lang: "en-GB", pitch: 0.7, rate: 0.85 },
-  { id: "tiny", label: "Tiny", names: ["Junior", "Flo (English (United States))", "Microsoft Ana", "Google US English"], lang: "en-US", pitch: 1.65, rate: 1.15 },
-  { id: "robot", label: "Robot", names: ["Trinoids", "Zarvox", "Fred", "Microsoft David"], lang: "en-US", pitch: 0.4, rate: 1 },
-  { id: "whisper", label: "Whisper", names: ["Whisper", "Microsoft Zira"], lang: "en-US", pitch: 1.1, rate: 0.9 },
-  { id: "silent", label: "Silent", names: [], lang: "", pitch: 1, rate: 1 },
-] as const satisfies readonly (Choice & { names: readonly string[]; lang: string; pitch: number; rate: number })[];
+  { id: "warm", label: "Heart", about: "warm, American", kokoro: "af_heart", names: ["Samantha", "Google US English", "Microsoft Aria", "Microsoft Zira", "Karen"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1, rate: 1 } },
+  { id: "bright", label: "Bella", about: "bright, American", kokoro: "af_bella", names: ["Karen", "Tessa", "Google UK English Female", "Microsoft Jenny", "Samantha"], lang: "en-US", pitch: 1, rate: 1.04, device: { pitch: 1.3, rate: 1.06 } },
+  { id: "soft", label: "Nicole", about: "soft and close, American", kokoro: "af_nicole", names: ["Samantha", "Microsoft Aria", "Google US English"], lang: "en-US", pitch: 1, rate: 1.1, device: { pitch: 1.05, rate: 0.92 } },
+  { id: "lively", label: "Kore", about: "lively, American", kokoro: "af_kore", names: ["Allison", "Microsoft Jenny", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1.15, rate: 1.05 } },
+  { id: "easy", label: "Sarah", about: "easygoing, American", kokoro: "af_sarah", names: ["Susan", "Microsoft Michelle", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 1.05, rate: 1 } },
+  { id: "emma", label: "Emma", about: "clear, British", kokoro: "bf_emma", names: ["Serena", "Kate", "Google UK English Female", "Microsoft Libby", "Microsoft Hazel"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 1.05, rate: 1 } },
+  { id: "isabella", label: "Isabella", about: "high, British", kokoro: "bf_isabella", names: ["Stephanie", "Google UK English Female", "Microsoft Sonia"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 1.25, rate: 1 } },
+  { id: "deep", label: "Onyx", about: "deep, American", kokoro: "am_onyx", names: ["Daniel", "Google UK English Male", "Microsoft Guy", "Microsoft David", "Rishi", "Fred"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.75, rate: 0.95 } },
+  { id: "steady", label: "Michael", about: "steady, American", kokoro: "am_michael", names: ["Alex", "Tom", "Microsoft Guy", "Google US English"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 1 } },
+  { id: "firm", label: "Fenrir", about: "firm, American", kokoro: "am_fenrir", names: ["Aaron", "Microsoft Davis", "Microsoft David"], lang: "en-US", pitch: 1, rate: 1, device: { pitch: 0.95, rate: 1.02 } },
+  { id: "quick", label: "Puck", about: "playful and quick, American", kokoro: "am_puck", names: ["Rishi", "Reed (English (United States))", "Microsoft Mark", "Google US English"], lang: "en-US", pitch: 1, rate: 1.15, device: { pitch: 1.05, rate: 1.25 } },
+  { id: "story", label: "Fable", about: "a storyteller, British", kokoro: "bm_fable", names: ["Moira", "Daniel", "Google UK English Female", "Microsoft Libby", "Microsoft Hazel"], lang: "en-GB", pitch: 1, rate: 0.95, device: { pitch: 0.95, rate: 0.88 } },
+  { id: "george", label: "George", about: "low, British", kokoro: "bm_george", names: ["Arthur", "Daniel", "Google UK English Male", "Microsoft Ryan"], lang: "en-GB", pitch: 1, rate: 1, device: { pitch: 0.9, rate: 0.98 } },
+  { id: "grand", label: "Lewis", about: "deep and slow, British", kokoro: "bm_lewis", names: ["Grandpa (English (United Kingdom))", "Grandpa (English (United States))", "Microsoft George", "Daniel"], lang: "en-GB", pitch: 1, rate: 0.88, device: { pitch: 0.7, rate: 0.85 } },
+  { id: "jolly", label: "Santa", about: "jolly and animated", kokoro: "am_santa", names: ["Ralph", "Fred", "Microsoft David"], lang: "en-US", pitch: 1, rate: 0.95, device: { pitch: 0.85, rate: 0.95 } },
+  { id: "tiny", label: "Tiny", about: "small and squeaky", kokoro: "af_jessica", names: ["Junior", "Flo (English (United States))", "Microsoft Ana", "Google US English"], lang: "en-US", pitch: 1.45, rate: 1.1, device: { pitch: 1.65, rate: 1.15 } },
+  { id: "robot", label: "Robot", about: "a robot", kokoro: "am_echo", names: ["Trinoids", "Zarvox", "Fred", "Microsoft David"], lang: "en-US", pitch: 0.8, rate: 1, device: { pitch: 0.4, rate: 1 }, robot: true },
+  { id: "whisper", label: "Whisper", about: "hushed", kokoro: "af_nicole", names: ["Whisper", "Microsoft Zira"], lang: "en-US", pitch: 1, rate: 0.95, device: { pitch: 1.1, rate: 0.9 }, hushed: true },
+  { id: "silent", label: "Silent", about: "not spoken", kokoro: "", names: [], lang: "", pitch: 1, rate: 1, device: { pitch: 1, rate: 1 } },
+] as const satisfies readonly (Choice & { about: string; kokoro: string; names: readonly string[]; lang: string; pitch: number; rate: number; device: { pitch: number; rate: number }; robot?: true; hushed?: true })[];
 export type VoiceChoice = (typeof VOICES)[number];
 export const voiceOf = (id: unknown): VoiceChoice => VOICES.find((v) => v.id === id) ?? VOICES[0];
 
@@ -337,6 +349,9 @@ export const fullLook = (stored: unknown): Look => cleanLook(stored) ?? DEFAULT_
 
 // Someone who hasn't chosen yet gets a look from their seat, so a room of
 // newcomers isn't a room of identical faces.
+const SPEAKING = VOICES.filter((v) => v.id !== "silent");
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+const STEP = [5, 7, 4, 3, 1].find((n) => gcd(n, SPEAKING.length) === 1)!;
 export function lookFor(seat: number): Look {
   const pick = <P extends Part>(p: P, n: number): PartId<P> => PARTS[p][n % PARTS[p].length].id as PartId<P>;
   return {
@@ -348,8 +363,9 @@ export function lookFor(seat: number): Look {
     hairColour: COLOURS.hairColour.swatches[(seat * 3) % 6],
     eyeColour: COLOURS.eyeColour.swatches[seat % 4],
     topColour: COLOURS.topColour.swatches[(seat * 7) % 10],
-    // (every voice but silent, in turn: 9 voices and a step of 4 share no factor)
-    voice: VOICES[(seat * 4) % (VOICES.length - 1)].id,
+    // (every voice but silent, in turn, by a step that shares no factor with
+    // how many there are, so neighbours sound different)
+    voice: SPEAKING[(seat * STEP) % SPEAKING.length].id,
   };
 }
 

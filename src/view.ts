@@ -16,7 +16,7 @@ const HELP = `<details class="help">
     <p>Tap any of your words (your latest is chosen already) to type over it, delete it, or press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for Impact, Whisper or Glow, live, for everyone.</p>
     <p>Show your face and your avatar pulls the faces you pull and turns as you turn. Your voice and face are read in this browser; only words, how they were said, and a handful of numbers about your face leave it. No recording or picture is kept anywhere.</p>
     <p>Hands too, and your avatar's arms and hands follow yours: a thumbs up, a wave or a peace sign sets off its emote. Raise your hand (<kbd>Shift</kbd> <kbd>R</kbd>) to take a place in the queue to speak.</p>
-    <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. Headphones stop it coming back through your microphone.</p>
+    <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. ✨ Natural voices sound like people and the same on every device (a download, once, made and played in this browser). Pick yours in Customise. Headphones stop it coming back through your microphone.</p>
     <p>Or type it instead: pick how it's said (excited, calm, asking, sarcastic…) and it goes up like anything said, spoken in your voice. <kbd>*stars*</kbd> or CAPS make a word stand out. Typed messages are marked ⌨.</p>
   </div>
 </details>`;
@@ -127,6 +127,9 @@ function lookEditor(look: Look): string {
         .map((v) => `<label><input type="radio" name="${k}" value="${v}"${look[k] === v ? " checked" : ""}><span><span class="swatch" style="background:${v}"></span><span class="visually-hidden">${v}</span></span></label>`)
         .join("")}<label class="any-colour" title="Any colour"><input type="radio" name="${k}" value="${esc(look[k])}"${custom ? " checked" : ""} data-custom><span><input type="color" value="${esc(look[k])}" data-for="${k}" aria-label="Any ${c.label.toLowerCase()} colour"></span></label></fieldset>`;
     }
+    // voices, with how each sounds under its name
+    if (k === "voice")
+      return `<fieldset class="pick voices"><legend>Voice</legend>${VOICES.map((v) => `<label><input type="radio" name="voice" value="${v.id}"${look.voice === v.id ? " checked" : ""}><span><b>${esc(v.label)}</b><small>${esc(v.about)}</small></span></label>`).join("")}</fieldset>`;
     return `<fieldset class="pick"><legend>${PART_LABELS[k]}</legend>${(PARTS[k] as readonly { id: string; label: string }[])
       .map((c) => `<label><input type="radio" name="${k}" value="${c.id}"${look[k] === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
       .join("")}</fieldset>`;
@@ -147,7 +150,11 @@ function lookEditor(look: Look): string {
     .join("")}<p class="hint">Up to ${MORE_EXTRAS} besides the one above.</p></fieldset>`;
   // how it sounds: tried out here, and said honestly to sound a little
   // different on each device (each has its own voices)
-  const voiceMore = `<div class="voice-try"><button type="button" id="hear-voice">🔊 Hear it</button><p class="hint">How your words sound to anyone with voices on: loud words louder, high words higher, drawn-out words slower. Each device has its own voices, so it sounds a little different on each.</p></div>`;
+  const voiceMore = `<div class="voice-try"><button type="button" id="hear-voice">🔊 Hear it</button>
+        <label class="natural-pick" hidden><input type="checkbox" id="studio-natural"> <span>✨ Natural voices: the same on every device (a download, once)</span></label>
+        <label class="natural-pick fast-pick" hidden><input type="checkbox" id="studio-small"> <span>The smaller download (90 MB instead of 330), slower: for a device short of space</span></label>
+        <p id="voice-status" class="hint" aria-live="polite"></p>
+        <p class="hint">How your words sound to anyone with voices on: loud words louder, high words higher, drawn-out words slower. With natural voices on, they hear this voice; without, their device's nearest, which differs a little on each.</p></div>`;
   return `<form id="look" class="look-form">
       <div class="look-tabs" role="tablist">${SECTIONS.map((sec, i) => `<label class="look-tab"><input type="radio" name="look-tab" value="${i}"${i === 0 ? " checked" : ""}><span>${sec.label}</span></label>`).join("")}</div>
       ${SECTIONS.map((sec, i) => `<div class="look-section" data-section="${i}">${sec.parts.map(row).join("")}${sec.sliders ? sliders(sec.sliders) : ""}${sec.label === "Wearing" ? wearMore : ""}${sec.label === "Voice" ? voiceMore : ""}</div>`).join("")}
@@ -216,7 +223,7 @@ function typeBox(look: Look): string {
           <fieldset class="tones"><legend class="visually-hidden">How it's said</legend>${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${t.label}</span></label>`).join("")}</fieldset>
           <details class="type-voice"><summary>Your voice</summary>
             <div class="type-voice-body">
-              <label class="voice-pick"><span>Voice</span><select name="voice">${VOICES.map((v) => `<option value="${v.id}"${look.voice === v.id ? " selected" : ""}>${esc(v.label)}</option>`).join("")}</select></label>
+              <label class="voice-pick"><span>Voice</span><select name="voice">${VOICES.map((v) => `<option value="${v.id}"${look.voice === v.id ? " selected" : ""}>${esc(v.label)}: ${esc(v.about)}</option>`).join("")}</select></label>
               ${slider("voicePitch", "Pitch")}${slider("voiceSpeed", "Speed")}
               <button type="button" class="type-hear">🔊 Hear it first</button>
               <p class="hint">*Stars* or CAPS make a word stand out, ! makes it louder, sooo draws it out, (brackets) say it aside, and a ? asks. Everyone with voices on hears it in this voice; it's marked as typed.</p>
@@ -267,6 +274,7 @@ export function roomPage(
           <video id="face-preview" class="face-preview" muted playsinline hidden></video>
           <label class="hands-toggle"><input type="checkbox" id="hands"><span>Hands too</span></label>
           <label class="voices-toggle" hidden><input type="checkbox" id="voices"><span>🔊 Hear voices</span></label>
+          <label class="voices-toggle natural-toggle" hidden title="Natural-sounding voices, the same on every device: a download, once"><input type="checkbox" id="natural"><span>✨ Natural <small class="natural-size"></small></span></label>
           <form method="post" action="/hand" class="hand-form"><input type="hidden" name="up" value="${up ? "false" : "true"}"><button id="hand" type="submit" class="hand-toggle" aria-pressed="${up}" title="Raise your hand to speak next (Shift+R)"><span aria-hidden="true">✋</span> <span class="label">${up ? "Lower hand" : "Raise hand"}</span></button></form>
         </div>
         <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>

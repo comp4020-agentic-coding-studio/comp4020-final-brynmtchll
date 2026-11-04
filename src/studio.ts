@@ -8,7 +8,7 @@ import { arms, emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { emoteOf, MORE_EXTRAS, randomLook, SLIDERS, STYLES, type Look } from "./packs.ts";
 import { wordHtml } from "./voice.ts";
-import { tryVoice } from "./speech.ts";
+import { canNatural, gpuAdapter, naturalNow, naturalSize, naturalVoices, tryVoice, type Natural } from "./speech.ts";
 
 const form = document.getElementById("look") as HTMLFormElement;
 const preview = document.querySelector<HTMLElement>(".preview")!;
@@ -224,7 +224,7 @@ form.addEventListener("input", (e) => {
 });
 form.addEventListener("change", (e) => {
   const t = e.target as HTMLInputElement;
-  if (t.name === "look-tab") return;
+  if (t.name === "look-tab" || !t.name) return;
   if (t.name === "extra" || t.name === "more") limitMore();
   apply(fromForm());
 });
@@ -266,13 +266,80 @@ document.getElementById("surprise")?.addEventListener("click", () => {
 
 // The sample sentence, said in your voice the way the sample's drawn: "oh
 // this is" quietly, "SO" loud and high, "good" drawn out.
-document.getElementById("hear-voice")?.addEventListener("click", () =>
+const hearSample = (): void =>
   tryVoice(look, [
     { text: "oh this is", loud: -3, pitch: 0, stretch: 0 },
     { text: "so", loud: 9, pitch: 5, stretch: 0 },
     { text: "good", loud: 2, pitch: 2, stretch: 1.6 },
-  ]),
-);
+  ]);
+document.getElementById("hear-voice")?.addEventListener("click", hearSample);
+// a voice chosen is heard straight away, so they can be gone through by ear
+form.addEventListener("change", (e) => {
+  if ((e.target as HTMLInputElement).name === "voice") setTimeout(hearSample, 50);
+});
+
+// Natural voices, here too, so you hear the one everyone with them on will
+// hear: the same choice as the room's (kept on this browser): the GPU build
+// where the graphics can run it, or the smaller one if asked for.
+const NATURAL_KEY = "said-natural";
+const naturalBox = document.getElementById("studio-natural") as HTMLInputElement | null;
+const smallBox = document.getElementById("studio-small") as HTMLInputElement | null;
+const voiceStatus = document.getElementById("voice-status");
+const recall = (): string | null => {
+  try {
+    return localStorage.getItem(NATURAL_KEY);
+  } catch {
+    return null;
+  }
+};
+const store = (v: string): void => {
+  try {
+    localStorage.setItem(NATURAL_KEY, v);
+  } catch {
+    // not remembered
+  }
+};
+const mb = (b: number): string => (b / 1e6).toFixed(0);
+let gpu = false;
+const size = (): number => naturalSize(gpu && !smallBox?.checked);
+const showNatural = (n: Natural): void => {
+  if (!voiceStatus) return;
+  voiceStatus.textContent =
+    n.state === "loading"
+      ? n.total
+        ? `Getting natural voices ready, once: ${mb(n.loaded ?? 0)} of ${mb(n.total)} MB.`
+        : `Getting natural voices ready (about ${mb(size())} MB, once)…`
+      : n.state === "ready"
+        ? `Natural voices ready${n.build === "fast" ? ", on this device's graphics" : ""}. Hear it, or pick a voice to hear it.`
+        : n.state === "failed"
+          ? "Natural voices couldn't load here; you're hearing this device's own."
+          : `Natural voices are about ${mb(size())} MB to download, once.`;
+};
+if (naturalBox && smallBox && canNatural) {
+  naturalBox.closest("label")!.hidden = false;
+  const saved = recall();
+  naturalBox.checked = saved === "on" || saved === "small";
+  smallBox.checked = saved === "small";
+  smallBox.closest("label")!.hidden = !gpu || !naturalBox.checked;
+  const turn = (): void => {
+    store(naturalBox.checked ? (smallBox.checked ? "small" : "on") : "off");
+    smallBox.closest("label")!.hidden = !gpu || !naturalBox.checked;
+    // a change of build starts again
+    if (naturalNow().state !== "off") naturalVoices(false);
+    naturalVoices(naturalBox.checked, !smallBox.checked, showNatural);
+    if (!naturalBox.checked) showNatural({ state: "off" });
+  };
+  naturalBox.addEventListener("change", turn);
+  smallBox.addEventListener("change", turn);
+  if (naturalBox.checked) naturalVoices(true, !smallBox.checked, showNatural);
+  else showNatural({ state: "off" });
+  // (once it's known whether the graphics can run the bigger build)
+  void gpuAdapter().then((yes) => {
+    gpu = yes;
+    smallBox.closest("label")!.hidden = !gpu || !naturalBox.checked;
+    if (naturalNow().state === "off") showNatural({ state: "off" });
+  });
+}
 
 // ---- saved looks ----
 

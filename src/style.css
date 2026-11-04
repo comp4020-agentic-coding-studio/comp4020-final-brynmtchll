@@ -433,6 +433,19 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 .voice-try { display: grid; gap: 6px; padding-top: 6px; }
 .voice-try button { justify-self: start; padding: 8px 16px; border-radius: 999px; }
 .voice-try .hint { margin: 0; font-size: 0.75rem; color: var(--faint); }
+/* voices, each with how it sounds under its name */
+.pick.voices { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 6px; }
+.pick.voices legend { grid-column: 1 / -1; }
+.pick.voices label > span { display: grid; justify-items: start; justify-content: start; gap: 1px; width: 100%; min-height: 46px; padding: 6px 12px; border-radius: 12px; text-transform: none; text-align: left; }
+.natural-toggle small { font-weight: 500; color: var(--muted); }
+.pick.voices b { font-weight: 700; font-size: 0.8125rem; }
+.pick.voices small { font-size: 0.6875rem; color: var(--muted); line-height: 1.2; }
+.natural-pick { display: flex; align-items: flex-start; gap: 8px; font-size: 0.8125rem; color: var(--ink); cursor: pointer; }
+.natural-pick[hidden] { display: none; }
+.natural-pick input { accent-color: var(--accent); margin-top: 2px; }
+.fast-pick { color: var(--muted); padding-left: 22px; }
+/* natural voices downloading: the switch breathes */
+.natural-toggle.loading span { animation: pulse 1.6s ease-in-out infinite; }
 
 /* ---- the brief record of what's been said lately ---- */
 

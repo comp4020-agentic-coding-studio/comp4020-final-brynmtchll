@@ -7,7 +7,7 @@ import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { overHead, showRoom } from "./room3d.ts";
-import { canSpeak, duck, echoOf, hearVoices, speak, speaking as voicesSpeaking, tryVoice, type Spoken } from "./speech.ts";
+import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken } from "./speech.ts";
 import { toneOf, typedWords, type Tone } from "./typed.ts";
 import { EFFECTS, emoteOf, EMOTES, REACTIONS, STYLES, type Look as PackLook } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
@@ -304,29 +304,92 @@ function spokenOf(p: Phrase): Spoken[] {
 // and browsers won't before a tap anyway), and remembered on this browser.
 const voicesBox = document.getElementById("voices") as HTMLInputElement | null;
 const VOICES_KEY = "said-voices";
-if (voicesBox && canSpeak) {
+const naturalBox = document.getElementById("natural") as HTMLInputElement | null;
+const NATURAL_KEY = "said-natural";
+const store = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // not remembered
+  }
+};
+const recall = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+// Natural voices: offered once voices are on, downloaded the first time
+// they're asked for (the download said as it goes), then used for everyone
+// who speaks; the device's voices carry on until they're ready, or if they
+// can't be.
+function showNatural(n: Natural): void {
+  if (!naturalBox) return;
+  naturalBox.closest("label")!.classList.toggle("loading", n.state === "loading");
+  if (n.state === "loading") say(n.total ? `Getting natural voices ready, once: ${mb(n.loaded ?? 0)} of ${mb(n.total)} MB.` : `Getting natural voices ready (about ${mb(willDownload())} MB, once).`);
+  else if (n.state === "ready") {
+    say("Natural voices on: everyone's words in the voice they chose, the same on every device.");
+    store(NATURAL_KEY + "-had", "yes");
+    naturalBox.closest("label")!.querySelector(".natural-size")?.replaceChildren();
+  }
+  else if (n.state === "failed") {
+    warn("Natural voices couldn't load here, so this device's own voices are speaking.");
+    naturalBox.checked = false;
+    store(NATURAL_KEY, "off");
+  }
+}
+// (the GPU build where the graphics can run it, unless the smaller was asked for)
+const naturalOn = (yes: boolean): void => naturalVoices(yes, recall(NATURAL_KEY) !== "small", showNatural);
+// how much it'll download: the GPU build's where there are graphics to run it
+let gpu = false;
+const willDownload = (): number => naturalSize(gpu && recall(NATURAL_KEY) !== "small");
+if (naturalBox && canNatural) {
+  // (the size said on the switch itself, where there's no hovering, until
+  // it's been downloaded here)
+  const sayingSize = (): void => {
+    const megabytes = Math.round(willDownload() / 1e6);
+    naturalBox.closest("label")!.title = `Natural-sounding voices, the same on every device: about ${megabytes} MB to download, once`;
+    const size = naturalBox.closest("label")!.querySelector(".natural-size");
+    if (size && recall(NATURAL_KEY + "-had") !== "yes") size.textContent = `${megabytes} MB`;
+  };
+  sayingSize();
+  void gpuAdapter().then((yes) => {
+    gpu = yes;
+    sayingSize();
+  });
+  naturalBox.addEventListener("change", () => {
+    // (on, keeping the smaller build if that's the one chosen)
+    store(NATURAL_KEY, naturalBox.checked ? (recall(NATURAL_KEY) === "small" ? "small" : "on") : "off");
+    naturalOn(naturalBox.checked);
+    if (!naturalBox.checked) say("Natural voices off: this device's own voices speak.");
+  });
+}
+const showNaturalBox = (): void => {
+  if (naturalBox && canNatural) naturalBox.closest("label")!.hidden = !voicesBox?.checked;
+};
+if (voicesBox && (canSpeak || canNatural)) {
   voicesBox.closest("label")!.hidden = false;
   voicesBox.addEventListener("change", () => {
+    showNaturalBox();
     hearVoices(voicesBox.checked);
     say(voicesBox.checked ? "Voices on: what people say is spoken, the way they said it. Headphones stop it coming back through your microphone." : "Voices off.");
-    try {
-      localStorage.setItem(VOICES_KEY, voicesBox.checked ? "on" : "off");
-    } catch {
-      // not remembered
-    }
+    store(VOICES_KEY, voicesBox.checked ? "on" : "off");
   });
-  let saved: string | null = null;
-  try {
-    saved = localStorage.getItem(VOICES_KEY);
-  } catch {
-    saved = null;
-  }
   // remembered as on: ticked, and on from the first tap anywhere (browsers
-  // won't speak before one)
-  if (saved === "on") {
+  // won't speak before one); natural ones too, if they were
+  if (recall(VOICES_KEY) === "on") {
     voicesBox.checked = true;
-    addEventListener("pointerdown", () => voicesBox.checked && hearVoices(true), { once: true, capture: true });
-    addEventListener("keydown", () => voicesBox.checked && hearVoices(true), { once: true, capture: true });
+    showNaturalBox();
+    const natural = !!naturalBox && canNatural && recall(NATURAL_KEY) !== null && recall(NATURAL_KEY) !== "off";
+    if (natural) naturalBox!.checked = true;
+    const start = (): void => {
+      if (!voicesBox.checked) return;
+      hearVoices(true);
+      if (natural && naturalBox!.checked) naturalOn(true);
+    };
+    addEventListener("pointerdown", start, { once: true, capture: true });
+    addEventListener("keydown", start, { once: true, capture: true });
   }
 }
 

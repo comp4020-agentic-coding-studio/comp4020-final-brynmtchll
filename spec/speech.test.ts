@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cleanLook, DEFAULT_LOOK, randomLook, SLIDERS, VOICES } from "../src/packs.ts";
-import { echoOf, remember, runsOf, type Spoken } from "../src/speech.ts";
+import { echoOf, naturalPlan, playedSpans, remember, runsOf, type Spoken } from "../src/speech.ts";
 
 // Speaking what people say, checked as what's handed to the browser to say:
 // which words go together, and at what pitch, speed and loudness. How it
@@ -103,5 +103,67 @@ describe("the voices someone can choose", () => {
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let i = 0; i < 200; i++) expect(randomLook(rnd).voice).not.toBe("silent");
+  });
+});
+
+describe("speaking a phrase in a natural voice", () => {
+  it("says a phrase whole, and moves only the words that stood out: louder, higher, drawn out", () => {
+    const plan = naturalPlan([plain("oh this is"), { text: "SO", loud: 9, pitch: 4, stretch: 0 }, { text: "good", loud: 0, pitch: 0, stretch: 1.6 }, { text: "psst", loud: -9, pitch: 0, stretch: 0 }], look)!;
+    expect(plan.words).toEqual(["oh this is", "SO", "good", "psst"]);
+    const [ordinary, loud, drawn, quiet] = plan.shapes;
+    expect(ordinary).toEqual({ gain: 1, rate: 1 });
+    expect(loud.gain).toBeGreaterThan(1.5);
+    expect(loud.rate).toBeGreaterThan(1);
+    expect(drawn.rate).toBeLessThan(0.8);
+    expect(quiet.gain).toBeLessThan(0.6);
+    expect(naturalPlan([plain(""), plain(" ")], look)).toBeNull();
+  });
+
+  it("raises or lowers a voice without speeding it up or slowing it down, within what the model says well", () => {
+    for (const voicePitch of [-1, 0, 1]) {
+      const plan = naturalPlan([plain("hello")], { voice: "warm", tune: { voicePitch } })!;
+      // heard at the voice's own pace whatever its pitch
+      expect(plan.speed * plan.play).toBeCloseTo(1, 1);
+      expect(Math.sign(plan.play - 1)).toBe(Math.sign(voicePitch));
+    }
+    for (const voice of VOICES) {
+      for (const tune of [{ voicePitch: 1, voiceSpeed: 1 }, { voicePitch: -1, voiceSpeed: -1 }]) {
+        const plan = naturalPlan([plain("x"), { text: "x", loud: 40, pitch: 24, stretch: 4, effect: "impact" }, { text: "x", loud: -40, pitch: -24, stretch: 0, effect: "spooky" }], { voice: voice.id, tune })!;
+        expect(plan.speed).toBeGreaterThanOrEqual(0.6);
+        expect(plan.speed).toBeLessThanOrEqual(1.7);
+        expect(plan.play).toBeGreaterThanOrEqual(0.6);
+        expect(plan.play).toBeLessThanOrEqual(1.6);
+        for (const sh of plan.shapes) {
+          expect(sh.rate).toBeGreaterThanOrEqual(0.6);
+          expect(sh.rate).toBeLessThanOrEqual(1.4);
+          expect(plan.volume * sh.gain).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it("whispers a hushed voice or a whispered word quietly", () => {
+    expect(naturalPlan([plain("a secret")], { voice: "whisper", tune: {} })!.volume).toBeLessThanOrEqual(0.45);
+    const [w] = naturalPlan([{ text: "secret", loud: 0, pitch: 0, stretch: 0, effect: "whisper" }], look)!.shapes;
+    expect(w.gain).toBeLessThanOrEqual(0.45);
+  });
+
+  it("works out where each word is played, once the ones that stood out are played faster or slower", () => {
+    const spans: [number, number][] = [[0, 0.4], [0.45, 0.8], [0.8, 1.2]];
+    const played = playedSpans(spans, [{ gain: 1, rate: 1 }, { gain: 1, rate: 0.5 }, { gain: 1, rate: 1 }], 1);
+    // the second word takes twice as long, and the third starts later for it
+    expect(played[1][1] - played[1][0]).toBeCloseTo(0.7, 5);
+    expect(played[2][0]).toBeCloseTo(1.15, 5);
+    // a voice played faster all through takes less time
+    expect(playedSpans(spans, [{ gain: 1, rate: 1 }, { gain: 1, rate: 1 }, { gain: 1, rate: 1 }], 1.25).at(-1)![1]).toBeCloseTo(0.96, 5);
+  });
+
+  it("has a natural voice for every voice but silent, each one Kokoro has", () => {
+    for (const v of VOICES) {
+      if (v.id === "silent") continue;
+      expect(v.kokoro, v.id).toMatch(/^[ab][fm]_[a-z]+$/);
+      expect(v.about.length).toBeGreaterThan(2);
+    }
+    expect(new Set(VOICES.map((v) => v.label)).size).toBe(VOICES.length);
   });
 });
