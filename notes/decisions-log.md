@@ -232,6 +232,50 @@ led to. Claude chose how to build each; what to build was yours.
      no limit on falling behind; fixed, with phrases now made one at a time
      ([`10504a4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/10504a4)).
 
+5. **Background noise.** "fix what you mentioned about picking up
+   background noise" (4 November). On the evening of 3 November real
+   sessions filled the room with phrases nobody said ("Thank you.", "I'm
+   sorry.", "Bye."): Whisper writes a sentence for whatever it hears, and
+   the loudness gate in front of it passed anything with a voice-like
+   wobble (all of a Chopin waltz in three-second pieces, twelve of twenty of
+   a song, seven of twenty of a street recording). Each phrase now goes
+   through Silero VAD (v5, 2.2 MB, MIT) first, and one with under 0.2 s of
+   speech in it is never sent to Whisper
+   ([`f50b82b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/f50b82b)). On the same recordings: no
+   speech found in piano, street, crowd, rain, fan or typing; at least half a
+   second in every phrase of real speech. Played into the page as its
+   microphone for 30 s each, street noise had sent "The End"; afterwards
+   nothing from any of them, and JFK's speech word for word. Not covered: a
+   room of other people talking is still speech to it.
+
+6. **The room, more polished, and a say in how it's seen.** "completely
+   level up the quality of the graphics and the smoothness, ( want control
+   over the view of the room as well)" (4 November).
+   - What's in the room is painted in code onto canvases (floorboards with
+     grain, a woven rug, the view out of the window, two pictures, plaster),
+     with new furniture (rounded armchairs, an armchair and lamp in the
+     corner, curtains, a door in a fourth wall, a teapot), and steps under
+     raised rows. What doesn't move is merged, one mesh per material.
+   - Light: light from all round (three.js's RoomEnvironment), the sun low
+     through the window, and a soft shadow under each chair. Three tone
+     curves compared on the same room: AgX greyed the colours, ACES pushed
+     them orange, Khronos Neutral kept them as chosen, so Neutral.
+   - After drawing, a glow only on what's brightest (the sky, the lamp) and
+     darker corners. Shading where things meet (GTAO) was tried at three
+     strengths and dropped: it left a grainy halo along every edge against
+     the window. A screen slower than about 40 frames a second loses the
+     glow, then pixels; phones start without it.
+   - Views: Everyone (as before: everyone, leaning to whoever's talking),
+     Speaker (close on whoever's talking, typed or said), Wide (from a front
+     corner), Above. Drag, scroll or pinch, or the keyboard, to turn and
+     zoom; Reset, or a double click, puts it back. The camera stays inside
+     the room and in front of the rows (`spec/camera.test.ts`).
+   - Smoothness: heads in the room were drawn 30 times a second; now 60.
+     Measured in headless Chrome on the M4 Pro: 60 frames a second with 12
+     people at 1440x900; 51 with 8 at phone size with the processor slowed
+     four times (44 before the sun's shadows were redrawn every other frame
+     rather than every frame).
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Bryn's M4 Pro in headless Chrome.

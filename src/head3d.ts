@@ -912,12 +912,16 @@ export async function roomView(view: typeof roomDraw): Promise<T> {
 
 // Heads are drawn at most FPS times a second, and only those that have
 // moved since they were last drawn: drawing one and copying it into its
-// card costs the page time it needs for reading its owner's face.
+// card costs the page time it needs for reading its owner's face. In the
+// room (one scene, drawn once, nothing copied but your own card), or with a
+// head or two on the page (the studio), as smoothly as the screen goes, up
+// to SMOOTH.
 const FPS = 30;
+const SMOOTH = 60;
 let last = performance.now();
 function frame(now: number): void {
   requestAnimationFrame(frame);
-  if (now - last < 1000 / FPS - 2) return;
+  if (now - last < 1000 / (roomDraw || heads.size <= 2 ? SMOOTH : FPS) - 2) return;
   // easing by the time since the last frame, so heads move at the same
   // speed on a slow screen as a fast one
   const dt = Math.min(0.1, (now - last) / 1000);
@@ -1081,7 +1085,9 @@ function frame(now: number): void {
         }
       }
       const mine = slot.closest(".mine") !== null;
-      inRoom.push({ slot, root: s.head.root, body: body?.root ?? null, fitY: s.head.fit.y, speaking: slot === speakerNow && now - s.voice.loudAt < VOICE_FOR + 400, mine });
+      // (talking: their voice heard lately, or their words still going up,
+      // for someone with no voice coming, or typing)
+      inRoom.push({ slot, root: s.head.root, body: body?.root ?? null, fitY: s.head.fit.y, speaking: slot === speakerNow && (now - s.voice.loudAt < VOICE_FOR + 400 || talking.includes(slot)), mine });
       // yours is still in view on your card, beside the room: drawn there
       // too, after the room's drawn (borrowed from its seat, and put back)
       if (mine && s.canvas.getBoundingClientRect().width > 0 && s.cardDrawn !== looks) {

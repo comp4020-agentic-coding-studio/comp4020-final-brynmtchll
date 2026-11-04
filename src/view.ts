@@ -7,6 +7,11 @@ import { TONES } from "./typed.ts";
 // a working title, here so it changes in one place
 export const APP = "Said";
 
+// three.js, one copy for the page and its add-ons (the room's lighting and
+// camera), which ask for it as "three"
+export const THREE = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
+const THREE_ADDONS = "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/";
+
 // How it works, behind a "?" in the header: everything a newcomer needs,
 // out of the way of everyone who doesn't.
 const HELP = `<details class="help">
@@ -30,6 +35,7 @@ export function layout(title: string, body: string, script = "", help = HELP): s
 <title>${esc(title)}</title>
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="data:,">
+<script type="importmap">{"imports":{"three":"${THREE}","three/addons/":"${THREE_ADDONS}"}}</script>
 ${script}
 </head>
 <body>
@@ -312,7 +318,10 @@ export function roomPage(
   <section class="others" aria-labelledby="others-h">
     <div class="others-head"><h2 id="others-h">In the room</h2><div class="view-switch" role="radiogroup" aria-label="How to see everyone" hidden><label><input type="radio" name="view" value="cards" checked><span>Cards</span></label><label><input type="radio" name="view" value="room"><span>Room</span></label></div><p id="live" class="live" role="status" hidden></p></div>
     <p id="queue" class="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
-    <div id="room3d" class="room3d" hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div></div>
+    <div id="room3d" class="room3d" tabindex="0" aria-label="The room, drawn. Drag or use the arrow keys to look round, scroll, pinch or press plus and minus to zoom, 0 to put it back." hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div>
+      <div class="room-bar"><div class="room-views" role="radiogroup" aria-label="Look at the room">${[["follow", "Everyone"], ["speaker", "Speaker"], ["wide", "Wide"], ["above", "Above"]].map(([v, l]) => `<label><input type="radio" name="room-view" value="${v}"${v === "follow" ? " checked" : ""}><span>${l}</span></label>`).join("")}</div><button type="button" class="room-reset" title="Put the camera back">Reset</button></div>
+      <p class="room-hint" aria-hidden="true">Drag to look round · scroll or pinch to zoom</p>
+    </div>
     <ul id="stage" class="stage" data-up-to="${upTo}">${others}</ul>
     <p id="nobody" class="fine" ${others ? "hidden" : ""}>Nobody else is here yet.</p>
   </section>

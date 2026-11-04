@@ -353,7 +353,29 @@ main.room {
 .room3d { position: relative; height: min(68vh, 720px); min-height: 360px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: #1d2230; }
 .room3d[hidden] { display: none; }
 @media (max-width: 899px) { .room3d { height: min(62vh, 125vw, 640px); } }
-.room3d canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
+.room3d canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
+.room3d.dragging canvas { cursor: grabbing; }
+.room3d:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* how to look at it: a bar of views along the bottom, over the scene, in
+   frosted glass; the hint fades once it's been turned */
+.room-bar { position: absolute; left: 50%; bottom: 14px; translate: -50% 0; display: flex; align-items: center; gap: 6px; padding: 4px; border-radius: 999px; background: rgb(12 15 24 / 0.55); border: 1px solid rgb(255 255 255 / 0.1); backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.6); z-index: 3; }
+.room-views { display: flex; gap: 2px; }
+.room-views input { position: absolute; opacity: 0; pointer-events: none; }
+.room-views span { display: inline-block; padding: 6px 13px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; color: rgb(255 255 255 / 0.72); cursor: pointer; transition: background 0.2s, color 0.2s; white-space: nowrap; }
+.room-views span:hover { color: #fff; }
+.room-views input:checked + span { background: rgb(255 255 255 / 0.92); color: #10131c; }
+.room-views input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.room-reset { min-height: 0; padding: 6px 12px; border-radius: 999px; border: 0; background: transparent; color: rgb(255 255 255 / 0.72); font-size: 0.8125rem; display: none; }
+.room-reset:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 0.1); }
+.room3d[data-turned] .room-reset { display: inline-block; }
+.room-hint { position: absolute; top: 12px; left: 50%; translate: -50% 0; margin: 0; padding: 4px 12px; border-radius: 999px; background: rgb(12 15 24 / 0.45); color: rgb(255 255 255 / 0.75); font-size: 0.75rem; pointer-events: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: opacity 0.6s; animation: hint-out 0.6s 6s forwards; z-index: 3; }
+@keyframes hint-out { to { opacity: 0; } }
+.room3d[data-turned] .room-hint { opacity: 0; }
+@media (max-width: 600px) {
+  .room-bar { bottom: 10px; }
+  .room-views span { padding: 6px 10px; }
+  .room-hint { display: none; }
+}
 .room-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .room-label { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px; max-width: 46%; will-change: transform;
   --person: oklch(var(--person-l) var(--person-c) var(--hue)); }
