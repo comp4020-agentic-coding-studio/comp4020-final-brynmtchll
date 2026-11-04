@@ -241,6 +241,12 @@ function typeBox(look: Look): string {
         </form>`;
 }
 
+// The welcome, said the way the app draws what's said: "say it how you
+// MEAN it", the "say" a little up, "mean" loud and high, "it" drawn out.
+const w = (word: string, loud: number, pitch: number, stretch = 0): Word => ({ w: word, start: 0, end: 0, loud, pitch, rise: 0, stretch, held: stretch ? 0.5 : null, contour: [] });
+// (on two lines, "mean it" on its own)
+const HERO = [[w("say", 2, 2), w("it", -2, 0), w("how", -1, -1), w("you", -2, -1)], [w("mean", 9, 5), w("it", 3, 2, 0.8)]].map((line) => `<span class="hero-line">${line.map((x) => wordHtml(x)).join(" ")}</span>`).join(" ");
+
 // One line of the brief record: who, in their colour, what they said, when.
 export const lineHtml = (l: { name: string; seat: number; text: string; until: number; face?: string | null }, now = Date.now()): string =>
   `<li style="--hue:${hueOf(l.seat)}" data-name="${esc(l.name)}" data-until="${l.until}"><strong>${l.face ? `${esc(l.face)} ` : ""}${esc(l.name)}</strong> <span class="said-text">${esc(l.text)}</span> <time data-at="${l.until}">${ago(l.until, now)}</time></li>`;
@@ -299,6 +305,7 @@ export function roomPage(
         <a class="customise-link" href="/studio">Customise your avatar <span aria-hidden="true">→</span></a>
       </section>`
     : `<section class="me join-card" aria-labelledby="join-h">
+        <p class="hero-words words" aria-hidden="true">${HERO}</p>
         <h2 id="join-h">Join the room</h2>
         <p class="fine">Pick a name and talk. Everyone here sees your words as you say them, drawn the way you said them, and your avatar pulls the faces you pull.</p>
         ${notice}
