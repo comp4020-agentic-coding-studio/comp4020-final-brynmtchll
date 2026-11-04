@@ -302,14 +302,19 @@ main.room {
 /* (and until you've said something, only as tall as your head and name:
    an empty card above the controls is just a gap) */
 @media (max-width: 600px) { .mine-card .spot:not(:has(.bubble)) { --card-h: 168px; } }
+/* (on a wide screen too, only as tall as your head and the word you're
+   saying until there's a thread to show under it) */
+@media (min-width: 601px) { .mine-card .spot:not(:has(.bubble)) { --card-h: 264px; } }
 .mine-card .spot-avatar { width: 88px; height: 88px; }
 .mine-card .spot-name { font-size: 1.0625rem; }
 .mine-card .spot-word { margin-top: 14px; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
 
 .mine-card .bubble { font-size: 1.0625rem; }
-/* everyone else's are side by side where there's room */
+/* everyone else's are side by side where there's room (and shorter, two to
+   a row: a head, a word and the last few bubbles, not a column of space) */
 @media (min-width: 1300px) {
   .stage { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stage:has(> .spot:nth-child(3)) > .spot:not([data-away]) { --card-h: 248px; }
   /* (one or two others: the whole width each, not half and a gap) */
   .stage:not(:has(> .spot:nth-child(3))) { grid-template-columns: minmax(0, 1fr); }
 }
