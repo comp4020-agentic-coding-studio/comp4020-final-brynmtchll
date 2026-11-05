@@ -1044,9 +1044,9 @@ function draw(heads: RoomHead[], THREE: T): void {
     const el = label(r, who.slot);
     who.root.getWorldPosition(v);
     const mid = v.clone();
-    // (just above the top of their head, hair and all: further up, a near
-    // head's name floats off it, into the row behind)
-    v.y += 1.3;
+    // (just above the top of their head, hair and all, however high that
+    // is: further up, a near head's name floats off it, into the row behind)
+    v.y += Math.max(1.1, who.top) + 0.2;
     v.project(r.camera);
     mid.project(r.camera);
     const x = (v.x * 0.5 + 0.5) * rect.width;
@@ -1080,9 +1080,11 @@ function draw(heads: RoomHead[], THREE: T): void {
     }
     el.classList.toggle("speaking", who.speaking);
     el.classList.toggle("mine", who.mine);
-    // a crowded room names only who's talking or has a hand up (their cards
-    // name everyone)
-    el.classList.toggle("quiet", (sitting.length > CROWD && !who.speaking && !hand && !html && !el.querySelector(".burst")) || v.z > 1);
+    // a crowded room names only who's talking or has a hand up, and any
+    // room leaves unnamed whoever's away with nothing to say (their cards
+    // name everyone): over the window, a row of grey "away" pills was all
+    // you saw of a small room's back row
+    el.classList.toggle("quiet", ((sitting.length > CROWD || gone) && !who.speaking && !hand && !html && !el.querySelector(".burst")) || v.z > 1);
     if ((nameEl.dataset.hand ?? "") !== (hand ?? "")) {
       if (hand) nameEl.dataset.hand = hand;
       else delete nameEl.dataset.hand;

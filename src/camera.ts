@@ -45,7 +45,10 @@ export function framing(places: Place[], aspect: number): { rows: number; back: 
   const across = 2 * Math.atan(Math.tan(fov / 2) * aspect);
   // heads (and hands up) in every row, and the table in front
   const tall = 6.5 + (rows - 1) * ROW.y * 1.25;
-  const back = Math.max(half / Math.tan(across / 2), tall / 2 / Math.tan(fov / 2), 12) + (rows - 1) * 2;
+  // (and never nearer than 16: one, two or three people are seen in their
+  // chairs at the table, with the room round them, not in close-up behind
+  // the flowers)
+  const back = Math.max(half / Math.tan(across / 2), tall / 2 / Math.tan(fov / 2), 16) + (rows - 1) * 2;
   return { rows, back, middle: -0.4 + (rows - 1) * ROW.y * 0.5, depth: -10 + (rows - 1) * ROW.z * 0.5 };
 }
 

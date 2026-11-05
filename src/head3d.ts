@@ -55,8 +55,9 @@ type Head = {
   // where the brows sit at rest, after the look's sliders
   browY: number;
   look: string;
-  // where the camera stands to fit all of it (bunny ears, a crown) in frame
-  fit: { y: number; dist: number };
+  // where the camera stands to fit all of it (bunny ears, a crown) in frame,
+  // and how high the top of it is (the room puts their word over it)
+  fit: { y: number; dist: number; top: number };
   // their shoulders, arms and hands, if they have any (look.top not "none")
   body: Torso | null;
 };
@@ -793,7 +794,7 @@ function build(THREE: T, look: Look): Head {
   const top = Math.max(box.max.y, 1.08);
   const bottom = Math.min(box.min.y, -1.08);
   const size = Math.max(top - bottom, 2 * Math.max(-box.min.x, box.max.x, 1.07));
-  const fit = { y: (top + bottom) / 2 + 0.06, dist: (size / 2) * 1.13 / Math.tan((14 * Math.PI) / 180) };
+  const fit = { y: (top + bottom) / 2 + 0.06, dist: (size / 2) * 1.13 / Math.tan((14 * Math.PI) / 180), top: box.max.y };
 
   // the shoulders, arms and hands, built beside the head rather than in it:
   // they don't turn when the head does
@@ -936,7 +937,7 @@ const centre = (el: HTMLElement): { x: number; y: number } => {
 
 // A head as the room draws it: its slot (the card it belongs to), its
 // meshes, posed for this frame, and its shoulders and arms.
-export type RoomHead = { slot: HTMLElement; root: T; body: T | null; fitY: number; speaking: boolean; mine: boolean };
+export type RoomHead = { slot: HTMLElement; root: T; body: T | null; top: number; speaking: boolean; mine: boolean };
 // When the room is showing (room3d.ts), heads aren't drawn into their cards:
 // each frame, every head is eased and posed as ever, and then handed to the
 // room to draw all at once, in its own scene. `at` says where it drew each.
@@ -1125,7 +1126,7 @@ function frame(now: number): void {
       const mine = slot.closest(".mine") !== null;
       // (talking: their voice heard lately, or their words still going up,
       // for someone with no voice coming, or typing)
-      inRoom.push({ slot, root: s.head.root, body: body?.root ?? null, fitY: s.head.fit.y, speaking: slot === speakerNow && (now - s.voice.loudAt < VOICE_FOR + 400 || talking.includes(slot)), mine });
+      inRoom.push({ slot, root: s.head.root, body: body?.root ?? null, top: s.head.fit.top, speaking: slot === speakerNow && (now - s.voice.loudAt < VOICE_FOR + 400 || talking.includes(slot)), mine });
       // yours is still in view on your card, beside the room: drawn there
       // too, after the room's drawn (borrowed from its seat, and put back)
       if (mine && s.canvas.getBoundingClientRect().width > 0 && s.cardDrawn !== looks) {
