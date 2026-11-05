@@ -343,8 +343,8 @@ led to. Claude chose how to build each; what to build was yours.
      ([`91e966e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/91e966e)).
    - Found 5 November: the tones row (from [`713d712`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/713d712)) made the page
      682 px wide at 390, because a fieldset is as wide as everything in it
-     and its hidden radios were placed against the page. Live from 05:24
-     to about 11:30 that day; fixed in [`1ce0366`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/1ce0366). The phone probes had
+     and its hidden radios were placed against the page. Live from 05:25
+     to 11:01 that day (deploys); fixed in [`1ce0366`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/1ce0366). The phone probes had
      all compared the page with `innerWidth`, which a phone-sized Chrome
      widens along with the page, so none of them could catch it; a check
      against the width asked for (390) shows 682 before the fix and 390
