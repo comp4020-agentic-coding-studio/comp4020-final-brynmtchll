@@ -1084,7 +1084,11 @@ function draw(heads: RoomHead[], THREE: T): void {
     // room leaves unnamed whoever's away with nothing to say (their cards
     // name everyone): over the window, a row of grey "away" pills was all
     // you saw of a small room's back row
-    el.classList.toggle("quiet", ((sitting.length > CROWD || gone) && !who.speaking && !hand && !html && !el.querySelector(".burst")) || v.z > 1);
+    // (nor is anyone whose head is out of the picture, unless they're
+    // talking: in the speaker view, the row in front's names sat along
+    // the bottom edge, over nothing)
+    const out = Math.abs(mid.x) > 1 || Math.abs(mid.y) > 1;
+    el.classList.toggle("quiet", ((sitting.length > CROWD || gone || out) && !who.speaking && !hand && !html && !el.querySelector(".burst")) || v.z > 1);
     if ((nameEl.dataset.hand ?? "") !== (hand ?? "")) {
       if (hand) nameEl.dataset.hand = hand;
       else delete nameEl.dataset.hand;

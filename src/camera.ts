@@ -64,9 +64,11 @@ export function shotFor(view: View, places: Place[], aspect: number, talking: nu
     const f = facing(p);
     // in front of them, a little above, near enough for head and shoulders
     // and the word over their head (looking a little over it, so the word
-    // has room)
+    // has room); someone further back, from higher, over the heads of the
+    // row in front (from 2.4 above, the head in front hid their mouth)
     const d = aspect < 1 ? 14 : 12.5;
-    return { at: [p.x + f[0] * d, p.y + 2.4, p.z + f[2] * d], look: [p.x, p.y + 0.3, p.z] };
+    const over = p.row > 0 ? 4.2 : 2.4;
+    return { at: [p.x + f[0] * d, p.y + over, p.z + f[2] * d], look: [p.x, p.y + 0.3, p.z] };
   }
   if (view === "wide") {
     const d = back * 1.08;
