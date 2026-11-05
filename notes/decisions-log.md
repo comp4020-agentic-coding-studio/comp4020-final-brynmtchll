@@ -355,6 +355,9 @@ led to. Claude chose how to build each; what to build was yours.
      the head's own hair (it was a fixed 1.3, under a big afro's top).
      Away people with nothing to say aren't named over their heads
      ([`505540e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/505540e)). The typing hint fits a phone ([`affe7b5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/affe7b5)).
+   - Speaker view on someone in a back row: from 2.4 above their head, the
+     head in front hid their mouth; from a back row it's 4.2. Names whose
+     head is out of the picture aren't shown ([`4c07961`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/4c07961)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
