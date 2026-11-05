@@ -782,8 +782,10 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 .type-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .type-send { flex: none; }
 .type-send:not(:disabled) { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.tones { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: 0; }
-.tones label { cursor: pointer; }
+.tones { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: 0; min-inline-size: 0; }
+/* (a fieldset is otherwise as wide as everything in it: on a phone, its row
+   of tones pushed the whole page sideways instead of sliding) */
+.tones label { cursor: pointer; position: relative; }
 .tones input { position: absolute; opacity: 0; pointer-events: none; }
 .tones label > span { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 0.8125rem; color: var(--muted); }
 .tones input:checked + span { border-color: var(--accent); color: var(--accent); }
