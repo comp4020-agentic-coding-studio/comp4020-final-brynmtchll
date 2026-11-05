@@ -341,6 +341,20 @@ led to. Claude chose how to build each; what to build was yours.
    - Found on the way: a seat's colour could come to 360 (past the end of
      the colour wheel) from the 602nd seat on; fixed, with a check
      ([`91e966e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/91e966e)).
+   - Found 5 November: the tones row (from [`713d712`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/713d712)) made the page
+     682 px wide at 390, because a fieldset is as wide as everything in it
+     and its hidden radios were placed against the page. Live from 05:24
+     to about 11:30 that day; fixed in [`1ce0366`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/1ce0366). The phone probes had
+     all compared the page with `innerWidth`, which a phone-sized Chrome
+     widens along with the page, so none of them could catch it; a check
+     against the width asked for (390) shows 682 before the fix and 390
+     after, on every page in both themes.
+   - The room with one to three people: the camera stood 12 away, so one
+     person was in close-up behind the flowers, their word on their hair,
+     and Wide hardly wider; now at least 16. A word goes over the top of
+     the head's own hair (it was a fixed 1.3, under a big afro's top).
+     Away people with nothing to say aren't named over their heads
+     ([`505540e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/505540e)). The typing hint fits a phone ([`affe7b5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/affe7b5)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
