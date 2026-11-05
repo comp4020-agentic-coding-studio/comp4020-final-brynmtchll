@@ -228,7 +228,7 @@ function typeBox(look: Look): string {
     `<label class="slider"><span>${label}</span><input type="range" name="tune.${id}" min="-1" max="1" step="0.05" value="${tune[id] ?? 0}"></label>`;
   return `<form id="type-box" class="type-box" hidden>
           <label for="typed" class="visually-hidden">Type instead of talking</label>
-          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type it… *this* stands out"><button type="submit" class="type-send" disabled>Say it</button></div>
+          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type… *this* stands out"><button type="submit" class="type-send" disabled>Say it</button></div>
           <fieldset class="tones"><legend class="visually-hidden">How it's said</legend>${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${t.label}</span></label>`).join("")}</fieldset>
           <details class="type-voice"><summary>Your voice</summary>
             <div class="type-voice-body">

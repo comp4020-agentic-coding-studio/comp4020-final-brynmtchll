@@ -781,6 +781,7 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 .type-row { display: flex; gap: 8px; }
 .type-row input { flex: 1; min-width: 0; font: inherit; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); min-height: 44px; }
 .type-row input::placeholder { color: var(--faint); }
+@media (max-width: 600px) { .type-row input { padding-inline: 12px; } .type-row input::placeholder { font-size: 0.9375rem; } }
 .type-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .type-send { flex: none; }
 .type-send:not(:disabled) { background: var(--ink); color: var(--bg); border-color: var(--ink); }
