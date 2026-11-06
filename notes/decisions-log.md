@@ -8,7 +8,7 @@ reads.
 
 Repo: https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll
 
-## Your decisions (Bryn), in order
+## Your decisions (Brynly), in order
 
 1. **Pivot from AIR.** After reading about speech-to-text options, you asked
    whether any could transcribe *inflection*, and on hearing what was
@@ -361,7 +361,7 @@ led to. Claude chose how to build each; what to build was yours.
 
 ### What the three spikes measured (22 October, for the next decisions)
 
-Half-day tests before building, each on Bryn's M4 Pro in headless Chrome.
+Half-day tests before building, each on Brynly's M4 Pro in headless Chrome.
 None of them was run on a phone yet; that's the open half of each.
 
 - **Hands and body beside the face.** MediaPipe 1.0.1 on the CPU, one
