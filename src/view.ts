@@ -325,9 +325,11 @@ export function roomPage(
   <section class="others" aria-labelledby="others-h">
     <div class="others-head"><h2 id="others-h">In the room</h2><div class="view-switch" role="radiogroup" aria-label="How to see everyone" hidden><label><input type="radio" name="view" value="cards" checked><span>Cards</span></label><label><input type="radio" name="view" value="room"><span>Room</span></label></div><p id="live" class="live" role="status" hidden></p></div>
     <p id="queue" class="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
-    <div id="room3d" class="room3d" tabindex="0" aria-label="The room, drawn. Drag or use the arrow keys to look round, scroll, pinch or press plus and minus to zoom, 0 to put it back." hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div>
-      <div class="room-bar"><div class="room-views" role="radiogroup" aria-label="Look at the room">${[["follow", "Everyone"], ["speaker", "Speaker"], ["wide", "Wide"], ["above", "Above"]].map(([v, l]) => `<label><input type="radio" name="room-view" value="${v}"${v === "follow" ? " checked" : ""}><span>${l}</span></label>`).join("")}</div><button type="button" class="room-reset" title="Put the camera back">Reset</button></div>
-      <p class="room-hint" aria-hidden="true">Drag to look round · scroll or pinch to zoom</p>
+    <div id="room3d" class="room3d" tabindex="0" aria-label="The room, drawn. W, A, S and D, or a tap on the floor, walk you about it. Drag or use the arrow keys to look round, scroll, pinch or press plus and minus to zoom, 0 to put it back." hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div>
+      <div class="room-bar"><div class="room-views" role="radiogroup" aria-label="Look at the room">${[["follow", "Everyone"], ["speaker", "Speaker"], ["wide", "Wide"], ["above", "Above"], ["me", "Me"]].map(([v, l]) => `<label${v === "me" ? ' class="room-me"' : ""}><input type="radio" name="room-view" value="${v}"${v === "follow" ? " checked" : ""}><span>${l}</span></label>`).join("")}</div><button type="button" class="room-reset" title="Put the camera back">Reset</button><button type="button" class="room-sit" title="Back to your chair">Sit</button></div>
+      <button type="button" class="room-full" aria-pressed="false" title="Full screen (Esc to come back)"><svg viewBox="0 0 20 20" aria-hidden="true"><path class="grow" d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5"/><path class="shrink" d="M8 3v5H3M17 8h-5V3M12 17v-5h5M3 12h5v5"/></svg><span class="visually-hidden">Full screen</span></button>
+      <div class="room-stick" aria-hidden="true"><span class="room-knob"></span></div>
+      <p class="room-hint" aria-hidden="true">W A S D or tap the floor to walk · drag to look round · scroll or pinch to zoom</p>
     </div>
     <ul id="stage" class="stage" data-up-to="${upTo}">${others}</ul>
     <p id="nobody" class="fine" ${others ? "hidden" : ""}>Nobody else is here yet.</p>

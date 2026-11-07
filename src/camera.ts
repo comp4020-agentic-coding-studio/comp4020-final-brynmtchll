@@ -10,8 +10,10 @@ export type Vec3 = [number, number, number];
 export type Shot = { at: Vec3; look: Vec3 };
 // follow: everyone, leaning towards whoever's talking (as the room always
 // was); speaker: close on whoever's talking, or last talked; wide: the whole
-// room, from a front corner; above: looking down over the table
-export const VIEWS = ["follow", "speaker", "wide", "above"] as const;
+// room, from a front corner; above: looking down over the table; me: over
+// your shoulder as you walk about (room3d.ts frames it; sat down, it's as
+// follow)
+export const VIEWS = ["follow", "speaker", "wide", "above", "me"] as const;
 export type View = (typeof VIEWS)[number];
 // how far the watcher has turned it: round the middle and up or down (in
 // radians), and nearer or further (1 as framed, less is nearer)

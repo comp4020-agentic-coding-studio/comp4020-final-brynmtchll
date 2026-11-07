@@ -6,7 +6,8 @@ import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
-import { overHead, showRoom } from "./room3d.ts";
+import { overHead, showRoom, sit, walked, walkSent } from "./room3d.ts";
+import type { Spot as Standing } from "./walk.ts";
 import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
 import { toneOf, typedWords, type Tone } from "./typed.ts";
 import { EFFECTS, emoteOf, EMOTES, REACTIONS, STYLES, type Look as PackLook } from "./packs.ts";
@@ -623,6 +624,12 @@ function connect(): void {
     arrive(p);
   });
   stream.addEventListener("edited", (e) => edited(JSON.parse((e as MessageEvent<string>).data)));
+  // someone up and walking about the room, or sat back down (your own
+  // moves here as you walk)
+  stream.addEventListener("walk", (e) => {
+    const { name, at } = JSON.parse((e as MessageEvent<string>).data) as { name: string; at: Standing | null };
+    if (name !== myName) walked(name, at);
+  });
   stream.addEventListener("emote", (e) => {
     const { name, emote } = JSON.parse((e as MessageEvent<string>).data) as { name: string; emote: string };
     // your own went off here already, as you asked for it
@@ -643,6 +650,7 @@ type RoomNow = {
   upTo: number;
   queue: string[];
   away: string[];
+  standing?: Record<string, Standing>;
   people?: (Pick<Phrase, "name" | "hue"> & { look: Look })[];
   from?: number;
   phrases?: Phrase[];
@@ -676,6 +684,13 @@ function caughtUp(now: RoomNow): void {
   }
   showQueue(handSending ? queueNow : now.queue);
   for (const card of document.querySelectorAll<HTMLElement>("#stage .spot")) card.toggleAttribute("data-away", now.away.includes(card.dataset.name ?? ""));
+  // who's up and walking about the room (anyone sat down meanwhile is
+  // back in their chair)
+  const up = now.standing ?? {};
+  for (const card of document.querySelectorAll<HTMLElement>(".spot[data-name]")) {
+    const name = card.dataset.name ?? "";
+    if (name !== myName) walked(name, up[name] ?? null);
+  }
 }
 connect();
 
@@ -1714,6 +1729,27 @@ function faceEmotes(e: Expression): void {
   }
 }
 
+// ---- walking about the room ----
+
+// Where you are as you walk, sent as you go (room3d.ts sends a few a
+// second), the latest only: one sent while another's on its way waits for
+// it, and is replaced by any after it.
+let walkNext: Standing | null | undefined;
+let walkSending = false;
+walkSent((at) => {
+  walkNext = at;
+  if (walkSending) return;
+  walkSending = true;
+  void (async () => {
+    while (walkNext !== undefined) {
+      const at = walkNext;
+      walkNext = undefined;
+      await fetch("/walk", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(at ? { at } : { sit: true }) }).catch(() => {});
+    }
+    walkSending = false;
+  })();
+});
+
 // ---- seeing everyone as cards, or together in a room ----
 
 // The room (room3d.ts) draws everyone at once, around a table, with what
@@ -1732,7 +1768,10 @@ async function seeAs(view: string): Promise<void> {
     warn("Couldn't draw the room here. Showing everyone as cards.");
     return void seeAs("cards");
   }
-  if (!inRoom) await showRoom(null, null);
+  if (!inRoom) {
+    sit();
+    await showRoom(null, null);
+  }
   for (const r of viewSwitch?.querySelectorAll<HTMLInputElement>("input") ?? []) r.checked = r.value === (on ? "room" : "cards");
   try {
     localStorage.setItem(VIEW_KEY, on ? "room" : "cards");

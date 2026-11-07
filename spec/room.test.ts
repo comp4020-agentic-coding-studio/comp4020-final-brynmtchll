@@ -363,6 +363,32 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   });
 
+  it("shows someone walking about the room on every open page, on the floor, and back in their seat when they sit", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const walk = (body: unknown, cookie = p.cookie) =>
+      fetch(new URL("/walk", baseUrl), { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect((await walk({ at: { x: 3.456, z: 8, turn: 1 }, name: "someone-else" })).status).toBe(200);
+    const seen = (await watcher.waitFor(`"name":"${p.name}","at":{`)) as unknown as Record<string, unknown>;
+    expect(seen).toMatchObject({ type: "walk", at: { x: 3.46, z: 8, turn: 1 } });
+    // through a wall, or into the table: held to the floor, out of the way
+    const out = (await (await walk({ at: { x: 900, z: -4.2, turn: 0 } })).json()) as { at: { x: number; z: number } };
+    expect(Math.abs(out.at.x)).toBeLessThan(26);
+    const intoTable = (await (await walk({ at: { x: 0, z: -4.2, turn: 0 } })).json()) as { at: { x: number; z: number } };
+    expect(Math.abs(intoTable.at.z + 4.2)).toBeGreaterThan(2.8);
+    // a page opened while they're up sees them there
+    const later = listen();
+    const now = (await later.waitFor(`"standing"`)) as unknown as { standing: Record<string, unknown> };
+    expect(now.standing[p.name]).toBeDefined();
+    later.close();
+    expect((await walk({ sit: true })).status).toBe(200);
+    await watcher.waitFor(`"name":"${p.name}","at":null`);
+    expect((await walk({ at: { x: "here", z: 0, turn: 0 } })).status).toBe(400);
+    expect((await walk({ at: { x: 1, z: 1, turn: 0 } }, "")).status).toBe(401);
+    watcher.close();
+  });
+
   it("shows someone's emote on every open page, only one on offer, and only as their own", async () => {
     const watcher = listen();
     await watcher.ready;

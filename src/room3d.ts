@@ -31,7 +31,8 @@
 // the room).
 import { roomView, type RoomHead } from "./head3d.ts";
 import { seatPlaces } from "./seats.ts";
-import { facing, fovFor, held, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type Vec3, type View } from "./camera.ts";
+import { facing, fovFor, held, inside, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type Vec3, type View } from "./camera.ts";
+import { onFloor, PACE, step, turnedTo, type Spot } from "./walk.ts";
 
 type T = any;
 
@@ -79,7 +80,29 @@ type Room = {
   // a stop rather than stopping dead
   spin: { yaw: number; pitch: number };
   framed: Shot | null; // the shot for the view, before it's turned
+  // each person up and walking about, drawn where they are now (gliding
+  // after where their page last said), with their legs, and how far into a
+  // stride they are; the chair they got up from stays where it was
+  walkers: Map<HTMLElement, Walker>;
 };
+type Walker = { group: T; legs: T[]; at: Spot; stride: number; speed: number; up: number; colour: string };
+
+// Who's up and walking, by name, as their pages last said (client.ts tells
+// the room as it hears), and you: where you are, moved here as you walk.
+const standing = new Map<string, Spot>();
+let mineAt: Spot | null = null;
+// what you're pressing or pushing: ahead and aside, -1 to 1 (keys, the stick)
+const going = { ahead: 0, aside: 0, keys: new Set<string>(), stick: { ahead: 0, aside: 0 }, to: null as { x: number; z: number } | null };
+let sendWalk: ((at: Spot | null) => void) | null = null;
+export function walkSent(send: (at: Spot | null) => void): void {
+  sendWalk = send;
+}
+// someone else's page says where they are now, or that they've sat down
+export function walked(name: string, at: Spot | null): void {
+  if (at) standing.set(name, at);
+  else standing.delete(name);
+}
+export const isUp = (): boolean => mineAt !== null;
 
 let room: Room | null = null;
 const still = matchMedia("(prefers-reduced-motion: reduce)");
@@ -878,6 +901,190 @@ function label(r: Room, slot: HTMLElement): HTMLElement {
   return el;
 }
 
+// ---- walking about ----
+
+// How high a head stands above where it sits (the hips come up off the
+// cushion onto a pair of legs), and the legs: a rounded leg and a shoe each,
+// made once, shared by everyone, in a darker shade of what they're wearing.
+const STAND = 2.6;
+const LEG = 2.9;
+let legGeo: T = null;
+let shoeGeo: T = null;
+const legMats = new Map<string, T>();
+function walkerFor(r: Room, who: RoomHead, to: Spot, dt: number, THREE: T): Walker {
+  let w = r.walkers.get(who.slot);
+  const top = JSON.parse(who.slot.closest<HTMLElement>(".spot")?.dataset.look ?? "{}").topColour ?? "#3d4a6e";
+  if (!w) {
+    legGeo ??= new THREE.CapsuleGeometry(0.42, LEG - 0.84, 6, 14);
+    shoeGeo ??= new THREE.SphereGeometry(0.5, 14, 10);
+    const group = new THREE.Group();
+    const legs: T[] = [];
+    for (const side of [-1, 1]) {
+      // (a hip, and the leg hung from it, so it swings from the top)
+      const hip = new THREE.Group();
+      hip.position.set(side * 0.5, -4.4 + STAND - 0.1, 0);
+      const leg = new THREE.Mesh(legGeo, null);
+      leg.position.y = -LEG / 2;
+      const shoe = new THREE.Mesh(shoeGeo, mat(THREE, 0x2a2420, 0.6));
+      shoe.scale.set(0.95, 0.55, 1.35);
+      shoe.position.set(0, -LEG + 0.15, 0.25);
+      hip.add(leg, shoe);
+      for (const m of [leg, shoe]) m.castShadow = m.receiveShadow = true;
+      group.add(hip);
+      legs.push(hip);
+    }
+    // (got up from where their chair is: they start there)
+    const from = who.mine || !r.sat.get(who.slot) ? to : startSpot(r, who);
+    w = { group, legs, at: from, stride: 0, speed: 0, up: 0, colour: "" };
+    r.scene.add(group);
+    r.walkers.set(who.slot, w);
+  }
+  if (w.colour !== top) {
+    w.colour = top;
+    const key = top;
+    let m = legMats.get(key);
+    if (!m) {
+      const c = new THREE.Color(top).multiplyScalar(0.45);
+      m = mat(THREE, c.getHex(), 0.85);
+      legMats.set(key, m);
+    }
+    for (const hip of w.legs) hip.children[0].material = m;
+  }
+  // (your own moves as you walk; anyone else's glides after where their
+  // page last said, a few times a second)
+  const before = { ...w.at };
+  if (who.mine || still.matches) w.at = { ...to };
+  else {
+    const k = 1 - Math.exp(-10 * dt);
+    w.at = { x: w.at.x + (to.x - w.at.x) * k, z: w.at.z + (to.z - w.at.z) * k, turn: turnedTo(w.at.turn, to.turn, Math.max(0.02, Math.abs(Math.atan2(Math.sin(to.turn - w.at.turn), Math.cos(to.turn - w.at.turn))) * k)) };
+  }
+  // (seats are in a different order on each page, everyone's own in the
+  // middle: someone walking up to a chair on their page can be in another
+  // on this one. Drawn just clear of it here.)
+  if (!who.mine) w.at = { ...w.at, ...clearOfChairs(r, who.slot, w.at) };
+  const moved = Math.hypot(w.at.x - before.x, w.at.z - before.z) / Math.max(dt, 1e-3);
+  w.speed += (Math.min(1, moved / PACE) - w.speed) * (1 - Math.exp(-8 * dt));
+  w.stride += dt * 9 * w.speed;
+  w.up = still.matches ? 1 : Math.min(1, w.up + dt * 3);
+  const rise = 1 - (1 - w.up) ** 3;
+  const bob = Math.abs(Math.sin(w.stride)) * 0.18 * w.speed;
+  w.group.position.set(w.at.x, STAND * rise + bob - 0.1 * w.speed, w.at.z);
+  w.group.rotation.y = w.at.turn;
+  // (leaning into it a little at a pace)
+  w.group.rotation.x = 0.06 * w.speed;
+  const swing = Math.sin(w.stride) * 0.6 * w.speed;
+  w.legs[0].rotation.x = swing;
+  w.legs[1].rotation.x = -swing;
+  for (const hip of w.legs) hip.scale.y = Math.max(0.05, rise);
+  return w;
+}
+// back in their chair: their walker goes
+function sitDown(r: Room, slot: HTMLElement): void {
+  const w = r.walkers.get(slot);
+  if (!w) return;
+  r.scene.remove(w.group);
+  r.walkers.delete(slot);
+}
+
+// You, walking: the keys (WASD or, with the room not focused for looking
+// round, the arrows), the stick on a phone, or where you tapped, from the way
+// the camera's looking. Getting up the first time you move; sat back down by
+// walking into your chair, or the Sit button.
+let sentAt = 0;
+let sentSpot = "";
+function walkMine(r: Room, sitting: RoomHead[], dt: number): void {
+  const me = sitting.find((x) => x.mine);
+  if (!me) return;
+  const k = going.keys;
+  let ahead = (k.has("w") || k.has("arrowup") ? 1 : 0) - (k.has("s") || k.has("arrowdown") ? 1 : 0) + going.stick.ahead;
+  let aside = (k.has("d") || k.has("arrowright") ? 1 : 0) - (k.has("a") || k.has("arrowleft") ? 1 : 0) + going.stick.aside;
+  // the way the camera looks, along the floor
+  const eye = r.camera.getWorldDirection(new r.THREE.Vector3());
+  const facing = Math.atan2(eye.x, eye.z);
+  // (tapped somewhere: walk there, until near it or another way's pressed)
+  if (going.to && (ahead || aside)) going.to = null;
+  if (going.to) {
+    const from = mineAt ?? startSpot(r, me);
+    const dx = going.to.x - from.x;
+    const dz = going.to.z - from.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.4) going.to = null;
+    else {
+      const a = Math.atan2(dx, dz) - facing;
+      const pace = Math.min(1, d / 1.5);
+      ahead = Math.cos(a) * pace;
+      aside = Math.sin(a) * pace;
+    }
+  }
+  if (!ahead && !aside && !mineAt) return;
+  if (!mineAt) {
+    if (!ahead && !aside) return;
+    mineAt = startSpot(r, me);
+    if (r.view !== "me") setView("me", false);
+    r.overlay.closest(".room3d")?.toggleAttribute("data-up", true);
+  }
+  const was = mineAt;
+  mineAt = step(mineAt, ahead, aside, facing, dt);
+  // (others' chairs: walked round, not through)
+  mineAt = { ...mineAt, ...clearOfChairs(r, me.slot, mineAt) };
+  // sent a few times a second while moving, and once when stopped
+  const now = performance.now();
+  const key = `${mineAt.x.toFixed(2)},${mineAt.z.toFixed(2)},${mineAt.turn.toFixed(2)}`;
+  const moving = mineAt.x !== was.x || mineAt.z !== was.z || mineAt.turn !== was.turn;
+  if (key !== sentSpot && (now - sentAt > 120 || !moving)) {
+    sentAt = now;
+    sentSpot = key;
+    sendWalk?.(mineAt);
+  }
+}
+// a spot pushed just clear of every chair, and the step under a raised one
+// (but `own`, the one they got up from), and kept on the floor
+function clearOfChairs(r: Room, own: HTMLElement, at: { x: number; z: number }): { x: number; z: number } {
+  let p = { x: at.x, z: at.z };
+  for (const [slot, s] of r.sat) {
+    if (slot === own) continue;
+    const cx = s.at[0];
+    const cz = s.at[2] - 1.5;
+    const dx = p.x - cx;
+    const dz = p.z - cz;
+    const d = Math.hypot(dx, dz);
+    if (d < 3.2) p = onFloor(cx + (dx / (d || 1)) * 3.2, cz + (dz / (d || 1)) * 3.2);
+  }
+  return p;
+}
+// where you get up from: just in front of your chair, facing as it does
+// (in front of the chair is the table: they step out round its end, to the
+// side the table's nearer its end, and stand facing as the chair does)
+function startSpot(r: Room, me: RoomHead): Spot {
+  const was = r.sat.get(me.slot)?.at;
+  if (!was) return { x: 0, z: 6, turn: 0 };
+  const side = was[0] >= 0 ? 1 : -1;
+  const p = clearOfChairs(r, me.slot, onFloor(was[0] + side * 3.4, was[2] - 1.2));
+  return { x: p.x, z: p.z, turn: was[3] };
+}
+// back down in your chair (the Sit button, or leaving the room)
+export function sit(): void {
+  if (!mineAt) return;
+  mineAt = null;
+  going.to = null;
+  sentSpot = "";
+  sendWalk?.(null);
+  if (room?.view === "me") setView(savedView(), false);
+  room?.overlay.closest(".room3d")?.toggleAttribute("data-up", false);
+}
+// The "me" view: over your shoulder, a little behind and above, looking
+// where you face, and kept inside the room
+// (It looks into the room, as every view does, and turns only as you drag
+// it: one that swung round behind wherever you faced turned you round as
+// you walked back towards it, and then looked out of the room's open front.
+// High enough and far enough back that you're low in the picture and where
+// you're going shows over you.)
+function behind(at: Spot, aspect: number): Shot {
+  const back = aspect < 1 ? 18 : 16;
+  const look: Vec3 = [at.x, 0, at.z - 3];
+  return { at: inside(look, [at.x, 10, at.z - 3 + back]), look };
+}
+
 // how sharp to draw: as sharp as the screen, within 2 (a phone, 1.5), times
 // however much less a slow screen has been brought down to
 const ratioFor = (r: Room): number => Math.min(innerWidth < 700 ? 1.5 : 2, devicePixelRatio) * r.pixels;
@@ -904,6 +1111,7 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.camera.updateProjectionMatrix();
   }
   const sitting = arrange(heads, r.camera.aspect, r);
+  walkMine(r, sitting, dt);
   const places = seatPlaces(sitting.length, r.camera.aspect);
   // seats: as many as there are people, made as needed
   while (r.seats.length < sitting.length) {
@@ -922,8 +1130,8 @@ function draw(heads: RoomHead[], THREE: T): void {
     seat.group.visible = !!who;
     // whoever sat here before is put back where head3d keeps them
     if (seat.holds && seat.holds !== who) {
-      seat.group.remove(seat.holds.root);
-      if (seat.holds.body) seat.group.remove(seat.holds.body);
+      seat.holds.root.parent?.remove(seat.holds.root);
+      seat.holds.body?.parent?.remove(seat.holds.body);
     }
     if (!who) return void (seat.holds = null);
     const p = places[i];
@@ -946,15 +1154,22 @@ function draw(heads: RoomHead[], THREE: T): void {
     seat.riser.visible = y > 0.05;
     seat.riser.scale.y = Math.max(0.01, y);
     seat.riser.position.set(0, FLOOR - y / 2, -1.5);
+    // up and walking about: drawn where they stand, the chair left empty
+    // where it was; otherwise in it
+    const name = who.slot.closest<HTMLElement>(".spot")?.dataset.name ?? "";
+    const stood = who.mine ? mineAt : standing.get(name) ?? null;
+    const walker = stood ? walkerFor(r, who, stood, dt, THREE) : null;
+    if (!stood) sitDown(r, who.slot);
+    const holder = walker?.group ?? seat.group;
     // (a head3d frame takes the head out of any scene it's in, to draw it
     // in its card; here it isn't, so it stays put between frames)
-    if (who.root.parent !== seat.group) {
-      seat.group.add(who.root);
+    if (who.root.parent !== holder) {
+      holder.add(who.root);
       // (casting a shadow on the chair and the rug, as the room's own things do)
       who.root.traverse((o: T) => void (o.isMesh && (o.castShadow = o.receiveShadow = true)));
     }
-    if (who.body && who.body.parent !== seat.group) {
-      seat.group.add(who.body);
+    if (who.body && who.body.parent !== holder) {
+      holder.add(who.body);
       who.body.traverse((o: T) => void (o.isMesh && (o.castShadow = o.receiveShadow = true)));
     }
     seat.holds = who;
@@ -970,11 +1185,17 @@ function draw(heads: RoomHead[], THREE: T): void {
   if (talking >= 0) r.focus = sitting[talking].slot;
   let focus = r.focus ? sitting.findIndex((x) => x.slot === r.focus) : -1;
   if (focus < 0) focus = sitting.findIndex((x) => x.mine);
-  const framed = shotFor(r.view, places, r.camera.aspect, talking, focus);
+  const mineW = mineAt ? r.walkers.get(sitting.find((x) => x.mine)?.slot as HTMLElement) : null;
+  // (anyone up and about counts as wide as they've gone, so walking off
+  // to one side doesn't take them out of the picture)
+  const about = [...r.walkers.values()].map((w) => ({ x: w.at.x, y: 0, z: w.at.z, turn: w.at.turn, row: 0 }));
+  const framed = r.view === "me" && mineW ? behind(mineW.at, r.camera.aspect) : r.view === "speaker" ? shotFor("speaker", places.map((p, i) => { const w = r.walkers.get(sitting[i]?.slot); return w ? { x: w.at.x, y: STAND, z: w.at.z, turn: w.at.turn, row: 0 } : p; }), r.camera.aspect, talking, focus) : shotFor(r.view === "me" ? "follow" : r.view, [...places, ...about], r.camera.aspect, talking, focus);
   r.framed = framed;
   // the light on whoever's talking: over to them, and up, as they start;
   // down, where it was, after they stop
-  const lit = places[talking];
+  // (on them where they stand, if they're up and about)
+  const litW = talking >= 0 ? r.walkers.get(sitting[talking].slot) : undefined;
+  const lit = litW ? { x: litW.at.x, y: 0, z: litW.at.z, turn: litW.at.turn, row: 0 } : places[talking];
   if (lit) {
     const f = facing(lit);
     const ease = r.spot.intensity < 1 || still.matches ? 1 : 1 - Math.exp(-6 * dt);
@@ -1123,6 +1344,7 @@ function draw(heads: RoomHead[], THREE: T): void {
   // (someone not sitting now, in a room with more people than seats, sits
   // down afresh when they're back)
   for (const slot of r.sat.keys()) if (!seen.has(slot)) r.sat.delete(slot);
+  for (const slot of r.walkers.keys()) if (!seen.has(slot)) sitDown(r, slot);
 }
 
 // Drawing less on a screen that can't keep up: frames taking over 24 ms (a
@@ -1204,8 +1426,11 @@ function control(r: Room, box: HTMLElement): void {
     room.turn = { ...room.turn, zoom: Math.max(ZOOM[0], Math.min(ZOOM[1], room.turn.zoom * f)) };
     turnedByHand();
   };
+  // (where a press began, to tell a tap or click from a drag)
+  let pressed: { x: number; y: number; t: number } | null = null;
   canvas.addEventListener("pointerdown", (e) => {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    pressed = pointers.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
     // (a finger on a phone: one scrolls the page, two turn and zoom; a
     // mouse or pen drags with one)
     if (e.pointerType !== "touch" || pointers.size >= 2) {
@@ -1240,6 +1465,9 @@ function control(r: Room, box: HTMLElement): void {
     }
   });
   const up = (e: PointerEvent): void => {
+    // a tap or click on the floor, not a drag: walk there
+    if (e.type === "pointerup" && pressed && pointers.size === 1 && Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) < 8 && performance.now() - pressed.t < 400) walkTo(e.clientX, e.clientY);
+    pressed = null;
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = 0;
     if (pointers.size === 0) {
@@ -1266,7 +1494,30 @@ function control(r: Room, box: HTMLElement): void {
   });
   // the keyboard: arrows turn it, + and - zoom, 0 puts it back (on the room
   // itself, focused)
+  // W A S D walk (and, once you're up, the arrows too: looking round is the
+  // drag's then)
+  const walkKey = (e: KeyboardEvent): string | null => {
+    const k = e.key.toLowerCase();
+    if (e.metaKey || e.ctrlKey || e.altKey) return null;
+    if (["w", "a", "s", "d"].includes(k)) return k;
+    if (mineAt && k.startsWith("arrow")) return k;
+    return null;
+  };
   box.addEventListener("keydown", (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) return;
+    const k = walkKey(e);
+    if (!k) return;
+    e.preventDefault();
+    going.keys.add(k);
+  });
+  const keyUp = (e: KeyboardEvent): void => void going.keys.delete(e.key.toLowerCase());
+  box.addEventListener("keyup", keyUp);
+  // (let go elsewhere, or the window left: nobody keeps walking)
+  addEventListener("keyup", keyUp);
+  addEventListener("blur", () => going.keys.clear());
+  box.addEventListener("focusout", () => going.keys.clear());
+  box.addEventListener("keydown", (e) => {
+    if (walkKey(e)) return;
     const step = 40;
     const keys: Record<string, () => void> = {
       ArrowLeft: () => turnBy(-step, 0),
@@ -1290,11 +1541,92 @@ function control(r: Room, box: HTMLElement): void {
     const v = (e.target as HTMLInputElement).value as View;
     if (VIEWS.includes(v)) setView(v);
   });
+  box.querySelector(".room-sit")?.addEventListener("click", () => {
+    sit();
+    box.focus({ preventScroll: true });
+  });
+  box.querySelector(".room-full")?.addEventListener("click", () => void fullScreen(box));
+  stickIn(box.querySelector(".room-stick"));
   box.querySelector(".room-reset")?.addEventListener("click", () => {
     if (room) (room.turn = LEVEL), (room.spin = { yaw: 0, pitch: 0 });
     turnedByHand();
   });
 }
+// Where on the floor a point on the screen is, if it's on the floor: walk
+// there.
+function walkTo(cx: number, cy: number): void {
+  const r = room;
+  if (!r) return;
+  const rect = r.canvas.getBoundingClientRect();
+  const ndc = new r.THREE.Vector2(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
+  const ray = new r.THREE.Raycaster();
+  ray.setFromCamera(ndc, r.camera);
+  const o = ray.ray.origin;
+  const d = ray.ray.direction;
+  if (d.y >= -0.01) return;
+  const t = (FLOOR - o.y) / d.y;
+  const p = onFloor(o.x + d.x * t, o.z + d.z * t);
+  going.to = p;
+}
+// The stick, on a touch screen: a thumb pushed from where it first touched,
+// as far as the ring, walks that way, as fast as it's pushed.
+function stickIn(el: HTMLElement | null): void {
+  if (!el) return;
+  const knob = el.querySelector<HTMLElement>(".room-knob");
+  let from: { x: number; y: number; id: number } | null = null;
+  const reach = 34;
+  const set = (dx: number, dy: number): void => {
+    const d = Math.hypot(dx, dy);
+    const k = d > reach ? reach / d : 1;
+    if (knob) knob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+    going.stick = { ahead: (-dy * k) / reach, aside: (dx * k) / reach };
+  };
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    const r = el.getBoundingClientRect();
+    from = { x: r.left + r.width / 2, y: r.top + r.height / 2, id: e.pointerId };
+    set(e.clientX - from.x, e.clientY - from.y);
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (from?.id === e.pointerId) set(e.clientX - from.x, e.clientY - from.y);
+  });
+  const end = (e: PointerEvent): void => {
+    if (from?.id !== e.pointerId) return;
+    from = null;
+    set(0, 0);
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+// Full screen: the room alone, filling the screen (the browser's own full
+// screen where it has one; where it hasn't, as on an iPhone, filling the
+// window instead). Esc, or the button again, comes back.
+async function fullScreen(box: HTMLElement): Promise<void> {
+  const on = box.classList.contains("full");
+  if (on) {
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
+    box.classList.remove("full");
+  } else {
+    box.classList.add("full");
+    if (box.requestFullscreen) await box.requestFullscreen({ navigationUI: "hide" }).catch(() => undefined);
+  }
+  box.querySelector(".room-full")?.setAttribute("aria-pressed", String(!on));
+  box.focus({ preventScroll: true });
+}
+document.addEventListener("fullscreenchange", () => {
+  // (left by Esc, or the browser's own way out)
+  if (document.fullscreenElement) return;
+  for (const box of document.querySelectorAll<HTMLElement>(".room3d.full")) {
+    box.classList.remove("full");
+    box.querySelector(".room-full")?.setAttribute("aria-pressed", "false");
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  for (const box of document.querySelectorAll<HTMLElement>(".room3d.full")) if (!document.fullscreenElement) void fullScreen(box);
+});
+
 // (a way back once it's been turned)
 function turnedByHand(): void {
   const t = room?.turn ?? LEVEL;
@@ -1302,13 +1634,15 @@ function turnedByHand(): void {
   room?.overlay.closest(".room3d")?.toggleAttribute("data-turned", moved);
 }
 const VIEW_KEY = "said-room-view";
-function setView(v: View): void {
+function setView(v: View, remember = true): void {
   if (!room) return;
   room.view = v;
   room.turn = LEVEL;
   room.spin = { yaw: 0, pitch: 0 };
   turnedByHand();
   for (const i of room.overlay.closest(".room3d")?.querySelectorAll<HTMLInputElement>(".room-views input") ?? []) i.checked = i.value === v;
+  // (moved to "me" as you got up, or back as you sat: not a choice to keep)
+  if (!remember || v === "me") return;
   try {
     localStorage.setItem(VIEW_KEY, v);
   } catch {
@@ -1318,7 +1652,7 @@ function setView(v: View): void {
 const savedView = (): View => {
   try {
     const v = localStorage.getItem(VIEW_KEY) as View | null;
-    return v && VIEWS.includes(v) ? v : "follow";
+    return v && VIEWS.includes(v) && v !== "me" ? v : "follow";
   } catch {
     return "follow";
   }
@@ -1417,6 +1751,7 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       shadowFrame: 0,
       spin: { yaw: 0, pitch: 0 },
       framed: null,
+      walkers: new Map(),
       pixels: 1,
     };
     const box = canvas.closest<HTMLElement>(".room3d");

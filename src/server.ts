@@ -11,6 +11,7 @@ import { readExpression, type Face } from "./face.ts";
 import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./avatar.ts";
 import { cleanBody, type Body } from "./body.ts";
 import { cleanLook, emoteOf, isEffect, reactionOf, stylesCss, type Look } from "./packs.ts";
+import { cleanSpot, type Spot } from "./walk.ts";
 
 // Everyone's expression as they last showed it, in memory: a face is for now,
 // so a restart forgetting it is right. A page showing a face sends it several
@@ -74,6 +75,20 @@ const showAway = (): void => {
   for (const listener of listening) listener.write(`event: here\ndata: ${now}\n\n`);
 };
 setInterval(showAway, 2000).unref();
+// Who's up and walking about the room, and where: like a face, in memory
+// only, and never logged (a stream of positions says nothing to keep). Sat
+// back down, or gone for GONE_FOR, they're in their seat again.
+const standing = new Map<string, Spot>();
+const showWalk = (name: string, at: Spot | null): void => {
+  if (at) standing.set(name, at);
+  else if (!standing.delete(name)) return;
+  const payload = `event: walk\ndata: ${JSON.stringify({ name, at })}\n\n`;
+  for (const listener of listening) listener.write(payload);
+};
+setInterval(() => {
+  const now = Date.now();
+  for (const name of standing.keys()) if (!pagesOf.get(name) && now - (goneSince.get(name) ?? now) > GONE_FOR) showWalk(name, null);
+}, 10_000).unref();
 setInterval(() => {
   const now = Date.now();
   for (const [name, seen] of faceSeen) {
@@ -101,6 +116,7 @@ const earlyTooFast = limiter(120);
 const emoteTooFast = limiter(20);
 const reactTooFast = limiter(60);
 const handTooFast = limiter(30);
+const walkTooFast = limiter(200);
 const looksTooFast = limiter(30);
 
 // style.css, and after it how each word style in packs.ts is drawn
@@ -112,7 +128,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // time each is asked for (not at boot, so a server waking up answers sooner)
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
-const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "camera.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts"]);
+const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "camera.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts", "walk.ts"]);
 const stripped = new Map<string, string>();
 const scriptOf = (f: string): string | undefined => {
   if (!SCRIPTS.has(f)) return undefined;
@@ -338,7 +354,7 @@ function listen(req: IncomingMessage, res: ServerResponse, after: string | null,
   // than what was said: who arrived or changed how they look, and what was
   // done to what's already on it. So it also gets who's on the stage and the
   // latest phrases as they stand, edited, reacted to, or gone.
-  const now: Record<string, unknown> = { upTo, queue: handQueue(), away: away() };
+  const now: Record<string, unknown> = { upTo, queue: handQueue(), away: away(), standing: Object.fromEntries(standing) };
   if (coming) {
     const latest = room.recent(CAUGHT_UP);
     now.people = room.people().map((p) => ({ name: p.name, hue: hueOf(p.seat), look: room.lookOf(p.name) }));
@@ -620,6 +636,29 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const payload = `event: reacted\ndata: ${JSON.stringify({ id: raw.id, index: raw.index, counts: result.counts })}\n\n`;
     for (const listener of listening) listener.write(payload);
     return json(res, 200, { counts: result.counts, on: result.on });
+  }
+
+  // Up and walking about the room, or sat back down: where you stand (held
+  // to the floor, out of the furniture), or { sit: true }. Only your own
+  // (from the cookie). Shown to every open page as it happens; kept only
+  // while you're up, so a page opened meanwhile sees you there.
+  if (req.method === "POST" && url.pathname === "/walk") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (walkTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let raw: { at?: unknown; sit?: unknown } = {};
+    try {
+      raw = JSON.parse((await body(req, 256)) ?? "{}");
+    } catch {
+      return json(res, 400, { error: "not-a-place" });
+    }
+    if (raw.sit === true) {
+      showWalk(me.name, null);
+      return json(res, 200, { at: null });
+    }
+    const at = cleanSpot(raw.at);
+    if (!at) return json(res, 400, { error: "not-a-place" });
+    showWalk(me.name, at);
+    return json(res, 200, { at });
   }
 
   // How loud someone is talking, as it happens: a few levels, 0 to 1, a

@@ -463,6 +463,39 @@ main.room {
 .room-hint { position: absolute; top: 12px; left: 50%; translate: -50% 0; margin: 0; padding: 4px 12px; border-radius: 999px; background: rgb(12 15 24 / 0.45); color: rgb(255 255 255 / 0.75); font-size: 0.75rem; pointer-events: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: opacity 0.6s; animation: hint-out 0.6s 6s forwards; z-index: 3; }
 @keyframes hint-out { to { opacity: 0; } }
 .room3d[data-turned] .room-hint { opacity: 0; }
+/* up and walking: the "Me" view (over your shoulder) and the way back to
+   your chair, shown only then */
+.room-me, .room-sit { display: none; }
+.room3d[data-up] .room-me { display: inline-block; }
+.room3d[data-up] .room-sit { display: inline-block; }
+.room-sit { min-height: 0; padding: 6px 12px; border-radius: 999px; border: 0; background: rgb(255 255 255 / 0.14); color: #fff; font-size: 0.8125rem; font-weight: 600; }
+.room-sit:hover:not(:disabled) { background: rgb(255 255 255 / 0.24); }
+/* the full screen button, top right */
+.room-full { position: absolute; top: 10px; right: 10px; z-index: 3; display: grid; place-items: center; width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: 12px; border: 1px solid rgb(255 255 255 / 0.12); background: rgb(12 15 24 / 0.5); color: rgb(255 255 255 / 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: background 0.2s, color 0.2s, transform 0.15s var(--ease); }
+.room-full:hover:not(:disabled) { background: rgb(12 15 24 / 0.75); color: #fff; }
+.room-full:active { transform: scale(0.94); }
+.room-full svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.room-full .shrink, .room3d.full .room-full .grow { display: none; }
+.room3d.full .room-full .shrink { display: inline; }
+/* full screen: the room alone, edge to edge (the browser's own full screen,
+   or, where there's none, the whole window) */
+.room3d.full { position: fixed; inset: 0; z-index: 50; height: 100dvh; min-height: 0; width: 100vw; border-radius: 0; border: 0; animation: none; }
+.room3d:fullscreen { height: 100%; width: 100%; border-radius: 0; border: 0; }
+.room3d.full .room-bar { bottom: max(18px, env(safe-area-inset-bottom)); }
+.room3d.full .room-full { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+:root:has(.room3d.full) { overflow: hidden; }
+/* the stick, on a touch screen: bottom left, a ring and a knob */
+.room-stick { display: none; position: absolute; left: 14px; bottom: 62px; z-index: 3; width: 88px; height: 88px; opacity: 0.55; transition: opacity 0.2s; border-radius: 50%; background: radial-gradient(circle, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.14)); border: 1px solid rgb(255 255 255 / 0.22); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); touch-action: none; }
+.room-stick:active, .room3d[data-up] .room-stick { opacity: 1; }
+.room-knob { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: rgb(255 255 255 / 0.9); box-shadow: 0 4px 14px rgb(0 0 0 / 0.35); transition: transform 0.12s var(--ease); pointer-events: none; }
+.room-stick:active .room-knob { transition: none; }
+@media (pointer: coarse) { .room-stick { display: block; } }
+/* up, on a phone: six in the bar, so each a little narrower */
+@media (max-width: 600px) {
+  .room3d[data-up] .room-views span { padding: 6px 7px; font-size: 0.75rem; }
+  .room3d[data-up] .room-sit { padding: 6px 9px; font-size: 0.75rem; }
+}
+.room3d.full .room-stick { bottom: max(84px, calc(env(safe-area-inset-bottom) + 70px)); left: max(18px, env(safe-area-inset-left)); }
 @media (max-width: 600px) {
   .room-bar { bottom: 10px; }
   .room-views span { padding: 6px 10px; }
