@@ -359,6 +359,25 @@ led to. Claude chose how to build each; what to build was yours.
      head in front hid their mouth; from a back row it's 4.2. Names whose
      head is out of the picture aren't shown ([`4c07961`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/4c07961)).
 
+8. **Walking about the room, and full screen.** Brynly, 7 November: "can we
+   make it so that you can control your avatar and move around, also i want
+   a full screen option for that" (after Claude offered three other ideas:
+   a guessing game, room captions, cutting back).
+   - W A S D, a tap or click on the floor, or a stick on a touch screen; you
+     get up beside your chair onto a pair of legs, everyone sees you walk,
+     and "Me" follows you; Sit takes you back. Kept to the floor and out of
+     the table, the furniture and the chairs; the server takes only a place
+     on the floor and keeps it only while you're up. Full screen is the
+     browser's own, or (an iPhone has none for a page) the room filling the
+     window. 186 checks. 12 people at phone size, processor slowed four
+     times: 45.0 and 47.6 frames a second with it, 42.6 without
+     ([`0023cd6`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0023cd6)).
+   - Tried and changed before it went in: a "Me" camera that swung round
+     behind whichever way you faced turned you round as you walked back
+     towards it, and looked out of the room's open front; it now looks into
+     the room and turns only when dragged. Getting up straight forward put
+     you between your chair and the table; you now step out to the side.
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Brynly's M4 Pro in headless Chrome.

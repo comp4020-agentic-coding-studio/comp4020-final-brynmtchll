@@ -69,6 +69,13 @@ be more interesting because others are in the room at the same moment.
 - The avatar is them: it follows their face, head, hands and voice closely
   enough to feel live ("i need the head to be more responsive", 20 Oct).
   Judged by Brynly, with Brynly's own face and voice.
+- The room is a place to be in, not only to look at: you can walk your
+  avatar about it, everyone sees you there, and it can fill the screen
+  ("make it so that you can control your avatar and move around, also i
+  want a full screen option", 7 Nov). Nobody walks through a wall, the
+  table or a chair (`walk.test.ts`), and where someone stands is only ever a
+  place on the floor, kept while they're up and never stored or logged
+  (`room.test.ts`: "shows someone walking about the room").
 
 ## Every change
 
