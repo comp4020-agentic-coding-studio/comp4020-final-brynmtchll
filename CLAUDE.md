@@ -56,7 +56,11 @@ there, not instead of it.
   within a second on every other open page, with no queue, loading zone or
   button in the way ("i want ... the text be transmitted directly", 20 Oct;
   `room.test.ts`: "within a second, without a reload"). Each person keeps
-  their own place and colour.
+  their own place and colour. Typed words too: each goes out when a space
+  finishes it, and the line is kept on Enter or a pause ("text should send on
+  hitting space bar", 8 Nov; `typed.test.ts`: "sends the words so far each
+  time one's finished with a space…"). Judged in a browser with two pages:
+  type a word and a space on one, and the other shows it.
 - No pitch lines or charts over the words: the words themselves carry it
   ("get rid of the pitch lines i dont like that", 13 Oct).
 - Works in the latest Chrome at 1920x1080 and 390x844, and on a real phone,
@@ -126,7 +130,10 @@ there, not instead of it.
   with an id (`room.test.ts`: "puts each person in Space where they move
   themselves…"). Names are escaped there (`room.test.ts`: "escapes names in
   Space…"). Space never shows in the rooms list. Words, colour and emoji
-  are ways to read the same words as said, drawn from their numbers. Judged
+  are ways to read the same words as said, drawn from their numbers
+  (`src/lens.ts`), in Space and over heads in the room; Tones are a way to
+  hear them, as notes made from the numbers, never anyone's voice, and only
+  when turned on. Judged
   from screenshots, both sizes and both themes, joined and not; on a phone
   the field is shown turned, and right on the screen is still right.
 - One place for each thing: what you can do sits together beside the room

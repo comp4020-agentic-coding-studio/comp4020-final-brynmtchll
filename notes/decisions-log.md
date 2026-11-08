@@ -502,6 +502,26 @@ led to. Claude chose how to build each; what to build was yours.
       the party and Space; the purpose, and whether Space stays, are yours to
       write.
 
+11. **Typing goes out a word at a time.** Brynly, 8 November: "text should
+    send on hitting space bar"
+    ([`197afe3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/197afe3)). Each space sends the words so far,
+    live for everyone, drawn faded the way a phrase still being spoken is.
+    The line is kept on Enter, or once typing stops for 2.5 s with nothing
+    half-typed. This applies in the room's box, the full-screen dock and
+    Space. Check: `typed.test.ts`, "sends the words so far each time one's
+    finished with a space, and the line when it's done".
+    - Same commit, for the creative-communication direction (item 10):
+      - The room's captions can be read as colour or emoji too, from a picker
+        in the room's corner. It's the reader's choice, and it's remembered.
+      - In Space, a ring goes out from whoever speaks, as far as their
+        loudest word carries.
+      - An opt-in Tones button in Space plays what's said as notes made in
+        the browser from each word's numbers: higher said, higher note;
+        louder and nearer, louder; drawn out, held. No one's voice is played.
+    - Found while checking: with Space added to the header, the room switcher
+      covered the Rooms link on a phone. On a phone, Rooms now goes when
+      there's a switcher, since the switcher lists every room.
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Brynly's M4 Pro in headless Chrome.
