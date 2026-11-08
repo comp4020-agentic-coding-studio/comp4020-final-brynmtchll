@@ -1805,9 +1805,18 @@ function draw(heads: RoomHead[], THREE: T): void {
     const most = (l.el.firstElementChild as HTMLElement).offsetHeight * 1.3 + 2;
     // (from the fullest it can be, each frame, so one that stepped down
     // comes back once there's room)
+    // (measured whole: measured as last frame cut it, a cut caption fitted,
+    // came back whole, and was cut again, every other frame. Its size
+    // doesn't ease while it's measured, or it's measured at the cut size.)
     let step = 0;
     if (saying >= 3) l.el.dataset.crowd = "";
     else delete l.el.dataset.crowd;
+    const said = l.el.querySelector<HTMLElement>(".room-said")!;
+    const cut = !!l.el.dataset.fit;
+    if (cut) {
+      said.style.transition = "none";
+      delete l.el.dataset.fit;
+    }
     let { w, h } = box(l.el);
     let x = Math.min(Math.max(l.x, w / 2 + 6), rect.width - w / 2 - 6);
     let y = Math.max(l.y, clearTop + h);
@@ -1844,6 +1853,7 @@ function draw(heads: RoomHead[], THREE: T): void {
       y = Math.max(l.y, clearTop + h);
     }
     if (step === 0 && l.el.dataset.fit) delete l.el.dataset.fit;
+    if (cut) said.style.transition = "";
     if (!quiet) done.push({ x, y, w, h });
     l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
   }

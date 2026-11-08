@@ -546,7 +546,10 @@ main.room {
   .room-hint { display: none; }
 }
 .room-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.room-label { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px; max-width: 46%; will-change: transform;
+/* (as wide as its caption, within the room: a label held to under half the
+   room left a long caption hanging off its right side on a phone, off
+   centre from its head and past where room3d.ts measured it) */
+.room-label { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px; width: max-content; max-width: calc(var(--room-w, 100vw) - 12px); will-change: transform;
   --person: oklch(var(--person-l) var(--person-c) var(--hue)); }
 .room-name { padding: 2px 9px; border-radius: 999px; background: rgb(12 15 22 / 0.62); border: 1px solid rgb(255 255 255 / 0.08); color: var(--person); font-size: 0.75rem; font-weight: 650; white-space: nowrap; max-width: 10em; overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .room-label.speaking, .room-label:has(.room-word:not(:empty)) { z-index: 2; }

@@ -142,7 +142,10 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   two groups talking at once at opposite ends of the room. No caption over a
   head covers another, nor the room's controls, nor runs off its edge: in a
   crowd they step down to a line, then a name (judged with six talking at
-  once, desk and phone: probe `crowd/room1.mjs`; it piled up on 9 Nov).
+  once, desk and phone: probes `crowd/room1.mjs` and `crowd/overlap.mjs`;
+  it piled up on 9 Nov), and stay stepped down while it's crowded, not
+  flickering back and forth frame to frame (probe `crowd/flicker.mjs`: it
+  did, on 9 Nov).
 - Space (`/r/space/`) is you as your words, moved about a plain field
   ("you are the text and you can move that toward or away from others",
   8 Nov). It's the same floor for everyone, so whoever can read you, you can
