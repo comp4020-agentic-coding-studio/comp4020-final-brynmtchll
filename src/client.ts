@@ -343,7 +343,7 @@ const recall = (key: string): string | null => {
 function showNatural(n: Natural): void {
   if (!naturalBox) return;
   naturalBox.closest("label")!.classList.toggle("loading", n.state === "loading");
-  if (n.state === "loading") say(n.total ? `Getting natural voices ready, once: ${mb(n.loaded ?? 0)} of ${mb(n.total)} MB.` : `Getting natural voices ready (about ${mb(willDownload())} MB, once).`);
+  if (n.state === "loading") say(n.total ? `Getting natural voices ready, once: ${mb(n.loaded ?? 0)} of ${mb(n.total)}\u00a0MB.` : `Getting natural voices ready (about ${mb(willDownload())}\u00a0MB, once).`);
   else if (n.state === "ready") {
     say("Natural voices on: everyone's words in the voice they chose, the same on every device.");
     store(NATURAL_KEY + "-had", "yes");
@@ -394,7 +394,7 @@ if (voicesBox && (canSpeak || canNatural)) {
     // for when voices are on again)
     if (naturalBox?.checked) naturalOn(voicesBox.checked);
     // (with a word about natural voices, if they're not on and could be)
-    const offer = naturalBox && canNatural && !naturalBox.checked ? ` For voices that sound like people, the same on every device, turn on ✨ Natural (about ${Math.round(willDownload() / 1e6)} MB, once).` : "";
+    const offer = naturalBox && canNatural && !naturalBox.checked ? ` For voices that sound like people, the same on every device, turn on ✨ Natural (about ${Math.round(willDownload() / 1e6)}\u00a0MB, once).` : "";
     say(voicesBox.checked ? `Voices on: what people say is spoken, the way they said it.${offer || " Headphones stop it coming back through your microphone."}` : "Voices off.");
     store(VOICES_KEY, voicesBox.checked ? "on" : "off");
   });
@@ -764,8 +764,9 @@ function whisper(): Worker {
     const m = e.data;
     if (m.type === "loading" && !modelReady && m.total > 1e6) {
       // (the total grows as each file starts: until the big one has, it's
-      // the 80 MB it comes to, not the 3 of the first few)
-      downloaded = `${mb(m.loaded)} of ${mb(Math.max(m.total, MODEL_BYTES))} MB`;
+      // the 80 MB it comes to, not the 3 of the first few; and "MB" kept
+      // with its number, or a phone's line ended on it alone)
+      downloaded = `${mb(m.loaded)} of ${mb(Math.max(m.total, MODEL_BYTES))}\u00a0MB`;
       showBehind();
     } else if (m.type === "ready") {
       modelReady = true;
@@ -1400,7 +1401,7 @@ if (talk) {
     // first time, on a slow connection, that's the difference between
     // talking straight away and waiting most of a minute. It waits until the
     // page has loaded and settled, so it doesn't hold the page itself up.
-    say("Getting the speech model ready (about 80 MB, once).");
+    say("Getting the speech model ready (about 80\u00a0MB, once).");
     const warm = (): void => void setTimeout(() => whisper(), 500);
     if (document.readyState === "complete") warm();
     else addEventListener("load", warm, { once: true });

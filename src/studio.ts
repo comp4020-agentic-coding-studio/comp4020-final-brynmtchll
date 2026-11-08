@@ -218,6 +218,8 @@ function limitMore(): void {
   for (const b of boxes) {
     if (b.value === main) b.checked = false;
     b.disabled = b.value === main || (!b.checked && ticked >= MORE_EXTRAS);
+    // (the one worn above isn't offered again, not even greyed)
+    b.closest("label")!.hidden = b.value === main;
   }
 }
 
@@ -439,6 +441,8 @@ document.querySelector(".saved-looks")?.addEventListener("click", async (e) => {
       wear.dataset.look = JSON.stringify(saved);
       wear.setAttribute("aria-label", `Wear saved look ${Number(btn.dataset.slot) + 1}`);
       wear.innerHTML = avatarSvg(saved, REST, "");
+      btn.textContent = "Replace";
+      btn.title = `Replace slot ${Number(btn.dataset.slot) + 1} with how you look now`;
     }
     say(`Saved to slot ${Number(btn.dataset.slot) + 1}.`);
   } catch {
@@ -486,7 +490,7 @@ faceButton.addEventListener("click", async () => {
     following = false;
     face = REST;
     faceButton.setAttribute("aria-pressed", "false");
-    faceButton.textContent = "Follow my face";
+    faceButton.textContent = "Show my face";
     handsOff();
     handsButton.hidden = true;
     return draw();
@@ -548,7 +552,7 @@ faceButton.addEventListener("click", async () => {
     };
     following = true;
     faceButton.setAttribute("aria-pressed", "true");
-    faceButton.textContent = "Stop following";
+    faceButton.textContent = "Stop showing my face";
     handsButton.hidden = false;
     say("Following your face, on this page only.");
   } catch (err) {

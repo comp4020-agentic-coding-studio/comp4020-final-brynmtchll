@@ -1,7 +1,7 @@
 import type { Message, Person, RoomInfo } from "./db.ts";
 import { ago, esc, handBadge, hueOf, queueHtml, reactionsHtml, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
-import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SCENE_PARTS, SCENES, SLIDERS, STYLES, VOICES_IN_ORDER, type ColourPart, type Look, type Part, type Scene } from "./packs.ts";
+import { COLOUR_NAMES, COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SCENE_PARTS, SCENES, SLIDERS, STYLES, VOICES_IN_ORDER, type ColourPart, type Look, type Part, type Scene } from "./packs.ts";
 import { TONES } from "./typed.ts";
 
 // a working title, here so it changes in one place
@@ -21,7 +21,7 @@ const HELP = `<details class="help">
     <p>Tap any of your words (your latest is chosen already) to type over it, delete it, or press <kbd>1</kbd> to <kbd>${EFFECTS.length}</kbd> for an effect (${EFFECTS.map((e) => e.label).join(", ")}), live, for everyone.</p>
     <p>Show your face and your avatar pulls the faces you pull and turns as you turn. Your voice and face are read in this browser; only words, how they were said, and a handful of numbers about your face leave it. No recording or picture is kept anywhere.</p>
     <p>Hands too, and your avatar's arms and hands follow yours: a thumbs up, a wave or a peace sign sets off its emote. Raise your hand (<kbd>Shift</kbd> <kbd>R</kbd>) to take a place in the queue to speak.</p>
-    <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. ✨ Natural voices sound like people and the same on every device (a download, once, made and played in this browser). Pick yours in Customise. Headphones stop it coming back through your microphone.</p>
+    <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. ✨ Natural voices sound like people and the same on every device (a download, once, made and played in this browser). Pick yours under Customise your avatar. Headphones stop it coming back through your microphone.</p>
     <p>Or type it instead: pick how it's said (excited, calm, asking, sarcastic…) and it goes up like anything said, a word at a time as you type (each space sends the words so far; Enter, or a pause, finishes the line), spoken in your voice. <kbd>*stars*</kbd> or CAPS make a word stand out. Typed messages are marked ⌨.</p>
   </div>
 </details>`;
@@ -144,7 +144,7 @@ function lookEditor(look: Look): string {
       const c = COLOURS[k];
       const custom = !(c.swatches as readonly string[]).includes(look[k]);
       return `<fieldset class="pick"><legend>${c.label}</legend>${c.swatches
-        .map((v) => `<label><input type="radio" name="${k}" value="${v}"${look[k] === v ? " checked" : ""}><span><span class="swatch" style="background:${v}"></span><span class="visually-hidden">${v}</span></span></label>`)
+        .map((v) => `<label><input type="radio" name="${k}" value="${v}"${look[k] === v ? " checked" : ""}><span><span class="swatch" style="background:${v}" title="${COLOUR_NAMES[v] ?? v}"></span><span class="visually-hidden">${COLOUR_NAMES[v] ?? v}</span></span></label>`)
         .join("")}<label class="any-colour" title="Any colour"><input type="radio" name="${k}" value="${esc(look[k])}"${custom ? " checked" : ""} data-custom><span><input type="color" value="${esc(look[k])}" data-for="${k}" aria-label="Any ${c.label.toLowerCase()} colour"></span></label></fieldset>`;
     }
     // another voice mixed in, and how much (natural voices only)
@@ -161,16 +161,18 @@ function lookEditor(look: Look): string {
   const sliders = (group: string): string => {
     const these = SLIDERS.filter((sl) => sl.group === group);
     return these.length
-      ? `<fieldset class="sliders">${group === "Blend" || group === "Voice" ? "" : "<legend>Shape</legend>"}${these
+      ? `<fieldset class="sliders">${group === "Blend" || group === "Voice" ? "" : "<legend>Adjust</legend>"}${these
           .map((sl) => `<label class="slider"><span>${esc(sl.label)}</span><input type="range" name="tune.${sl.id}" min="-1" max="1" step="0.05" value="${tune[sl.id] ?? 0}"><button type="button" class="reset" data-reset="${sl.id}" aria-label="Reset ${esc(sl.label.toLowerCase())}">↺</button></label>`)
           .join("")}</fieldset>`
       : "";
   };
   const more = new Set(look.more ?? []);
-  const wearMore = `<fieldset class="pick more"><legend>As well</legend>${PARTS.extra
+  // (the one worn above isn't offered again: the same row twice read as
+  // a mistake)
+  const wearMore = `<fieldset class="pick more"><legend>Add more</legend>${PARTS.extra
     .filter((c) => c.id !== "none")
     .map((c) => `<label><input type="checkbox" name="more" value="${c.id}"${more.has(c.id) ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
-    .join("")}<p class="hint">Up to ${MORE_EXTRAS} besides the one above.</p></fieldset>`;
+    .join("")}<p class="hint">Up to ${MORE_EXTRAS} as well as the one above.</p></fieldset>`;
   // how it sounds: tried out here, and said honestly to sound a little
   // different on each device (each has its own voices)
   const voiceMore = `<div class="voice-try"><button type="button" id="hear-voice">🔊 Hear it</button>
@@ -192,7 +194,7 @@ const savedSlots = (saved: (Look | null)[]): string =>
   saved
     .map(
       (l, i) =>
-        `<div class="saved-look"><button type="button" class="wear" data-slot="${i}"${l ? ` data-look="${esc(JSON.stringify(l))}"` : " disabled"} aria-label="${l ? `Wear saved look ${i + 1}` : `Slot ${i + 1} is empty`}">${l ? avatarSvg(l, REST, "") : `<span class="empty" aria-hidden="true">+</span>`}</button><button type="button" class="keep" data-slot="${i}" title="Save how you look now to slot ${i + 1}">Save</button></div>`,
+        `<div class="saved-look"><button type="button" class="wear" data-slot="${i}"${l ? ` data-look="${esc(JSON.stringify(l))}"` : " disabled"} aria-label="${l ? `Wear saved look ${i + 1}` : `Slot ${i + 1} is empty`}">${l ? avatarSvg(l, REST, "") : `<span class="empty" aria-hidden="true">+</span>`}</button><button type="button" class="keep" data-slot="${i}" title="${l ? `Replace slot ${i + 1} with how you look now` : `Save how you look now to slot ${i + 1}`}">${l ? "Replace" : "Save"}</button></div>`,
     )
     .join("");
 
@@ -214,7 +216,7 @@ export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: 
     </div>
     <p class="preview-help">Drag to turn · scroll or pinch to zoom</p>
     <div class="preview-tools">
-      <button type="button" id="studio-face" aria-pressed="false">Follow my face</button>
+      <button type="button" id="studio-face" aria-pressed="false">Show my face</button>
       <button type="button" id="studio-hands" aria-pressed="false" hidden>Hands too</button>
       <button type="button" id="studio-front">Face front</button>
       <button type="button" id="studio-faces" aria-pressed="false">Pull faces</button>
@@ -246,7 +248,7 @@ function typeBox(look: Look): string {
     `<label class="slider"><span>${label}</span><input type="range" name="tune.${id}" min="-1" max="1" step="0.05" value="${tune[id] ?? 0}"></label>`;
   return `<form id="type-box" class="type-box" hidden>
           <label for="typed" class="visually-hidden">Type instead of talking</label>
-          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type here…"><button type="submit" class="type-send" disabled>Say it</button></div>
+          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type here…"><button type="submit" class="type-send" disabled>Say</button></div>
           <fieldset class="tones"><legend class="visually-hidden">How it's said</legend>${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${t.label}</span></label>`).join("")}</fieldset>
           <details class="type-voice"><summary>Your voice</summary>
             <div class="type-voice-body">
@@ -299,10 +301,10 @@ function roomSettings(here: Here): string {
     <summary>Room settings</summary>
     <form class="room-settings-body" data-room-settings>
       <label class="field"><span>Name</span><input name="name" maxlength="40" value="${esc(here.name)}" required></label>
-      <fieldset class="pick scene-pick themes"><legend>Start from</legend>${SCENES.map((t) => `<label><input type="radio" name="theme" value="${t.id}" data-scene="${esc(JSON.stringify(t.scene))}"><span><span aria-hidden="true">${t.emoji}</span> ${esc(t.label)}</span></label>`).join("")}</fieldset>
+      <fieldset class="pick scene-pick themes"><legend>Looks like</legend>${SCENES.map((t) => `<label><input type="radio" name="theme" value="${t.id}" data-scene="${esc(JSON.stringify(t.scene))}"><span><span aria-hidden="true">${t.emoji}</span> ${esc(t.label)}</span></label>`).join("")}</fieldset>
       ${part("sky", "Outside")}${part("walls", "Walls")}${part("floor", "Floor")}${part("rug", "Rug")}
       <label class="check"><input type="checkbox" name="listed"${here.listed ? " checked" : ""}><span>Listed for anyone to find (otherwise only those with the link)</span></label>
-      <p class="fine room-link">Link: <code>${esc(roomHref(here))}</code> <button type="button" class="copy-link">Copy link</button></p>
+      <p class="fine room-link">Link: <code>${esc(roomHref(here))}</code> <button type="button" class="copy-link">Copy the link</button></p>
     </form>
   </details>`;
 }
@@ -408,7 +410,7 @@ export function roomPage(
       <button type="button" class="room-full" aria-pressed="false" title="Full screen (Esc to come back)"><svg viewBox="0 0 20 20" aria-hidden="true"><path class="grow" d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5"/><path class="shrink" d="M8 3v5H3M17 8h-5V3M12 17v-5h5M3 12h5v5"/></svg><span class="visually-hidden">Full screen</span></button>
       <div class="room-stick" aria-hidden="true"><span class="room-knob"></span></div>
       <div class="room-dock" aria-label="Talk from the room">
-        <button type="button" class="dock-talk" aria-pressed="false" title="Microphone"><span class="dot"></span><span class="visually-hidden">Microphone</span></button>
+        <button type="button" class="dock-talk" aria-pressed="false" title="Microphone"><svg class="mic" viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></svg><span class="dot"></span><span class="visually-hidden">Microphone</span></button>
         <form class="dock-type"><input type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Say something…" aria-label="Type something to say"></form>
         <div class="dock-emotes">${["hi", "laugh", "love", "yes", "wow"].map((id) => { const em = EMOTES.find((e) => e.id === id)!; return `<button type="button" data-dock-emote="${id}" title="${em.label}"><span aria-hidden="true">${em.burst}</span><span class="visually-hidden">${em.label}</span></button>`; }).join("")}</div>
       </div>
@@ -561,7 +563,7 @@ export function spacePage(me: (InSpace & { look: Look }) | undefined, people: (I
   ${
     me
       ? `<form class="space-say" id="type-box" autocomplete="off">
-    <button type="button" class="talk" id="talk" aria-pressed="false" disabled><span class="dot" aria-hidden="true"></span><span class="label">Talk</span></button>
+    <button type="button" class="talk" id="talk" aria-pressed="false" disabled><svg class="mic" viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></svg><span class="dot" aria-hidden="true"></span><span class="label">Talk</span></button>
     <input name="text" maxlength="300" placeholder="Or type here…" aria-label="Type something to say: each word goes to everyone as you finish it" enterkeyhint="send">
     <select name="tone" aria-label="How it's said">${TONES.map((t) => `<option value="${t.id}">${t.emoji} ${t.label}</option>`).join("")}</select>
     <button type="submit" class="type-send">Say</button>

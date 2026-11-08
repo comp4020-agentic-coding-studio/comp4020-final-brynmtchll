@@ -354,6 +354,9 @@ main.room {
   .controls .hand-form { display: contents; }
 }
 .talk .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
+/* (a microphone, where there's no room for the words: on its own a dot
+   didn't say what it was for; the dot stays as its light) */
+.talk .mic, .dock-talk .mic { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 /* while on, the dot is live and the button's ring follows the input level */
 .talk.recording { background: var(--surface-2); color: var(--ink); border-color: var(--live); box-shadow: 0 0 0 calc(var(--level, 0) * 10px) color-mix(in srgb, var(--live) 22%, transparent); }
 .talk.recording .dot { background: var(--live); box-shadow: 0 0 10px var(--live); animation: pulse 1.6s ease-in-out infinite; }
@@ -541,7 +544,9 @@ main.room {
 .room3d.full .room-dock { display: flex; }
 .room3d.full .room-bar { left: max(14px, env(safe-area-inset-left)); translate: 0 0; }
 .dock-talk { width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgb(255 255 255 / 0.92); }
-.dock-talk .dot { width: 12px; height: 12px; border-radius: 50%; background: #6b7280; transition: background 0.2s, box-shadow 0.2s; }
+.dock-talk { position: relative; color: #10131c; }
+.dock-talk .mic { display: block; }
+.dock-talk .dot { position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: #6b7280; transition: background 0.2s, box-shadow 0.2s; }
 .dock-talk[aria-pressed="true"] .dot { background: #ef4444; box-shadow: 0 0 0 4px rgb(239 68 68 / 0.25); animation: pulse 1.4s ease-in-out infinite; }
 .dock-type input { width: min(36vw, 280px); min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.14); background: rgb(255 255 255 / 0.08); color: #fff; font: inherit; font-size: 0.875rem; }
 .dock-type input::placeholder { color: rgb(255 255 255 / 0.55); }
@@ -553,6 +558,9 @@ main.room {
 /* a phone, full screen: the bar along the top, the dock along the bottom */
 @media (max-width: 600px) {
   .room3d.full .room-bar { top: max(12px, env(safe-area-inset-top)); bottom: auto; left: 12px; right: 64px; translate: 0 0; overflow-x: auto; scrollbar-width: none; }
+  /* (the ways to read it a row down, under full screen: beside the views
+     they covered "Above", and "Me" and "Sit" once up) */
+  .room3d.full .room-lens { top: calc(max(12px, env(safe-area-inset-top)) + 50px); right: max(12px, env(safe-area-inset-right)); }
   .room3d.full .room-dock { left: 12px; right: 12px; justify-content: space-between; }
   .dock-type { flex: 1; min-width: 0; }
   .dock-type input { width: 100%; }
@@ -780,14 +788,16 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 .help summary::-webkit-details-marker { display: none; }
 .help[open] summary { color: var(--bg); background: var(--ink); border-color: var(--ink); }
 /* a panel of glass under the "?", each paragraph a step with its own mark */
-.help-body { position: absolute; right: 0; top: 44px; z-index: 20; width: min(400px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px; display: grid; gap: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow), 0 24px 60px -20px rgb(0 0 0 / 0.55); font-size: 0.875rem; line-height: 1.55; color: var(--ink); transform-origin: calc(100% - 17px) -8px; animation: pop-in 0.22s var(--ease) both; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.help-body { position: absolute; right: 0; top: 44px; z-index: 20; width: min(400px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px; display: grid; gap: 12px; background: color-mix(in srgb, var(--surface) 97%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow), 0 24px 60px -20px rgb(0 0 0 / 0.55); font-size: 0.875rem; line-height: 1.55; color: var(--ink); transform-origin: calc(100% - 17px) -8px; animation: pop-in 0.22s var(--ease) both; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 @keyframes pop-in { from { opacity: 0; scale: 0.96; translate: 0 -4px; } }
-/* (more below: its foot fades out, until it's scrolled to the end; on a
-   phone, as tall as the screen allows) */
+/* (more below: its foot fades into the panel, until it's scrolled to the
+   end; on a phone, as tall as the screen allows. The words fade, not the
+   panel: a mask on the panel let the page show through its foot.) */
 @property --more { syntax: "<length>"; inherits: false; initial-value: 0px; }
-@keyframes more-below { from { --more: 48px; } to { --more: 0px; } }
+@keyframes more-gone { from { opacity: 1; } to { opacity: 0; } }
 @supports (animation-timeline: scroll()) {
-  .help-body { -webkit-mask-image: linear-gradient(#000 calc(100% - var(--more)), transparent); mask-image: linear-gradient(#000 calc(100% - var(--more)), transparent); animation: pop-in 0.22s var(--ease) both, more-below linear both; animation-timeline: auto, scroll(self); }
+  /* (none where it all fits: there the timeline's inactive) */
+  .help-body::after { content: ""; position: sticky; bottom: -18px; height: 48px; margin: -60px -20px -18px; opacity: 0; background: linear-gradient(transparent, var(--surface) 80%); pointer-events: none; animation: more-gone linear both; animation-timeline: scroll(); animation-range: calc(100% - 40px) 100%; }
 }
 @media (max-width: 600px) { .help-body { max-height: calc(100dvh - 84px); } }
 .help-body p { margin: 0; padding-left: 30px; position: relative; color: color-mix(in oklab, var(--ink) 85%, var(--muted)); }
@@ -965,7 +975,7 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 /* on a phone, one row that slides sideways under a finger, fading out
    at the edge to show there's more */
 @media (max-width: 600px) {
-  .tones { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -12px; padding: 2px 12px; scroll-padding: 0 12px; scroll-snap-type: x proximity; mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 28px), transparent); }
+  .tones { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -12px; padding: 2px 12px; scroll-padding: 0 12px; scroll-snap-type: x proximity; mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 64px), transparent); }
   .tones::-webkit-scrollbar { display: none; }
   .tones label { flex: none; scroll-snap-align: start; }
   .tones label > span { min-height: 40px; padding: 4px 12px; white-space: nowrap; }
@@ -1323,7 +1333,9 @@ main.space-page > .visually-hidden { position: absolute; }
   .space-lede { display: none; }
   .being { max-width: 60%; }
   .space-say .talk .label { display: none; }
-  .space-say .talk { width: 48px; padding: 0; }
+  .space-say .talk { width: 48px; padding: 0; position: relative; }
+  .space-say .talk .mic { display: block; }
+  .space-say .talk .dot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; }
   .space-say select { width: 52px; padding: 0 6px; }
 }
 @media (prefers-reduced-motion: reduce) { .being, .being.gliding { transition: none; } .being.speaking .being-words { animation: none; } .ripple { display: none; } }

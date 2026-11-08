@@ -127,7 +127,7 @@ export const EMOTES = [
   { id: "shake", label: "No", key: "X", head: "shake", burst: "", face: { frown: 0.5 }, detail: { press: 0.6, downL: 0.35, downR: 0.35 } },
   { id: "laugh", label: "Laugh", key: "L", head: "bounce", burst: "😂", body: "belly", face: { smile: 1, open: 0.7 }, when: { smile: 0.85, open: 0.5 }, detail: { squintL: 0.9, squintR: 0.9, cheekUp: 1, lidL: 0.4, lidR: 0.4, innerUp: 0.3 } },
   { id: "love", label: "Love", key: "H", head: "tilt", burst: "❤️", face: { smile: 0.8 }, arm: "love", gesture: "ILoveYou", detail: { squintL: 0.5, squintR: 0.5, cheekUp: 0.7, innerUp: 0.4, lidL: 0.2, lidR: 0.2 } },
-  { id: "wow", label: "Wow", key: "W", head: "back", burst: "❗", body: "cheeks", face: { browUp: 1, open: 0.6, wide: 1 }, when: { browUp: 0.8, open: 0.55 }, detail: { funnel: 0.5 } },
+  { id: "wow", label: "Wow", key: "W", head: "back", burst: "😮", body: "cheeks", face: { browUp: 1, open: 0.6, wide: 1 }, when: { browUp: 0.8, open: 0.55 }, detail: { funnel: 0.5 } },
   { id: "think", label: "Hmm", key: "T", head: "tilt", burst: "💭", face: { brow: 1, smirk: -0.4, lookY: 0.7, lookX: 0.5 }, arm: "chin", detail: { squintL: 0.5, downL: 0.4, press: 0.4, mouthSide: -0.5, rollIn: 0.3 } },
   { id: "idea", label: "Idea", key: "I", head: "back", burst: "💡", face: { browUp: 0.7, smile: 0.6, wide: 0.6 }, arm: "point", gesture: "Pointing_Up", detail: { wideL: 0.9, wideR: 0.9, jaw: 0.25 } },
   { id: "sad", label: "Sad", key: "S", head: "droop", burst: "🌧️", body: "slump", face: { frown: 1, browUp: 0.6 }, detail: { innerUp: 1, shrug: 0.7, lidL: 0.3, lidR: 0.3, lookY: -0.5 } },
@@ -272,6 +272,14 @@ export const COLOURS = {
   extraColour: { label: "Accent", swatches: ["#e0506a", "#3d4a6e", "#f2c14e", "#4ec9b0", "#9b6bff", "#ff8a3d", "#1b1f2a", "#f4f4f4"] },
   topColour: { label: "Top", swatches: ["#4a6fd1", "#e0506a", "#3ea66b", "#f2c14e", "#9b6bff", "#2b2f3a", "#f4f4f4", "#ff8a3d", "#5ec4d8", "#c46a3c"] },
 } as const;
+// what each swatch is called, for a screen reader (it read out "#8d5524")
+export const COLOUR_NAMES: Record<string, string> = {
+  "#ffd8b5": "Pale", "#f1c27d": "Light", "#e0ac69": "Light tan", "#c68642": "Tan", "#8d5524": "Brown", "#5c3a21": "Dark brown", "#9ad0ec": "Sky blue", "#b9f2a1": "Mint", "#e3b6ff": "Lilac", "#ffb3c1": "Pink",
+  "#1b1b1f": "Black", "#4a2f1d": "Dark brown", "#8a5a2b": "Brown", "#d9a441": "Golden", "#f3e2a0": "Blond", "#b33a2b": "Red", "#e8e8ec": "Silver", "#ff6fae": "Pink", "#5aa9ff": "Blue", "#6fdc8c": "Green",
+  "#3a2a1a": "Dark brown", "#5a3b22": "Brown", "#2f6db5": "Blue", "#3f8f5a": "Green", "#8a8f99": "Grey", "#b07a2a": "Amber", "#7a3fb5": "Violet", "#d23a3a": "Red",
+  "#e0506a": "Rose", "#3d4a6e": "Navy", "#f2c14e": "Yellow", "#4ec9b0": "Teal", "#9b6bff": "Purple", "#ff8a3d": "Orange", "#1b1f2a": "Black", "#f4f4f4": "White",
+  "#4a6fd1": "Blue", "#3ea66b": "Green", "#2b2f3a": "Charcoal", "#5ec4d8": "Aqua", "#c46a3c": "Rust",
+};
 export type ColourPart = keyof typeof COLOURS;
 
 // Sliders: how a part is shaped, finer than which part it is. Each is -1
@@ -459,9 +467,9 @@ export const DEFAULT_SCENE: Scene = { sky: "dusk", walls: "slate", floor: "oak",
 export const SCENES = [
   { id: "lounge", label: "Lounge", emoji: "🛋️", scene: DEFAULT_SCENE },
   { id: "garden", label: "Garden room", emoji: "🌿", scene: { sky: "day", walls: "sage", floor: "ash", rug: "moss" } },
-  { id: "late", label: "Late night", emoji: "🌙", scene: { sky: "night", walls: "ink", floor: "walnut", rug: "ocean" } },
+  { id: "late", label: "Night", emoji: "🌙", scene: { sky: "night", walls: "ink", floor: "walnut", rug: "ocean" } },
   { id: "cabin", label: "Cabin", emoji: "❄️", scene: { sky: "snow", walls: "terracotta", floor: "walnut", rug: "sun" } },
-  { id: "beach", label: "Beach house", emoji: "🌊", scene: { sky: "sea", walls: "cream", floor: "ash", rug: "ocean" } },
+  { id: "beach", label: "Seaside", emoji: "🌊", scene: { sky: "sea", walls: "cream", floor: "ash", rug: "ocean" } },
   { id: "studio", label: "Studio", emoji: "🎨", scene: { sky: "day", walls: "plum", floor: "slate", rug: "sun" } },
 ] as const satisfies readonly (Choice & { emoji: string; scene: Scene })[];
 
