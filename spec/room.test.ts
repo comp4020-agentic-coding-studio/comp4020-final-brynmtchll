@@ -1,4 +1,5 @@
 import { describe, expect, inject, it } from "vitest";
+import { apart, READ_AT } from "../src/hearing.ts";
 import { TABLE } from "../src/walk.ts";
 
 // The room's promises, checked over HTTP against the running app. These join
@@ -975,6 +976,63 @@ describe.skipIf(!writable)("the room", () => {
     const a = await person();
     expect((await makeRoom(a, { name: "   " })).status).toBe(400);
     expect((await makeRoom({ cookie: "" }, { name: "Nobody's" })).status).toBe(401);
+  });
+
+  it("puts each person in Space where they move themselves, on every open page, as two numbers on the floor and nothing else", async () => {
+    const a = await person();
+    const b = await person();
+    const spot = (p: { cookie: string }, at: unknown) => fetch(new URL("/r/space/spot", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(at) });
+    const space = listen({}, "?after=now");
+    await space.ready;
+    // (the stream above is on the main room; Space's own)
+    space.close();
+    const controller = new AbortController();
+    const res = await fetch(new URL("/r/space/events?after=now", baseUrl), { signal: controller.signal });
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+    // off the floor is pulled back onto it, and a name in the request is ignored
+    expect((await spot(a, { x: 3, y: -1, name: b.name })).status).toBe(200);
+    let got = "";
+    const until = Date.now() + 2000;
+    while (!got.includes("event: spot") && Date.now() < until) got += (await reader.read()).value ?? "";
+    await reader.cancel().catch(() => {});
+    controller.abort();
+    const sent = JSON.parse(got.split("event: spot\ndata: ")[1].split("\n")[0]) as Record<string, unknown>;
+    expect(sent).toEqual({ name: a.name, hue: expect.any(Number), x: 1, y: 0 });
+    // kept, for when they come back, and on anyone's page; never with an id
+    const page = await (await fetch(new URL("/r/space/", baseUrl), { headers: { cookie: b.cookie } })).text();
+    expect(page).toContain(`data-name="${a.name}" data-x="1" data-y="0"`);
+    expect(page).not.toContain(a.cookie.split("=")[1]);
+    expect(page).not.toContain(b.cookie.split("=")[1]);
+    // only someone who's joined, only numbers, and only in Space
+    expect((await spot({ cookie: "" }, { x: 0.5, y: 0.5 })).status).toBe(401);
+    expect((await spot(a, { x: "0.5", y: 0.5 })).status).toBe(400);
+    expect((await fetch(new URL("/spot", baseUrl), { method: "POST", headers: { cookie: a.cookie, "content-type": "application/json" }, body: JSON.stringify({ x: 0.5, y: 0.5 }) })).status).toBe(404);
+  });
+
+  it("starts someone new to Space clear of everyone there, and keeps Space off the list of rooms", async () => {
+    const a = await person();
+    const b = await person();
+    const at = async (p: { cookie: string; name: string }) => {
+      const page = await (await fetch(new URL("/r/space/", baseUrl), { headers: { cookie: p.cookie } })).text();
+      const m = new RegExp(`data-name="${p.name}" data-x="([\\d.]+)" data-y="([\\d.]+)"`).exec(page);
+      return { x: Number(m![1]), y: Number(m![2]) };
+    };
+    const first = await at(a);
+    const second = await at(b);
+    expect(apart(first, second)).toBeGreaterThan(READ_AT * 0.5);
+    // (and back where they were on coming back)
+    expect(await at(a)).toEqual(first);
+    expect(await (await fetch(new URL("/rooms", baseUrl), { headers: { cookie: a.cookie } })).text()).not.toContain('class="room-card" href="/r/space/"');
+  });
+
+  it("escapes names in Space, so nobody can put markup on anyone else's page there", async () => {
+    let cookie = "";
+    const join = await fetch(new URL("/join", baseUrl), { method: "POST", body: new URLSearchParams({ name: `<b>x${Date.now() % 1e6}` }), redirect: "manual" });
+    cookie = join.headers.get("set-cookie")?.split(";")[0] ?? "";
+    await fetch(new URL("/r/space/", baseUrl), { headers: { cookie } });
+    const page = await (await fetch(new URL("/r/space/", baseUrl))).text();
+    expect(page).toContain("&lt;b&gt;x");
+    expect(page).not.toContain("<b>x");
   });
 
   it("never shows anyone another person's id, since it doubles as their login", async () => {

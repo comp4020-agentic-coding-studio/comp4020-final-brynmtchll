@@ -5,7 +5,7 @@ import { join as joinPath } from "node:path";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { marked } from "marked";
 import { MAIN, openRoom, type Message, type RoomInfo } from "./db.ts";
-import { APP, notFoundPage, readmePage, roomPage, roomsPage, studioPage } from "./view.ts";
+import { APP, notFoundPage, readmePage, roomPage, roomsPage, spacePage, studioPage } from "./view.ts";
 import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
 import { readExpression, type Face } from "./face.ts";
 import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./avatar.ts";
@@ -13,6 +13,7 @@ import { cleanBody, type Body } from "./body.ts";
 import { cleanLook, emoteOf, isEffect, reactionOf, SCENES, stylesCss, type Look } from "./packs.ts";
 import { cleanSpot, type Spot } from "./walk.ts";
 import { overdue } from "./gone.ts";
+import { freeSpot } from "./hearing.ts";
 
 // What's live in each room, in memory: the pages open on it (each a
 // stream), whose they are, whose hand is up, who's up and walking about, and
@@ -173,7 +174,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // time each is asked for (not at boot, so a server waking up answers sooner)
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
-const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "camera.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts", "walk.ts"]);
+const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "camera.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts", "walk.ts", "hearing.ts", "space.ts", "listen.ts"]);
 const stripped = new Map<string, string>();
 const scriptOf = (f: string): string | undefined => {
   if (!SCRIPTS.has(f)) return undefined;
@@ -186,6 +187,7 @@ const scriptOf = (f: string): string | undefined => {
 const dir = process.env.DATA_DIR ?? "data";
 mkdirSync(dir, { recursive: true });
 const room = openRoom(joinPath(dir, "room.db"));
+const space = room.roomBySlug("space");
 
 // Who did what, one line each, to stdout, where `flyctl logs` reads it: the
 // person by name and a short tag of their id (enough to tell two people apart
@@ -403,7 +405,7 @@ function listen(req: IncomingMessage, res: ServerResponse, l: Live, after: strin
     if (first && !coming) showWalk(l, who.name, null);
     // someone come into a room that wasn't showing them: every page there
     // gives them a place
-    if (first) tell(l, `event: joined\ndata: ${JSON.stringify({ name: who.name, hue: hueOf(room.seatOf(who.name)), look: room.lookOf(who.name) })}\n\n`);
+    if (first) tell(l, `event: joined\ndata: ${JSON.stringify({ name: who.name, hue: hueOf(room.seatOf(who.name)), look: room.lookOf(who.name), ...(l.id === space?.id ? room.spotOf(who.id) : {}) })}\n\n`);
   }
   // The room as it is now: whose hands are up and who's away. A page coming
   // back after its connection dropped (a phone asleep, a deploy) missed more
@@ -467,6 +469,20 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const l = liveOf(here.id);
   const base = here.id === MAIN ? "/" : `/r/${here.slug}/`;
 
+  // Space: each person is their words, moved about a plain field (view.ts)
+  if (req.method === "GET" && url.pathname === "/" && here.slug === "space") {
+    const people = room.spots().map((p) => ({ name: p.name, hue: hueOf(p.seat), x: p.x, y: p.y, look: room.lookOf(p.name) }));
+    let mine: (typeof people)[number] | undefined;
+    if (me) {
+      // (back where you were, or somewhere clear of everyone if you're new;
+      // kept now, so every page has you there when you arrive)
+      const at = room.spotOf(me.id) ?? freeSpot(people.filter((p) => p.name !== me.name));
+      room.setSpot(me.id, at.x, at.y);
+      mine = { name: me.name, hue: hueOf(room.seatOf(me.name)), look: room.lookOf(me.name), ...at };
+      if (!people.some((p) => p.name === me.name)) people.unshift(mine);
+    }
+    return send(res, 200, "text/html; charset=utf-8", spacePage(mine, people, room.recent(80, here.id).reverse(), room.newest(), url.searchParams.get("m") ?? undefined));
+  }
   if (req.method === "GET" && url.pathname === "/") {
     const seated = me ? { ...me, seat: room.seatOf(me.name) } : undefined;
     // (someone opening a room is in it from now, so they're on its page)
@@ -790,6 +806,25 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (!at) return json(res, 400, { error: "not-a-place" });
     showWalk(l, me.name, at);
     return json(res, 200, { at });
+  }
+
+  // Where you are in Space: two numbers, 0 to 1 across and down it, and
+  // nothing else; only your own (from the cookie). Kept, so you're there
+  // when you come back, and shown to every page open on Space.
+  if (req.method === "POST" && url.pathname === "/spot" && here.slug === "space") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (walkTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let raw: { x?: unknown; y?: unknown } = {};
+    try {
+      raw = JSON.parse((await body(req, 128)) ?? "{}") ?? {};
+    } catch {
+      raw = {};
+    }
+    if (typeof raw.x !== "number" || typeof raw.y !== "number" || !Number.isFinite(raw.x) || !Number.isFinite(raw.y)) return json(res, 400, { error: "not-a-spot" });
+    const at = { x: Math.round(Math.min(1, Math.max(0, raw.x)) * 1000) / 1000, y: Math.round(Math.min(1, Math.max(0, raw.y)) * 1000) / 1000 };
+    room.setSpot(me.id, at.x, at.y);
+    tell(l, `event: spot\ndata: ${JSON.stringify({ name: me.name, hue: hueOf(room.seatOf(me.name)), ...at })}\n\n`);
+    return json(res, 200, at);
   }
 
   // How loud someone is talking, as it happens: a few levels, 0 to 1, a

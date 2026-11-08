@@ -463,3 +463,34 @@ export function cleanScene(input: unknown, base: Scene = DEFAULT_SCENE): Scene |
   return out as Scene;
 }
 export const fullScene = (stored: unknown): Scene => cleanScene(stored) ?? DEFAULT_SCENE;
+
+// ---- Space: reading what's said as emoji ----
+
+// Words that have an emoji everyone would read the same way, for Space's
+// emoji lens: the word becomes it, sized by how loud it was said; words
+// without one become a dot each, so the rhythm of what was said stays.
+// Lower case, without punctuation; a plural or -ing form finds its root.
+// Nothing here names a feeling someone didn't say: "sad" is 😢 because they
+// said "sad".
+export const WORD_EMOJI: Record<string, string> = {
+  yes: "👍", yeah: "👍", yep: "👍", ok: "👌", okay: "👌", no: "🙅", nope: "🙅", maybe: "🤷", hi: "👋", hello: "👋", hey: "👋", bye: "👋", goodbye: "👋",
+  thanks: "🙏", thank: "🙏", please: "🙏", sorry: "😔", love: "❤️", like: "👍", hate: "💢", happy: "😊", sad: "😢", angry: "😠", scared: "😨", tired: "😴", sleep: "😴",
+  laugh: "😂", haha: "😂", lol: "😂", funny: "😂", wow: "😮", omg: "😱", cool: "😎", amazing: "🤩", awesome: "🤩", great: "🙌", good: "👍", bad: "👎", nice: "😊", perfect: "💯", wrong: "❌", right: "✅", true: "✅", false: "❌",
+  think: "🤔", idea: "💡", know: "🧠", question: "❓", why: "❓", what: "❓", how: "❓", who: "❓", where: "📍", when: "🕐", time: "🕐", now: "⏱️", today: "📅", tomorrow: "📅", yesterday: "📅", week: "📅", late: "⏰", early: "🌅", soon: "⏳", wait: "⏳",
+  eat: "🍽️", food: "🍽️", lunch: "🥪", dinner: "🍝", breakfast: "🥐", coffee: "☕", tea: "🍵", water: "💧", pizza: "🍕", cake: "🎂", drink: "🥤", beer: "🍺", wine: "🍷",
+  home: "🏠", house: "🏠", work: "💼", job: "💼", school: "🏫", uni: "🎓", class: "🎓", study: "📚", book: "📖", read: "📖", write: "✍️", code: "💻", computer: "💻", phone: "📱", call: "📞", email: "📧", message: "💬", talk: "💬", say: "💬", said: "💬", speak: "🗣️", listen: "👂", hear: "👂", see: "👀", look: "👀", watch: "👀",
+  music: "🎵", song: "🎵", sing: "🎤", dance: "💃", party: "🎉", game: "🎮", play: "🎮", movie: "🎬", photo: "📷", art: "🎨", draw: "✏️",
+  sun: "☀️", sunny: "☀️", rain: "🌧️", snow: "❄️", hot: "🔥", cold: "🥶", fire: "🔥", tree: "🌳", flower: "🌸", dog: "🐶", cat: "🐱", bird: "🐦", fish: "🐟", world: "🌍", money: "💰", car: "🚗", bus: "🚌", train: "🚆", walk: "🚶", run: "🏃", go: "➡️", come: "⬅️", up: "⬆️", down: "⬇️",
+  big: "🐘", small: "🐜", fast: "⚡", slow: "🐢", new: "✨", old: "🕰️", first: "🥇", win: "🏆", lose: "💔", help: "🆘", stop: "🛑", start: "🚀", done: "✅", finish: "🏁", final: "🏁", demo: "🎬", project: "📁", test: "🧪", bug: "🐛", broken: "💥",
+  me: "🙋", you: "🫵", we: "👥", friend: "🤝", family: "👪", baby: "👶", kiss: "😘", hug: "🤗", heart: "❤️", cry: "😭", smile: "😊", sick: "🤒", hurt: "🤕", die: "💀", dead: "💀", ghost: "👻", magic: "🪄", star: "⭐", moon: "🌙", night: "🌙", morning: "🌅",
+};
+export function emojiOf(word: string): string | null {
+  const w = word.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}']/gu, "").replace(/'s$/, "");
+  if (!w) return null;
+  if (WORD_EMOJI[w]) return WORD_EMOJI[w];
+  for (const cut of [/s$/, /es$/, /ing$/, /ed$/, /ly$/]) {
+    const root = w.replace(cut, "");
+    if (root !== w && WORD_EMOJI[root]) return WORD_EMOJI[root];
+  }
+  return null;
+}

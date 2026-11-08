@@ -39,7 +39,7 @@ export function layout(title: string, body: string, script = "", help = HELP, mi
 ${script}
 </head>
 <body>
-<header class="top"><a href="/" class="name">${APP}</a>${middle}<nav><a href="/rooms">Rooms</a><a href="/readme/">About</a>${help}</nav></header>
+<header class="top"><a href="/" class="name">${APP}</a>${middle}<nav><a href="/rooms">Rooms</a><a href="/r/space/">Space</a><a href="/readme/">About</a>${help}</nav></header>
 ${body}
 </body>
 </html>`;
@@ -396,13 +396,13 @@ export function roomPage(
         <form class="dock-type"><input type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Say something…" aria-label="Type something to say"></form>
         <div class="dock-emotes">${["hi", "laugh", "love", "yes", "wow"].map((id) => { const em = EMOTES.find((e) => e.id === id)!; return `<button type="button" data-dock-emote="${id}" title="${em.label}"><span aria-hidden="true">${em.burst}</span><span class="visually-hidden">${em.label}</span></button>`; }).join("")}</div>
       </div>
-      <p class="room-hint" aria-hidden="true">W A S D or tap the floor to walk · drag to look round · scroll or pinch to zoom</p>
+      <p class="room-hint" aria-hidden="true">Walk up to a group to read them: W A S D or tap the floor · drag to look round</p>
     </div>
     <ul id="stage" class="stage" data-up-to="${upTo}">${others}</ul>
     <p id="nobody" class="fine" ${others ? "hidden" : ""}>${here.id === 1 ? "Nobody else is here yet." : `Nobody else is here yet. <button type="button" class="copy-link">Copy the link</button> to bring someone.`}</p>
   </section>
   <details class="record-wrap">
-    <summary><h2 id="record-h">Lately</h2></summary>
+    <summary><h2 id="record-h">Lately</h2><span class="near-note">In the room, what's said near you; further off, fainter</span></summary>
     <ol id="record" class="record">${lines.map((l) => lineHtml(l)).join("")}</ol>
     <p id="record-empty" class="fine" ${lines.length ? "hidden" : ""}>Nothing said yet.</p>
   </details>
@@ -447,6 +447,67 @@ export function roomsPage(rooms: (RoomInfo & { lately: number; here: number; min
   <ul class="room-cards">${rooms.map(card).join("")}</ul>
   ${make}
 </main>`,
+  );
+}
+
+// ---- Space: you are your words ----
+
+// A plain field with nobody in it but what people say. Each person is
+// their latest words, in their colour, under their name; you move yours
+// toward whoever you want to talk to, and others' words are as clear as
+// they'd be heard from where you are (hearing.ts). Three ways to read it:
+// the words, as colour (each word a shape: how high it was said is its
+// hue and height, how loud its size, how drawn out its length), or as
+// emoji (words that have one become it, the rest a dot each, so the rhythm
+// stays). Talk or type, as in a room.
+type InSpace = { name: string; hue: number; x: number; y: number };
+const LENSES = [
+  { id: "words", label: "Words" },
+  { id: "colour", label: "Colour" },
+  { id: "emoji", label: "Emoji" },
+] as const;
+const SPACE_HELP = `<details class="help">
+  <summary aria-label="How Space works">?</summary>
+  <div class="help-body">
+    <p>You are your words. Drag yours, or use the arrow keys, to move toward whoever you want to talk to.</p>
+    <p>Others' words are as clear as you are close: up close you can read them, further off they blur, too far and you only see that they're talking. A loud word carries further than a quiet one.</p>
+    <p>Talk, or type. How you said it shows in your words, and in Colour and Emoji, in other ways.</p>
+    <p>Read it as Words, as Colour (higher is warmer and higher up, louder is bigger, drawn out is longer) or as Emoji.</p>
+  </div>
+</details>`;
+export function spacePage(me: (InSpace & { look: Look }) | undefined, people: (InSpace & { look: Look })[], said: Message[], upTo: number, msg?: string): string {
+  const last = new Map<string, Message>();
+  for (const m of said) last.set(m.name, m);
+  const body = (p: InSpace): string => {
+    const m = last.get(p.name);
+    return `<div class="being${me && p.name === me.name ? " mine" : ""}" data-name="${esc(p.name)}" data-x="${p.x}" data-y="${p.y}" style="--hue:${p.hue};--x:${p.x};--y:${p.y}"${m ? ` data-at="${m.at}"` : ""}><span class="being-words">${m ? m.words.map((w) => wordHtml(w)).join(" ") : ""}</span><span class="being-name">${esc(p.name)}</span></div>`;
+  };
+  return layout(
+    `Space · ${APP}`,
+    `<main class="space-page" data-up-to="${upTo}"${me ? ` data-me="${esc(me.name)}" data-look="${esc(JSON.stringify(me.look))}"` : ""}>
+  <h1 class="visually-hidden">Space</h1>
+  <div class="space-bar">
+    <p class="space-lede">You are your words. Move toward someone to read them.</p>
+    <fieldset class="lenses" aria-label="Read it as">${LENSES.map((l, i) => `<label><input type="radio" name="lens" value="${l.id}"${i === 0 ? " checked" : ""}><span>${l.label}</span></label>`).join("")}</fieldset>
+    <p class="live" id="live" hidden></p>
+  </div>
+  ${msg && MESSAGES[msg] ? `<p class="notice">${MESSAGES[msg]}</p>` : ""}
+  <div class="space-field" id="field" tabindex="0" aria-label="Space: everyone here, as their words. Arrow keys move you.">${people.map(body).join("")}</div>
+  ${
+    me
+      ? `<form class="space-say" id="type-box" autocomplete="off">
+    <button type="button" class="talk" id="talk" aria-pressed="false" disabled><span class="dot" aria-hidden="true"></span><span class="label">Talk</span></button>
+    <input name="text" maxlength="300" placeholder="Or type… *this* stands out" aria-label="Type something to say" enterkeyhint="send">
+    <select name="tone" aria-label="How it's said">${TONES.map((t) => `<option value="${t.id}">${t.emoji} ${t.label}</option>`).join("")}</select>
+    <button type="submit" class="type-send">Say</button>
+  </form>
+  <p class="status space-status" id="status" role="status"></p>`
+      : `<form class="join space-join" method="post" action="join"><label class="visually-hidden" for="name">Your name</label><input id="name" name="name" maxlength="20" autocomplete="nickname" placeholder="Your name, to join in" required><button type="submit">Join</button></form>`
+  }
+  <p id="heard" class="visually-hidden" aria-live="polite"></p>
+</main>`,
+    `<script type="module" src="/js/space.ts"></script>`,
+    SPACE_HELP,
   );
 }
 

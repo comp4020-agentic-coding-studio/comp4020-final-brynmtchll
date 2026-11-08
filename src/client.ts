@@ -6,7 +6,7 @@ import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
-import { overHead, setScene, showRoom, sit, walked, walkSent } from "./room3d.ts";
+import { onNear, overHead, setScene, showRoom, sit, walked, walkSent } from "./room3d.ts";
 import type { Spot as Standing } from "./walk.ts";
 import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
 import { toneOf, typedWords, type Tone } from "./typed.ts";
@@ -2117,3 +2117,24 @@ function goneElsewhere(names: string[]): void {
   const nobody = document.getElementById("nobody");
   if (nobody) nobody.hidden = !!document.querySelector("#stage .spot");
 }
+
+// ---- near you ----
+
+// In the room, what's said by whoever's near enough to read (hearing.ts) is
+// clear in Lately; everyone else's is faint, as their words are over their
+// heads. As cards, everyone's is clear.
+let nearNames: Set<string> | null = null;
+function markNear(): void {
+  for (const li of document.querySelectorAll<HTMLElement>("#record > li")) li.classList.toggle("far", !!nearNames && !nearNames.has(li.dataset.name ?? ""));
+}
+onNear((names) => {
+  nearNames = document.querySelector("main")?.classList.contains("in-room") ? new Set(names) : null;
+  markNear();
+});
+new MutationObserver(markNear).observe(document.getElementById("record") ?? document.body, { childList: true });
+new MutationObserver(() => {
+  if (!document.querySelector("main")?.classList.contains("in-room")) {
+    nearNames = null;
+    markNear();
+  }
+}).observe(document.querySelector("main") ?? document.body, { attributes: true, attributeFilter: ["class"] });

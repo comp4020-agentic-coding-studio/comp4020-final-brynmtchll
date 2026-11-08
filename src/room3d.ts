@@ -30,6 +30,7 @@
 // pinching zooms, a double click puts it back (camera.ts keeps it inside
 // the room).
 import { roomView, walking, type RoomHead } from "./head3d.ts";
+import { clarity, near, scaleAt, seenAt } from "./hearing.ts";
 import { seatPlaces, stepsBeside, type Place } from "./seats.ts";
 import { DEFAULT_SCENE, SCENE_PARTS, type Scene } from "./packs.ts";
 import { facing, fovFor, held, inside, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type Vec3, type View } from "./camera.ts";
@@ -1035,13 +1036,39 @@ function arrange(heads: RoomHead[], r?: Pick<Room, "activeAt" | "seatOf">): Room
 
 // ---- drawing it ----
 
+// What's over someone's head: what they're saying now (their draft, or the
+// phrase going up) and what they said just before, from their card's thread.
+// Gone a while after they stop. (Copied from the card, so their words are
+// drawn the same way in both.)
+const CAPTION_FOR = 9000; // ms after their last phrase
+function captionOf(card: HTMLElement, talking: boolean): string {
+  const thread = card.querySelector(".thread");
+  const draft = thread?.querySelector(":scope > .draft");
+  const latest = thread?.querySelector<HTMLElement>(":scope > .bubble:not(.draft)");
+  const fresh = latest && (talking || Date.now() - Number(latest.dataset.at) < CAPTION_FOR);
+  // (the bubble's newest phrase is at its top; the one before it under it)
+  const phrases = fresh ? [...latest.querySelectorAll(":scope > .phrase")].slice(0, 2).reverse() : [];
+  const words = (el: Element): string => [...el.querySelectorAll(".w")].map((w) => w.outerHTML).join(" ");
+  const parts = phrases.map(words);
+  if (draft) parts.push(`<span class="draft-said">${words(draft)}</span>`);
+  return parts.filter(Boolean).slice(-2).join(" ");
+}
+
+// who's near enough to you to read, as names, whenever that changes (the
+// page shows what they've said, as "near you")
+let nearNow: string[] = [];
+let hearNear: ((names: string[]) => void) | null = null;
+export function onNear(f: (names: string[]) => void): void {
+  hearNear = f;
+}
+
 function label(r: Room, slot: HTMLElement): HTMLElement {
   let el = r.labels.get(slot);
   if (el) return el;
   el = document.createElement("div");
   el.className = "room-label quiet"; // (shown, if it is to be, once it is where its head is)
   el.setAttribute("aria-hidden", "true"); // the cards say it all for a screen reader
-  el.innerHTML = `<span class="room-name"></span><span class="room-word words"></span>`;
+  el.innerHTML = `<span class="room-name"></span><span class="room-word words"></span><span class="room-said words"></span>`;
   r.overlay.append(el);
   r.labels.set(slot, el);
   return el;
@@ -1627,10 +1654,22 @@ function draw(heads: RoomHead[], THREE: T): void {
   const v = new THREE.Vector3();
   const seen = new Set<HTMLElement>();
   const placed: { el: HTMLElement; x: number; y: number; w: number; h: number; behind: boolean }[] = [];
+  // Where you hear from: where you stand, or your chair (or, not in the
+  // room, the middle of the front, as a visitor would): what each of them
+  // says is as clear as it would be from there (hearing.ts).
+  const meHead = sitting.find((x) => x.mine);
+  const ear = { x: 0, z: 10 };
+  if (meHead) {
+    meHead.root.getWorldPosition(v);
+    [ear.x, ear.z] = [v.x, v.z];
+  }
+  const nearby: string[] = [];
   for (const who of sitting) {
     seen.add(who.slot);
     const el = label(r, who.slot);
     who.root.getWorldPosition(v);
+    const d = who.mine ? 0 : Math.hypot(v.x - ear.x, v.z - ear.z);
+    if (near(ear, { x: v.x, z: v.z })) nearby.push(who.slot.closest<HTMLElement>(".spot")?.dataset.name ?? "");
     const mid = v.clone();
     // (just above the top of their head, hair and all, however high that
     // is: further up, a near head's name floats off it, into the row behind)
@@ -1658,12 +1697,50 @@ function draw(heads: RoomHead[], THREE: T): void {
     const gone = !!card?.hasAttribute("data-away");
     if (nameEl.hasAttribute("data-away") !== gone) nameEl.toggleAttribute("data-away", gone);
     const word = card?.querySelector(".spot-word");
-    const wordEl = el.lastElementChild as HTMLElement;
+    const wordEl = el.querySelector<HTMLElement>(".room-word")!;
     const html = word && !word.classList.contains("fading") ? word.innerHTML : "";
-    if (wordEl.innerHTML !== html) wordEl.innerHTML = html;
+    // What they're saying, over their head, as clear as it is from where you
+    // are: the line being said (a draft, then the phrase) and the one before,
+    // each word as faint as its distance and how loud it was make it. Too far
+    // to read, it's only seen that they're talking.
+    const saidEl = el.querySelector<HTMLElement>(".room-said")!;
+    const caption = card ? captionOf(card, who.speaking || !!html) : "";
+    const key = `${caption.length}:${caption.slice(-80)}`;
+    let fresh = false;
+    if (saidEl.dataset.key !== key) {
+      saidEl.dataset.key = key;
+      saidEl.innerHTML = caption;
+      fresh = true;
+    }
+    const dq = Math.round(d * 2) / 2;
+    if (fresh || saidEl.dataset.d !== String(dq)) {
+      saidEl.dataset.d = String(dq);
+      el.style.setProperty("--far", String(scaleAt(d)));
+      let heard = 0;
+      for (const w of saidEl.querySelectorAll<HTMLElement>(".w")) {
+        const c = clarity(d, Number(w.style.getPropertyValue("--loud")) || 0);
+        w.style.setProperty("--clear", c.toFixed(2));
+        w.classList.toggle("unheard", c < 0.08);
+        if (c >= 0.08) heard++;
+      }
+      // (nothing of it near enough to read: just that they're talking)
+      saidEl.classList.toggle("murmur", heard === 0);
+      // (a run of words too far to read is one gap, not a dot each)
+      let run = false;
+      for (const w of saidEl.querySelectorAll<HTMLElement>(".w")) {
+        const unheard = w.classList.contains("unheard");
+        w.classList.toggle("run", unheard && run);
+        run = unheard;
+      }
+    }
+    el.classList.toggle("far", !seenAt(d));
+    // (the word going up big is only for those near enough to read it)
+    const loudNow = Number(word?.querySelector<HTMLElement>(".w")?.style.getPropertyValue("--loud")) || 0;
+    const big = html && clarity(d, loudNow) > 0.3 ? html : "";
+    if (wordEl.innerHTML !== big) wordEl.innerHTML = big;
     // which word, so it can be tapped to react to
     for (const k of ["id", "i"] as const) {
-      const v = html && word instanceof HTMLElement ? word.dataset[k] : undefined;
+      const v = big && word instanceof HTMLElement ? word.dataset[k] : undefined;
       if (wordEl.dataset[k] !== v) v === undefined ? delete wordEl.dataset[k] : (wordEl.dataset[k] = v);
     }
     el.classList.toggle("speaking", who.speaking);
@@ -1676,11 +1753,15 @@ function draw(heads: RoomHead[], THREE: T): void {
     // talking: in the speaker view, the row in front's names sat along
     // the bottom edge, over nothing)
     const out = Math.abs(mid.x) > 1 || Math.abs(mid.y) > 1;
-    el.classList.toggle("quiet", ((sitting.length > CROWD || gone || out) && !who.speaking && !hand && !html && !el.querySelector(".burst")) || v.z > 1);
+    el.classList.toggle("quiet", ((sitting.length > CROWD || gone || out) && !who.speaking && !hand && !html && !caption && !el.querySelector(".burst")) || v.z > 1);
     if ((nameEl.dataset.hand ?? "") !== (hand ?? "")) {
       if (hand) nameEl.dataset.hand = hand;
       else delete nameEl.dataset.hand;
     }
+  }
+  if (nearby.join("\n") !== nearNow.join("\n")) {
+    nearNow = nearby;
+    hearNear?.(nearby);
   }
   // labels that would sit on each other: the later (further back, or
   // further along) lifted clear of the earlier, the speaker's first. Only
@@ -1699,7 +1780,9 @@ function draw(heads: RoomHead[], THREE: T): void {
       y = hit.y - hit.h - 2;
     }
     if (!l.el.classList.contains("quiet")) done.push({ x: l.x, y, w: l.w, h: l.h });
-    l.el.style.transform = `translate(${l.x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+    // (kept inside the room's edges: a caption by someone at the side ran off it)
+    const x = Math.min(Math.max(l.x, l.w / 2 + 6), rect.width - l.w / 2 - 6);
+    l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
   }
   for (const [slot, el] of r.labels) {
     if (seen.has(slot)) continue;

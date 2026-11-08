@@ -69,6 +69,13 @@ export function openRoom(file: string, now: () => number = Date.now) {
     CREATE INDEX IF NOT EXISTS messages_by_room ON messages (room, id);
   `);
   if (!db.prepare("SELECT 1 FROM rooms WHERE id = 1").get()) db.prepare("INSERT INTO rooms (id, slug, name, scene, listed, maker, made_at) VALUES (1, 'main', 'The main room', NULL, 1, NULL, ?)").run(now());
+  // Space: a room with nothing in it but what people say, where each person
+  // is their words (view.ts spacePage). Unlisted: it's reached from the
+  // header, not the rooms list.
+  if (!db.prepare("SELECT 1 FROM rooms WHERE slug = 'space'").get()) db.prepare("INSERT INTO rooms (slug, name, scene, listed, maker, made_at) VALUES ('space', 'Space', NULL, 0, NULL, ?)").run(now());
+  // where each person last was in Space, 0 to 1 across and down it, so they
+  // come back to the same spot and everyone sees them there
+  db.exec("CREATE TABLE IF NOT EXISTS spots (person_id TEXT PRIMARY KEY REFERENCES people(id), x REAL NOT NULL, y REAL NOT NULL, at INTEGER NOT NULL)");
   // a phrase every second or two per person adds up: who's been speaking
   // lately and someone's last few voices are looked up by person, newest first
   db.exec("CREATE INDEX IF NOT EXISTS messages_by_person ON messages (person_id, id)");
@@ -374,7 +381,21 @@ export function openRoom(file: string, now: () => number = Date.now) {
     return roomById(id)!;
   }
 
-  return { findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, savedLooks, saveLook, rooms, roomBySlug, roomById, makeRoom, changeRoom, close: () => db.close() };
+  // Where someone last was in Space, if they've been (where someone new
+  // starts is worked out from who's there: hearing.ts freeSpot).
+  const spotOf = (personId: string): { x: number; y: number } | undefined => {
+    const r = db.prepare("SELECT x, y FROM spots WHERE person_id = ?").get(personId) as { x: number; y: number } | undefined;
+    return r ? { x: Number(r.x), y: Number(r.y) } : undefined;
+  };
+  const setSpot = (personId: string, x: number, y: number): void =>
+    void db.prepare("INSERT INTO spots (person_id, x, y, at) VALUES (?, ?, ?, ?) ON CONFLICT(person_id) DO UPDATE SET x = excluded.x, y = excluded.y, at = excluded.at").run(personId, x, y, now());
+  // everyone in Space lately (opened it or moved in it in the last few
+  // hours), where they were, and their colour's seat
+  const SPACE_WHILE = 3 * 3600_000;
+  const spots = (): { name: string; seat: number; x: number; y: number; at: number }[] =>
+    (db.prepare("SELECT p.name, p.rowid AS seat, s.x, s.y, s.at FROM spots s JOIN people p ON p.id = s.person_id WHERE s.at > ? ORDER BY s.at DESC LIMIT 60").all(now() - SPACE_WHILE) as { name: string; seat: number; x: number; y: number; at: number }[]).map((r) => ({ name: r.name, seat: Number(r.seat), x: Number(r.x), y: Number(r.y), at: Number(r.at) }));
+
+  return { spotOf, setSpot, spots, findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, savedLooks, saveLook, rooms, roomBySlug, roomById, makeRoom, changeRoom, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;

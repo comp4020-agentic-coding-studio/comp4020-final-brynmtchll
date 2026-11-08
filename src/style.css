@@ -554,6 +554,29 @@ main.room {
    element, so it plays for each) */
 .room-word .w { animation: arrive calc(0.2s + var(--style-motion, 0) * 0.2s) cubic-bezier(0.2, calc(1.2 + var(--style-motion, 0) * 0.8), 0.4, 1) both; }
 .room-label:not(.mine) .room-word[data-id] { pointer-events: auto; cursor: pointer; }
+/* What they're saying, over their head, as clear as it is from where you
+   are (hearing.ts): the line being said and the one before, smaller the
+   further off (--far), each word as faint as distance and how loud it was
+   make it (--clear); one too far to read is a dot, so it shows they're
+   talking but not what. The word going up big is the line's own last word,
+   so it isn't shown twice. */
+.room-word { display: none; }
+.room-said { max-width: min(22em, 100%); padding: 6px 12px 7px; border-radius: 14px; background: rgb(12 15 22 / 0.72); border: 1px solid rgb(255 255 255 / 0.1); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: #f4f1ea; font-size: calc(clamp(1rem, 0.8rem + 0.7vw, 1.375rem) * var(--far, 1)); line-height: 1.3; text-align: center; overflow-wrap: anywhere; text-shadow: none; transition: font-size 0.4s var(--ease); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; width: max-content; }
+.room-said:empty { display: none; }
+.room-label.speaking .room-said { border-color: color-mix(in srgb, var(--person) 60%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--person) 40%, transparent), 0 8px 24px -10px rgb(0 0 0 / 0.6); }
+.room-said .w { opacity: calc(0.25 + var(--clear, 1) * 0.75); filter: blur(calc((1 - var(--clear, 1)) * 2.2px)); transition: opacity 0.4s, filter 0.4s; animation: none; }
+.room-said .w.unheard { font-size: 0; filter: none; opacity: 0.55; margin: 0; }
+.room-said .w.unheard::after { content: "…"; font-size: calc(clamp(1rem, 0.8rem + 0.7vw, 1.375rem) * var(--far, 1)); }
+.room-said .w.unheard.run { display: none; }
+/* too far to read a word of it: a small pill that breathes while they talk */
+.room-said.murmur { padding: 2px 12px 6px; font-size: 1rem; }
+.room-said.murmur > * { display: none; }
+.room-said.murmur::before { content: "• • •"; letter-spacing: 0.15em; color: var(--person); opacity: 0.8; }
+.room-label.speaking .room-said.murmur::before { animation: murmur 1.2s ease-in-out infinite; }
+@keyframes murmur { 50% { opacity: 0.3; } }
+.room-said .draft-said .w { opacity: calc((0.25 + var(--clear, 1) * 0.75) * 0.6); font-style: italic; }
+/* too far even to see they're talking */
+.room-label.far .room-said { display: none; }
 /* Joined, the page is one shape in either view: the room (or everyone, as
    cards) takes the wide side, and you the narrow one, your card short, then
    a panel to say something, then the rest in tabs. In the room, on a wide
@@ -1116,3 +1139,80 @@ button.primary { justify-self: start; background: var(--accent); border-color: v
   .preview-help { display: none; }
   .preview-tools button, .preview-tools select { padding: 6px 10px; font-size: 0.8125rem; }
 }
+
+/* Lately, in the room: what's said near you clear, further off faint */
+.record > li { transition: opacity 0.4s; }
+.record > li.far { opacity: 0.38; }
+.near-note { display: none; margin-left: 10px; font-size: 0.75rem; color: var(--faint); text-transform: none; letter-spacing: 0; font-weight: 500; }
+main.in-room .near-note { display: inline; }
+
+/* ---- Space: you are your words ----
+
+   A plain field, nothing in it but people, each one their words. A being
+   sits where its person put it (--x, --y, 0 to 1), smaller further from you
+   (--far), each of its words as clear as it is from where you are
+   (--clear, hearing.ts). Three lenses on the same words: as words, as
+   colour, as emoji. */
+main.space-page { max-width: 1480px; margin: 0 auto; padding: 0 20px 16px; height: calc(100dvh - 66px); display: flex; flex-direction: column; gap: 10px; }
+main.space-page > .space-field { flex: 1; }
+main.space-page > .visually-hidden { position: absolute; }
+.space-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.space-lede { margin: 0; color: var(--muted); font-size: 0.9375rem; flex: 1 1 260px; }
+.lenses { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); margin: 0; }
+.lenses label { position: relative; }
+.lenses input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.lenses span { display: inline-flex; align-items: center; min-height: 32px; padding: 0 14px; border-radius: 999px; font-size: 0.875rem; font-weight: 600; color: var(--muted); transition: background-color 0.15s, color 0.15s; }
+.lenses input:checked + span { background: var(--ink); color: var(--bg); }
+.lenses input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.space-field { position: relative; min-height: 0; border-radius: 22px; border: 1px solid var(--line); background: radial-gradient(circle at 50% 50%, color-mix(in oklab, var(--surface) 70%, transparent), transparent 70%), var(--bg); overflow: hidden; touch-action: none; cursor: crosshair; }
+.space-field:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.being { --person: oklch(var(--person-l) var(--person-c) var(--hue)); position: absolute; left: calc(var(--x) * 100%); top: calc(var(--y) * 100%); translate: -50% -50%; display: grid; justify-items: center; gap: 4px; width: max-content; max-width: min(320px, 42%); transform: scale(var(--far, 1)); transition: left 0.18s linear, top 0.18s linear, transform 0.4s var(--ease), opacity 0.4s; cursor: default; }
+.being.gliding { transition: left 0.45s var(--ease), top 0.45s var(--ease), transform 0.4s var(--ease); }
+.being.mine { cursor: grab; z-index: 3; }
+.being.mine.held { cursor: grabbing; transition: transform 0.4s var(--ease); }
+.being-words { font-family: var(--display, inherit); font-size: clamp(1.125rem, 0.9rem + 0.8vw, 1.625rem); line-height: 1.2; text-align: center; color: var(--ink); overflow-wrap: anywhere; min-height: 1.2em; min-width: 1.5em; padding: 6px 10px; border-radius: 14px; }
+.being-words:empty::before { content: "…"; color: var(--faint); }
+.being-name { font-size: 0.75rem; font-weight: 650; color: var(--person); padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--person) 12%, transparent); white-space: nowrap; }
+.being.mine .being-words { box-shadow: 0 0 0 2px var(--person); background: color-mix(in srgb, var(--person) 8%, transparent); }
+.being.mine .being-name::after { content: " · you"; color: var(--faint); font-weight: 500; }
+.being .being-words > * { opacity: calc(0.2 + var(--clear, 1) * 0.8); filter: blur(calc((1 - var(--clear, 1)) * 3px)); transition: opacity 0.35s, filter 0.35s; }
+.being.speaking .being-words { animation: speak-in 0.5s var(--ease); }
+@keyframes speak-in { from { opacity: 0.4; scale: 0.96; } }
+.being.draft .being-words { opacity: 0.6; font-style: italic; }
+/* too far to read any of it: a murmur, so you can see someone's talking */
+.being.murmur .being-words > * { display: none; }
+.being.murmur .being-words::before { content: "• • •"; color: var(--person); letter-spacing: 0.15em; font-size: 1.4rem; }
+.being.murmur.speaking .being-words::before { animation: murmur 1.2s ease-in-out 3; }
+/* said nothing lately: a name and a dot */
+.being.quiet:not(.mine) .being-words { font-size: 0; padding: 0; min-height: 0; }
+.being.quiet:not(.mine) .being-words::before { content: ""; display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--person); opacity: 0.6; }
+.being.out { opacity: 0.5; }
+/* someone talking, and you, drawn over the rest, on a ground of their own so
+   words that overlap stay readable */
+.being.speaking { z-index: 2; }
+.being .being-words { background: color-mix(in srgb, var(--bg) 82%, transparent); }
+.being.murmur .being-words, .being.quiet .being-words { background: none; }
+/* the colour lens: each word a soft shape */
+.space-field[data-lens="colour"] .being-words { display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; max-width: 260px; }
+.blob { display: inline-block; height: calc(14px * var(--s)); width: calc(14px * var(--s) * var(--l)); border-radius: 999px; background: oklch(0.74 0.17 var(--h)); translate: 0 calc(var(--p) * -1.4px); box-shadow: 0 0 calc(10px * var(--s)) oklch(0.74 0.17 var(--h) / 0.55); }
+/* the emoji lens: a word with one is it, the rest a tick each */
+.space-field[data-lens="emoji"] .being-words { display: flex; align-items: center; justify-content: center; gap: 3px; flex-wrap: wrap; max-width: 260px; line-height: 1; }
+.emo { display: inline-block; font-size: calc(1.4rem * var(--s)); translate: 0 calc(var(--p) * -1.2px); font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.tick { display: inline-block; width: calc(5px * var(--s)); height: calc(5px * var(--s)); border-radius: 50%; background: var(--faint); }
+.space-say { display: flex; gap: 8px; align-items: center; }
+.space-say input { flex: 1; min-width: 0; min-height: 48px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; }
+.space-say select { min-height: 48px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; }
+.space-say .talk { min-height: 48px; }
+.space-say .type-send { min-height: 48px; padding: 0 18px; border-radius: 999px; }
+.space-status { margin: 0; min-height: 1.2em; font-size: 0.8125rem; color: var(--muted); }
+.space-join { display: flex; gap: 8px; }
+.space-join input { flex: 1; min-width: 0; }
+@media (max-width: 640px) {
+  main.space-page { padding: 0 12px 12px; height: calc(100dvh - 60px); }
+  .space-lede { display: none; }
+  .being { max-width: 60%; }
+  .space-say .talk .label { display: none; }
+  .space-say .talk { width: 48px; padding: 0; }
+  .space-say select { width: 52px; padding: 0 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .being, .being.gliding { transition: none; } .being.speaking .being-words { animation: none; } }
