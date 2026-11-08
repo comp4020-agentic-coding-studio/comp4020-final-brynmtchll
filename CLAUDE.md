@@ -106,8 +106,11 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   else's (probe `beats.mjs`). A word that's a gesture of its own gets it:
   "hi" waves, "me" a hand to the chest, "you" an open hand out, "huge"
   hands apart, "maybe" a shrug, "yes" a nod, "no" a shake; a word said in
-  passing as often as not ("that", "one", "right") only when it's leaned
-  on (`gestures.test.ts`; probes `gestures.mjs`, `gestures-num.mjs`). They
+  passing as often as not ("you", "me", "that", "one", "yes") only when
+  it's leaned on, so about one word in twenty of ordinary talk is one, not
+  one in five (`gestures.test.ts`; probes `gestures.mjs`,
+  `gestures-num.mjs`, `card-gesture.mjs`). Rare enough that a card widens
+  for one, as for an emote. They
   show the word, never how anyone feels about it. An emote someone sends
   moves their arms too where it has a pose (a hand on the belly laughing,
   hands by the cheeks for wow, fists for grr, arms folded for cool), one arm

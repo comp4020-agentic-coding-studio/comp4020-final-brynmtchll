@@ -1388,8 +1388,9 @@ function frame(now: number): void {
       // (only where the arms are drawn anyway: in the room, the studio; a
       // card isn't widened for a word)
       const beating = !calm && !read && !doingArm && !doingBody && now < s.beat.until && (!!roomDraw || always.has(slot));
-      // (a word that's a gesture of its own wins over a beat)
-      const gesturing = !calm && !read && !doingArm && !doingBody && !!s.gesture?.g.arm && now < s.gesture.until && (!!roomDraw || always.has(slot));
+      // (a word that's a gesture of its own wins over a beat; rare enough,
+      // one word in twenty or so, to widen a card for, as an emote does)
+      const gesturing = !calm && !read && !doingArm && !doingBody && !!s.gesture?.g.arm && now < s.gesture.until;
       if (gesturing) {
         const gs = s.gesture!;
         const since = now - gs.at;
@@ -1417,7 +1418,7 @@ function frame(now: number): void {
         want = { ...want, [s.beat.side]: talkingArm(s.beat.side, amt, s.beat.open) };
       }
       // doing something: read off a camera, or an emote's arm, lately
-      if (read || s.arms.up || (doingArm && doingArm.t < 0.85) || (doingBody && doingBody.t < 0.85)) s.arms.busyAt = now;
+      if (read || s.arms.up || (doingArm && doingArm.t < 0.85) || (doingBody && doingBody.t < 0.85) || gesturing) s.arms.busyAt = now;
       armsBusy = now - s.arms.busyAt < ARMS_DOWN;
       const kk = k(read ? 24 : beating || gesturing ? 16 : 9);
       s.arms.left = easeArm(s.arms.left, want.left, kk);

@@ -94,7 +94,10 @@ words("everyone", "everyone everybody all y'all");
 // weight (leaned on, or the phrase's only word): "that" and "over" and
 // "one" are said in passing far more often than pointed with, so they only
 // count then; the rest count whenever.
-const ONLY_LEANED = new Set(["that", "over", "one", "all", "right", "wide", "everything", "hold", "stop", "slow", "bit", "little", "first", "actually", "mine", "sure", "nice", "cool"]);
+// (measured on a paragraph of ordinary talk: with "you" and "me" counting
+// every time, one word in five was a gesture; people don't point at
+// whoever they're talking to on every "you")
+const ONLY_LEANED = new Set(["that", "over", "one", "all", "right", "wide", "everything", "hold", "stop", "slow", "bit", "little", "first", "actually", "mine", "sure", "nice", "cool", "you", "you're", "yours", "me", "myself", "there", "everyone", "everybody", "great", "big", "no", "yes", "yeah", "never"]);
 export function gestureFor(word: string, leaned = false): Gesture | null {
   const w = word.toLowerCase().replace(/^[^a-z']+|[^a-z'-]+$/g, "");
   const g = WORDS[w];

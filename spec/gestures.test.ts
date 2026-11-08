@@ -7,21 +7,21 @@ describe("gestures that go with words", () => {
     expect(gestureFor("Hi!")?.moves).toBe("wave");
     expect(gestureFor("hello,")?.moves).toBe("wave");
     expect(gestureFor("MAYBE...")?.moves).toBe("shrug");
-    expect(gestureFor("no.")?.head?.shake).toBeGreaterThan(0);
-    expect(gestureFor("yeah")?.head?.nod).toBeGreaterThan(0);
+    expect(gestureFor("nope.")?.head?.shake).toBeGreaterThan(0);
+    expect(gestureFor("yep")?.head?.nod).toBeGreaterThan(0);
     expect(gestureFor("huge")?.hands).toBe("both");
     for (const w of ["the", "and", "I", "was", "table", "", "...", "hippopotamus"]) expect(gestureFor(w)).toBeNull();
   });
 
   it("only points or counts with a word said in passing as often as not when it's leaned on", () => {
-    for (const w of ["that", "over", "one", "right", "sure"]) {
+    for (const w of ["that", "over", "one", "right", "sure", "you", "me"]) {
       expect(gestureFor(w, false)).toBeNull();
       expect(gestureFor(w, true)).not.toBeNull();
     }
   });
 
   it("starts from resting, gets to the gesture, and mirrors it for the other hand", () => {
-    const g = gestureFor("you")!;
+    const g = gestureFor("you", true)!;
     const rest = gestureArm(g, "right", 0, 0)!;
     expect(rest.upper[0]).toBeCloseTo(RESTING.right.upper[0], 5);
     expect(rest.fore[1]).toBeCloseTo(RESTING.right.fore[1], 5);
@@ -39,7 +39,7 @@ describe("gestures that go with words", () => {
     const a = gestureArm(hi, "right", 1, 0.05)!.fore[0];
     const b = gestureArm(hi, "right", 1, 0.12)!.fore[0];
     expect(Math.abs(a - b)).toBeGreaterThan(0.05);
-    const yes = gestureFor("yes")!;
+    const yes = gestureFor("yes", true)!;
     expect(gestureArm(yes, "right", 1, 0)).toBeNull();
     const nods = [0.1, 0.2, 0.3, 0.6, 0.7, 0.8].map((t) => gestureHead(yes, t, 1).pitch);
     expect(Math.max(...nods)).toBeGreaterThan(0.1);
