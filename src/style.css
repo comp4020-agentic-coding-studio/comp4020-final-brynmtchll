@@ -157,6 +157,11 @@ main.room {
   animation: card-in 0.5s var(--ease) both;
 }
 @keyframes card-in { from { opacity: 0; translate: 0 10px; scale: 0.985; } }
+/* (yours is there when the page opens, not arriving: and with the room
+   being built in the same moment, its fade was caught part way, and the
+   card stayed dim) */
+.mine-card .spot { animation: none; }
+.mine-card .spot.speaking { animation: breathe 2.4s ease-in-out infinite; }
 /* a thin bar of their colour down the side, bright while they speak */
 .spot::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--person); opacity: 0.3; transition: opacity 0.3s; }
 .spot.speaking { border-color: color-mix(in srgb, var(--person) 50%, var(--line)); box-shadow: var(--shadow), 0 0 48px -14px var(--person); animation: card-in 0.5s var(--ease) both, breathe 2.4s ease-in-out infinite; }
