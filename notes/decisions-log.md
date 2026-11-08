@@ -759,6 +759,12 @@ led to. Claude chose how to build each; what to build was yours.
       the switcher; an away name no longer dimmed twice (unreadable in the
       light theme); your own card says "Your words show here, as big as
       you say them." until you've said something ([`4427f4a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/4427f4a)).
+    - A raised hand on a card was drawn over the name and word; they now
+      step aside while arms are out. An emote's burst rose off the card's
+      top edge, cut in half; it now rises beside the head, on the card.
+      The phone's room-settings sheet dims the page behind it. /studio
+      without a name says "Pick a name to join, and then you can make your
+      avatar." ([`b7d47b0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b7d47b0))
 
 ### What the three spikes measured (22 October, for the next decisions)
 
