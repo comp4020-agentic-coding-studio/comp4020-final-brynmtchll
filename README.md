@@ -2,51 +2,27 @@
 
 A room where you speak instead of type, and everyone sees how you said it.
 
-> **Draft:** the "What good means here" section below is Brynly's to write. What's
-> here so far only describes what the app does.
-
 ## How it works
 
-- Pick a name to join. You get a place of your own on the screen, in your own
-  colour, which stays put for everyone.
-- Turn your microphone on and talk, for as long as you like. Your speech is
-  turned into words in your own browser. No audio is sent or kept anywhere.
-- Everyone sees your words appear one at a time in your place, as you said
-  them, and the rest of what you've said as a thread of text messages
-  underneath, newest first. Louder words are heavier, higher ones sit higher,
-  and drawn-out sounds repeat their letters ("sooo"). While you're still
-  talking, a faded draft of the phrase shows first, then the final words
-  replace it.
-- Your words go out straight away, and you can change them live: tap one of
-  yours (your latest is chosen already) to type over it, delete it, or press
-  1, 2 or 3 to make it Impact, Whisper or Glow. Only your own words can be
-  changed.
-- Everyone has an avatar, a 3D head in a look they choose (colour, eyes,
-  mouth, and glasses, shades, a hat, headphones or blush). Its mouth moves
-  with your voice as you talk, on everyone's screen, a quarter of a second
-  behind you, before your words arrive. It reacts to how each word was said
-  (brows up for a high one, eyes wide for a loud one), and its eyes turn to
-  whoever is speaking. Turn on "Show my face" and it pulls the faces you
-  pull, winks, raises one brow, looks where you look, and turns and leans
-  as you do. It learns your face at rest, so a resting frown doesn't show as
-  one. Your face and voice are read in your browser and only numbers about
-  them are sent: no picture, no sound. Where a browser can't draw 3D, it's
-  a flat face instead.
-- Make it yours: build your avatar from face shapes, hair styles, brows,
-  eyes, noses, ears, beards and things to wear, in any colours (or "Surprise
-  me"); choose how your words are drawn (Comic, Neon, Handwritten,
-  Typewriter, Big feelings...); put one of eight effects on any of your
-  words (keys 1 to 8).
-- Emote: your head nods, laughs, sends hearts or a rain cloud, for everyone
-  (buttons, or Shift and a letter); a big laugh or a held gasp emotes by
-  itself. Tap someone else's word to react to it.
-- What's on offer is data, in `src/packs.ts`: adding a hair style, an
-  effect, a word style, an emote or a reaction is adding an entry there.
-- Under the stage, a short record of what's been said lately, each person's
-  words joined into lines in their colour, so someone arriving can catch up.
+- **Join** with a name to get a seat and colour, the same on every screen.
+  More rooms live at `/r/<name>/`.
+- **Talk or type.** Whisper transcribes speech in your browser (80 MB on first
+  join, then cached). No audio leaves your device.
+- **How it was said shows in the words.** Louder is heavier, higher sits
+  higher, and a held vowel repeats ("sooo"). Others see each word about 1.2 s
+  after you finish. You can retype, delete or add an effect (keys 1–8) to your
+  own words, and only yours.
+- **Your avatar** is a cartoon head you build in the studio. With your camera
+  on, it copies your expression, head and hands; only numbers are sent. Its
+  mouth moves with your voice.
+- **Walk the 3D room** (W A S D or tap). Words over a head are clear up close
+  and fade with distance; loud words carry further. Several conversations run
+  at once, and you follow the one you walk up to. **Space** (`/r/space/`) does
+  this with words alone.
+- **Also:** emotes, reactions, raising a hand to speak next, voices that read
+  others' words aloud, and Lately, so a newcomer can catch up.
 
-The first time you join, your browser downloads the speech model (about 80 MB)
-before you can talk; after that it's cached. Chrome is recommended.
+Use Chrome. A camera is optional.
 
 ## What good means here
 
@@ -57,22 +33,18 @@ argued from sources.*
 
 Checked automatically in `spec/`:
 
-- What one person says reaches every other open page within a second, without
-  a reload, and several people speaking at once each stay in their own place.
-- Only words and numbers about how they were said are stored; nothing else
-  (audio included) can be sent along. A face is only ever a handful of
-  numbers for its expression and where the head is, and a voice only a few
-  loudness levels; which way round a wink, a glance and a head's turn go is
-  checked on MediaPipe's own sample portrait with an eye painted shut, its
-  irises moved and the picture tilted and shifted.
-- A word is never split between two phrases, and the room's background noise,
-  breaths and silence are never sent to be transcribed.
-- How loud, high and drawn-out words were is measured on made-up tones whose
-  answers are known, on John F. Kennedy's 1961 inaugural address, and on
-  actors from CREMA-D saying the same sentence in different moods.
-- Everyone gets a place and colour of their own, the same on every page.
-- What people say is escaped, and nobody's login id is ever shown to anyone
-  else.
+- **Real-time:** a word reaches every other open page within 1 s, without a
+  reload.
+- **Privacy:** only words and numbers are stored. Audio and face images can't
+  be sent.
+- **Permissions:** nobody can speak as, or edit, anyone else.
+- **Hearing:** noise, breath and silence are never transcribed. Loudness,
+  pitch and held vowels are measured correctly on test tones, JFK's 1961
+  inaugural address, and CREMA-D actors.
+- **Distance:** what's said is readable within a set distance, further for
+  loud words.
+- **Security:** everything shown is escaped, and nobody's login id is ever
+  sent to others.
 
 Judged by people:
 
@@ -99,8 +71,9 @@ Judged by people:
 
 ## What it doesn't do
 
-- It only shows the last few lines of what's been said, not everything.
-- It doesn't name emotions. It shows how something was said and leaves the
+- **No full transcript.** Lately keeps only the last few lines.
+- **No emotion labels.** It shows how something was said and leaves the
   reading to people.
-- It doesn't say "faster" or "slower": tested on 178 acted takes, four ways
-  of measuring pace disagreed with each other.
+- **No "faster"/"slower".** On 178 acted takes, four pace measures
+  disagreed.
+- **No games or scores.**

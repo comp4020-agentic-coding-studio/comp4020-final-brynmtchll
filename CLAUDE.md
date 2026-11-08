@@ -1,228 +1,275 @@
 # Harness
 
-The rules the agent's work on Said must meet. Each comes from a direction
-Brynly gave while building it (dated; the commits it led to are in
-`notes/decisions-log.md`) or from something that went wrong and isn't to go
-wrong again. Where `spec/` checks a rule, the check is named; the rest are
-judged, and say how.
+Rules the agent's work on Said must meet. Each rule comes from one of two
+places:
+
+- a direction Brynly gave, dated (its commits are in
+  `notes/decisions-log.md`)
+- a bug that mustn't recur
+
+Where `spec/` checks a rule, the check is named. The rest are judged, and the
+rule says how. A "probe" is a script in `~/comp4020/.probes`.
 
 ## What Said is for
 
-People in one room, talking, and everyone seeing *how* each thing was said,
-not just what: louder heavier, higher higher, drawn out drawn out. It should
-be more interesting because others are in the room at the same moment.
+A room where people talk and everyone sees how each thing was said:
 
-A party you can read: several conversations at once, and you follow the one
-you walk up to ("ok lets go with the first", 8 Nov, of the purposes offered
-for "a good use for being able to walk around as an avatar with live
-captions"). The avatars stay ("no i still want the avatars", 8 Nov). The
-core is creative ways to communicate ("creative ways to communicate is
-really the core idea of this website", 8 Nov); new ways sit alongside what's
-there, not instead of it. The captions-only rethink is scrapped ("i don't
-like the rethink at all, scrap it", 8 Nov): avatars, the room and everything
-built on them stay. No games ("i dont want to gamify it", 8 Nov): the push is
-seamlessness and expression. Avatar toolkits were tried and set aside; the
-cartoon heads stay, with all their customisation, made far more expressive
-and responsive ("lets keep the silly cartoons … i just want more
-sophisticated expression out of them and more responsiveness", 8 Nov).
+- louder is heavier
+- higher sits higher
+- a drawn-out word is drawn out
+
+It should be better because other people are there at the same time.
+
+- **A party you can read.** Several conversations run at once, and you follow
+  the one you walk up to ("ok lets go with the first", 8 Nov).
+- **The core is creative ways to communicate** (8 Nov). New ways sit
+  alongside what's already there, not instead of it.
+- **The avatars stay** ("no i still want the avatars", 8 Nov). They're
+  cartoon heads, made more expressive and responsive ("lets keep the silly
+  cartoons … i just want more sophisticated expression out of them", 8 Nov).
+  Avatar toolkits were tried and set aside.
+- **Ruled out:**
+  - the captions-only rethink ("scrap it", 8 Nov)
+  - games and scores ("i dont want to gamify it", 8 Nov)
 
 ## Never
 
-- Never send or keep audio, or a picture of anyone's face. Only words, and
-  numbers about how they were said and how a face or hand is held, leave the
-  speaker's browser (`room.test.ts`: "stores words and how they were said,
-  and nothing else"; "puts someone's expression on their avatar ... and takes
-  nothing but its numbers").
-- Never write what someone feels on their words or their card. How a word
-  was said shows in the word, for the reader to infer ("i think id rather
-  the emotion be inferrable", 13 Oct). Judged. (The nearest the app comes:
-  a big laugh or a held gasp read from someone's face sends an emote by
-  itself. If that stays, README.md says why.)
-- Never say how fast someone spoke: four measures of pace disagreed on real
-  speech (`real-voice.test.ts`).
-- Never send a stretch of microphone that's mostly silence, a breath or the
-  room to Whisper: it invents sentences for it (`prosody.test.ts`;
-  `vad.test.ts`: "finds none in noise, a hum, or a note held like singing
-  without words"). Background noise turning into words was the bug Brynly
-  asked twice to be fixed (20 Oct, 4 Nov).
-- Never let anyone change, take back or speak as anyone else
-  (`room.test.ts`: "refuses a change to anyone else's words"; "credits what's
-  said to whoever's cookie sent it").
-- Never show anyone another person's login id, which is also their cookie
-  (`room.test.ts`).
-- Never put what someone said into a page unescaped (`room.test.ts`,
+- **Never send or keep audio or face images.** Only words leave the browser,
+  plus numbers about how each was said and how a face or hand is held.
+  - Checked in `room.test.ts`:
+    - "stores words and how they were said, and nothing else"
+    - "puts someone's expression on their avatar ... and takes nothing but
+      its numbers"
+- **Never label a feeling** on anyone's words or card. How a word was said
+  shows in the word, and the reader infers the rest ("i think id rather the
+  emotion be inferrable", 13 Oct). Judged.
+  - The exception: a big laugh or a held gasp sends an emote by itself. If
+    that stays, README.md says why.
+- **Never say how fast someone spoke.** Four measures of pace disagreed on
+  real speech (`real-voice.test.ts`).
+- **Never send silence, breath or room noise to Whisper.** It invents
+  sentences from them. Brynly reported this twice (20 Oct, 4 Nov).
+  - Checked in `prosody.test.ts`, and in `vad.test.ts`: "finds none in
+    noise, a hum, or a note held like singing without words".
+- **Never let anyone edit, retract or speak as someone else.**
+  - Checked in `room.test.ts`:
+    - "refuses a change to anyone else's words"
+    - "credits what's said to whoever's cookie sent it"
+- **Never show anyone another person's login id.** The id is also their
+  cookie (`room.test.ts`).
+- **Never put user text into a page unescaped** (`room.test.ts`,
   `face.test.ts`).
-- Never make a visitor download something large they didn't ask for: the
-  speech model (about 80 MB) loads once, on joining, and is kept; natural
-  voices and anything else big are opt-in.
+- **Never force a large download.**
+  - The speech model (~80 MB) loads once, on joining, and is then cached.
+  - Natural voices, and anything else large, are opt-in.
 
 ## Every page
 
-- Words show up as they're said: one at a time, in the speaker's own place,
-  within a second on every other open page, with no queue, loading zone or
-  button in the way ("i want ... the text be transmitted directly", 20 Oct;
-  `room.test.ts`: "within a second, without a reload"). Each person keeps
-  their own place and colour. Typed words too: each goes out when a space
-  finishes it, and the line is kept on Enter or a pause ("text should send on
-  hitting space bar", 8 Nov; `typed.test.ts`: "sends the words so far each
-  time one's finished with a space…"). Judged in a browser with two pages:
-  type a word and a space on one, and the other shows it.
-- No pitch lines or charts over the words: the words themselves carry it
-  ("get rid of the pitch lines i dont like that", 13 Oct).
-- Works in the latest Chrome at 1920x1080 and 390x844, and on a real phone,
-  with no sideways scroll. Judged with a phone-sized browser, measuring the
-  page against 390 itself: a phone-sized Chrome's `innerWidth` grows with an
-  overflowing page, so comparing with it can't catch one (it missed a 682 px
-  page on 5 Nov).
-- Polished, smooth and stylish, not a prototype ("considerably more polished
-  stylish and slick, with seamless and stunning design", 4 Nov): motion eases
-  rather than jumps, the room stays near 60 frames a second on a laptop and
-  near 50 on a slowed phone with twelve people in it, and a slow device gives
-  up effects before it gives up smoothness. Judged from screenshots of every
-  page, both sizes, both themes, before a visual change is kept, and frame
-  rates measured, not guessed.
-- Personal: everything about how someone appears is theirs to choose (avatar,
-  word style, voice), from choices in `src/packs.ts`, never free text that
-  could be anything (`packs.test.ts`).
-- The avatar is them: it follows their face, head, hands and voice closely
-  enough to feel live ("i need the head to be more responsive", 20 Oct).
-  Judged by Brynly, with Brynly's own face and voice. Each side of the face
-  is its own, as the camera's 52 scores have it (`arkit.ts`): a wink, one
-  brow, one corner of the mouth, on the same side the 15-number face puts
-  them (`arkit.test.ts`: "puts a wink, a raised brow, a smirk and a glance
-  on the same side…"). A head a camera reads blinks only when its person
-  does. A glare narrows the eyes; it doesn't shut them. Judged from the
-  twelve faces sent from one page and drawn on another (probe `faces.mjs`),
-  before a change to how a head is drawn is kept. An avatar never shows a
-  feeling its person didn't: others' heads only glance at someone who
-  emotes, comes in or puts a hand up; nobody's face is pulled for them.
-  Listening eyes aren't fixed: they move about the speaker's face and now
-  and then away and back (probe `listen-eyes.mjs`). A head turned by hand
-  (the studio, dragged) is still its own face: it blinks, and says the
-  sample with its mouth and a hand when "Hear it" plays (probe
-  `studio-say.mjs`: it stood mute, taken for a camera's, on 9 Nov). How a word was said
-  shows on its speaker's own face as it's said, both ways (loud, quiet, high,
-  low, a question, drawn out), and so does an effect they put on it, enough
-  to read across a room (`packs.test.ts`: "the faces a word's effect pulls
-  on its speaker"). Eyes get somewhere before the head does (probe
-  `eyes-lead.mjs`). Where arms are drawn, a speaker's hand moves with their
-  own words (a beat on a word leaned on, a palm up on a question; claws,
-  jazz hands or a sway for spooky, sparkle and wave), never with anyone
-  else's (probe `beats.mjs`). A word that's a gesture of its own gets it:
-  "hi" waves, "me" a hand to the chest, "you" an open hand out, "huge"
-  hands apart, "maybe" a shrug, "yes" a nod, "no" a shake; a word said in
-  passing as often as not ("you", "me", "that", "one", "yes") only when
-  it's leaned on, so about one word in twenty of ordinary talk is one, not
-  one in five (`gestures.test.ts`; probes `gestures.mjs`,
-  `gestures-num.mjs`, `card-gesture.mjs`). Rare enough that a card widens
-  for one, as for an emote. They
-  show the word, never how anyone feels about it. An emote someone sends
-  moves their arms too where it has a pose (a hand on the belly laughing,
-  hands by the cheeks for wow, fists for grr, arms folded for cool), one arm
-  or both, never both kinds at once (`body.test.ts`; probe
-  `emote-bodies.mjs`).
-- The room is a place to be in, not only to look at: you can walk your
-  avatar about it, everyone sees you there, and it can fill the screen
-  ("make it so that you can control your avatar and move around, also i
-  want a full screen option", 7 Nov; "theres a lot more work that needs to
-  be done on that", then "reimagine the whole thing"). Nobody walks through
-  a wall, the table or a chair: getting up and sitting go out and back
-  between the chairs, a raised row along its step and down at the end, and
-  a tap finds a way round (`walk.test.ts`: "gets everyone out of their
-  chair and back into it ... never through a chair or the table", "finds
-  the way round the table and the chairs"). Right is right, as the camera
-  sees it (`walk.test.ts`: "walks the way the stick points"; it went left
-  for a day). Keys pressed in the room are the room's: W A S D walk
-  whatever in it was last clicked (a view, Reset, Sit), except a box being
-  typed in, and never type over a word (walking once typed "wwww" over
-  your last word, and Enter sent it to everyone, 8 Nov). Judged in a
-  browser: say something, click a view, hold W, press Enter. Full screen
-  keeps a way to talk, and one finger looks round in it. Anyone who closes
-  their page while up is back in their chair within a minute and a bit
-  (`walk.test.ts`: "sits back down whoever closed their page while up").
-  Before joining, an empty room shows its chairs, not a teapot close up,
-  and nothing about walking, which only someone joined can do (probe
-  `landing-room.mjs`). Where someone stands is only ever a place on the
-  floor, kept while they're up and never stored or logged (`room.test.ts`:
-  "shows someone walking about the room").
-- There's more than one room, each its own group with its own look
-  ("options to have different rooms / spaces, featuring different groups
-  etc", 8 Nov). What's said, hands, walking and emotes in a room stay in that
-  room, live and stored (`room.test.ts`: "keeps what's said in a room to that
-  room, live and stored"). Who you are and how you look go with you. Only
-  whoever made a room changes it, and only to looks from `src/packs.ts`
-  (`room.test.ts`: "lets only whoever made a room change it, and only to
-  looks on offer"). A room's name is escaped everywhere it shows, and who
-  made it is never sent by id (`room.test.ts`: "escapes a room's name
-  wherever it's shown, and never shows who made it by id").
-- Words are as clear as you are close: clear near, fading further off, and
-  past reading only that someone's talking; a loud word carries further and
-  a whisper less far, within bounds. The same rules everywhere, in
-  `src/hearing.ts` (`hearing.test.ts`: "reads someone clearly close to,
-  fainter further off, and not at all past their reach", "carries a loud word
-  further and a quiet one less far, within bounds"). Judged in a browser with
-  two groups talking at once at opposite ends of the room. No caption over a
-  head covers another, nor the room's controls, nor runs off its edge: in a
-  crowd they step down to a line, then a name (judged with six talking at
-  once, desk and phone: probes `crowd/room1.mjs` and `crowd/overlap.mjs`;
-  it piled up on 9 Nov), and stay stepped down while it's crowded, not
-  flickering back and forth frame to frame (probe `crowd/flicker.mjs`: it
-  did, on 9 Nov).
-- Space (`/r/space/`) is you as your words, moved about a plain field
-  ("you are the text and you can move that toward or away from others",
-  8 Nov). It's the same floor for everyone, so whoever can read you, you can
-  read (`hearing.test.ts`: "lays Space over one floor for everyone…").
-  Someone new starts clear of everyone there ("starts someone new in Space
-  clear of everyone there…", in `hearing.test.ts` and `room.test.ts`).
-  Where you are is two numbers on the floor, only your own, and never sent
-  with an id (`room.test.ts`: "puts each person in Space where they move
-  themselves…"). Names are escaped there (`room.test.ts`: "escapes names in
-  Space…"). Space never shows in the rooms list. Words, colour and emoji
-  are ways to read the same words as said, drawn from their numbers
-  (`src/lens.ts`), in Space and over heads in the room; Tones are a way to
-  hear them, as notes made from the numbers, never anyone's voice, and only
-  when turned on. Nobody's name or words are drawn on anyone else's, even
-  with several in one corner (probe `space-corner.mjs`: they were, in a
-  corner, on 9 Nov), and a field with nobody else in it says so. Judged
-  from screenshots, both sizes and both themes, joined and not; on a phone
-  the field is shown turned, and right on the screen is still right.
-- Everything works from the keyboard, with a ring you can see on whatever's
-  focused: someone's latest words are one stop each, the arrow keys choose a
-  word and Enter reacts to it; Esc closes any panel that's open (the help,
-  the room switcher, the room's settings) and puts you back where you were.
-  A panel taller than a phone's screen opens as a sheet from its bottom,
-  all of it within reach. Judged by tabbing through each page (probe
-  `a11y.mjs`; a bug hunt found these missing on 9 Nov).
-- One place for each thing: what you can do sits together beside the room
-  (on a phone, under the 3D room, and above the cards), one panel for
-  saying something, the rest in tabs;
-  the room's own settings open from the room, for whoever made it ("i want
-  the ui to feel more cohesive and intuitive", 8 Nov). Judged from
-  screenshots, both sizes, both themes. A list that scrolls fades where it's
-  cut, and Lately opens on the newest and keeps them in sight unless you've
-  scrolled back (probe `lately.mjs`: it opened on the oldest, cut mid-row,
-  on 9 Nov). A panel over the page is solid enough to read, fading only its
-  words where there's more (probe `help-panel.mjs`: a mask on the help let
-  the page show through). One name for each thing wherever it shows ("Show
-  my face", "Say", "Looks like", "Copy the link"; one emoji for wow), and
-  the count beside a room's name counts who's away as well as who's here
-  (probe `counts.mjs`). On a phone in full screen every view, Sit and the
-  ways to read it are in reach, none over another (probe `full-bar.mjs`:
-  the lenses covered "Above", and "Me" and "Sit" once up, on 9 Nov). A
-  button with no room for its words still says what it's for (a
-  microphone, not a bare dot).
+### Speed, layout, polish
+
+- **Words appear as they're said.** One at a time, in the speaker's place,
+  on every open page within 1 s. Nothing stands in the way: no queue, no send
+  button ("the text be transmitted directly", 20 Oct).
+  - Checked in `room.test.ts`: "within a second, without a reload".
+- **Typed words go out one at a time.** Each is sent when a space ends it,
+  and the line is kept on Enter or a pause ("text should send on hitting
+  space bar", 8 Nov).
+  - Checked in `typed.test.ts`.
+  - Judged with two pages: type a word and a space in one, and the other
+    shows it.
+- **No pitch lines or charts over the words** ("get rid of the pitch lines i
+  dont like that", 13 Oct).
+- **Works in Chrome at 1920×1080 and 390×844, and on a real phone.** No
+  sideways scroll.
+  - Judged by measuring the page against 390 px. Comparing against
+    `innerWidth` doesn't work: it grows with an overflowing page, which is
+    how a 682 px page was missed on 5 Nov.
+- **Polished and smooth** ("considerably more polished stylish and slick",
+  4 Nov):
+  - Motion eases rather than jumps.
+  - The room runs at about 60 fps on a laptop, and about 50 on a slowed phone
+    with 12 people in it.
+  - A slow device drops effects before it drops smoothness.
+  - Judged from screenshots of every page, at both sizes and in both themes,
+    before a visual change is kept. Frame rates are measured, not guessed.
+- **One place for each thing** ("i want the ui to feel more cohesive and
+  intuitive", 8 Nov).
+  - Controls sit in one column beside the room, or under it on a phone: one
+    panel for saying something, the rest in tabs.
+  - A room's settings open from the room, for its maker only.
+  - A list that scrolls fades where it's cut.
+  - Lately opens on the newest lines. Probe `lately.mjs`: it opened on the
+    oldest on 9 Nov.
+- **Panels are solid enough to read.** Only overflowing text fades. Probe
+  `help-panel.mjs`: the help panel let the page show through.
+- **One name for each thing, wherever it appears:** "Show my face", "Say",
+  "Looks like", "Copy the link", and one emoji for wow.
+- **A room's count includes who's away as well as who's here** (probe
+  `counts.mjs`).
+- **A button too small for its label still says what it does.** For example,
+  a microphone icon, not a bare dot.
+- **On a phone in full screen, every view, Sit and the lenses stay in reach,
+  none covering another.** Probe `full-bar.mjs`: on 9 Nov the lenses covered
+  "Above", and once you stood up they covered "Me" and "Sit" too.
+- **Everything works from the keyboard, with a visible focus ring.**
+  - Each person's latest words are one tab stop. The arrow keys choose a
+    word, and Enter reacts to it.
+  - Esc closes any open panel and returns focus to where it was.
+  - On a phone, a panel taller than the screen opens as a bottom sheet.
+  - Judged by tabbing through every page. Probe `a11y.mjs`: all of this was
+    missing on 9 Nov.
+
+### Avatars
+
+- **Everything about how someone looks is theirs to choose:** avatar, word
+  style and voice. Choices come only from `src/packs.ts`, never free text
+  (`packs.test.ts`).
+- **The avatar is them.** It follows their face, head, hands and voice
+  closely enough to feel live ("i need the head to be more responsive",
+  20 Oct). Judged by Brynly, with Brynly's own face and voice.
+- **Face:**
+  - Each side moves on its own, from the camera's 52 scores (`arkit.ts`). A
+    wink, a raised brow or a smirk shows on the right side
+    (`arkit.test.ts`).
+  - A head driven by a camera blinks only when its person blinks.
+  - A glare narrows the eyes without shutting them.
+  - Judged from the 12 test faces, sent from one page and drawn on another
+    (probe `faces.mjs`), before any change to how a head is drawn is kept.
+- **An avatar never shows a feeling its person didn't.**
+  - Others' heads only glance at someone who emotes, arrives or raises a
+    hand.
+  - Nobody's face is pulled for them.
+- **Eyes:**
+  - Listening eyes move about the speaker's face, and now and then look away
+    and back (probe `listen-eyes.mjs`).
+  - The eyes move before the head does (probe `eyes-lead.mjs`).
+- **A head turned by hand in the studio is still alive.** It blinks, and says
+  the sample with its mouth and a hand when "Hear it" plays. Probe
+  `studio-say.mjs`: it stood mute on 9 Nov.
+- **How a word was said shows on the speaker's face as it's said.** Loud,
+  quiet, high, low, a question, drawn out, and any effect put on the word.
+  Strong enough to read across the room (`packs.test.ts`: "the faces a
+  word's effect pulls on its speaker").
+- **Hands move only with the speaker's own words** (probe `beats.mjs`):
+  - a beat on a word leaned on
+  - a palm up on a question
+  - claws, jazz hands or a sway for the Spooky, Sparkle and Wave effects
+- **Word gestures.** Some words get a gesture of their own:
+  - "hi" waves
+  - "me" puts a hand to the chest
+  - "you" holds a hand out
+  - "huge" spreads the hands apart
+  - "maybe" shrugs
+  - "yes" nods
+  - "no" shakes the head
+- **Common words gesture only when stressed.** "you", "me", "that", "one"
+  and "yes" are often said in passing. Only about 1 word in 20 of ordinary
+  talk gets a gesture, not 1 in 5.
+  - Gestures show the word, never how anyone feels about it.
+  - Checked in `gestures.test.ts`. Probes `gestures.mjs`, `gestures-num.mjs`
+    and `card-gesture.mjs`.
+- **An emote with a pose moves the arms too:**
+  - laugh: a hand on the belly
+  - wow: hands to the cheeks
+  - grr: fists
+  - cool: arms folded
+  - One arm or both, never both kinds of movement at once (`body.test.ts`;
+    probe `emote-bodies.mjs`).
+
+### The room
+
+- **You can walk about the room, everyone sees you there, and it can fill the
+  screen** ("make it so that you can control your avatar and move around",
+  7 Nov; "reimagine the whole thing", 8 Nov).
+- **Nobody walks through a wall, the table or a chair.**
+  - Standing up and sitting down go out and back between the chairs. A
+    raised row is reached by its step.
+  - A tap on the floor finds a way round obstacles.
+  - Checked in `walk.test.ts`:
+    - "gets everyone out of their chair and back into it ... never through a
+      chair or the table"
+    - "finds the way round the table and the chairs"
+- **Right is right, as the camera sees it** (`walk.test.ts`: "walks the way
+  the stick points"). For a day it went left.
+- **Keys pressed in the room belong to the room.**
+  - W A S D walk after anything in the room has been clicked, except while
+    typing in a box.
+  - They never type over a word. On 8 Nov walking typed "wwww" over
+    someone's word, and Enter sent it.
+  - Judged: say something, click a view, hold W, then press Enter.
+- **Full screen keeps a way to talk.** One finger drags to look around.
+- **Closing the page while standing puts you back in your chair** within
+  about 70 s (`walk.test.ts`: "sits back down whoever closed their page while
+  up").
+- **Before you join, an empty room shows its chairs,** and nothing about
+  walking (probe `landing-room.mjs`).
+- **Where someone stands is kept only while they're standing.** It's never
+  stored or logged (`room.test.ts`: "shows someone walking about the room").
+- **There's more than one room** ("different rooms / spaces, featuring
+  different groups", 8 Nov).
+  - What's said, hands, walking and emotes stay in their own room, both live
+    and in storage (`room.test.ts`: "keeps what's said in a room to that
+    room, live and stored").
+  - Who you are and how you look go with you from room to room.
+  - Only a room's maker can change it, and only to looks from
+    `src/packs.ts` (`room.test.ts`: "lets only whoever made a room change
+    it, and only to looks on offer").
+  - A room's name is escaped wherever it appears, and its maker is never sent
+    by id (`room.test.ts`: "escapes a room's name wherever it's shown, and
+    never shows who made it by id").
+- **Words are as clear as you are close.**
+  - Clear close by, fading further off. Past a certain distance, all that
+    shows is that someone's talking.
+  - A loud word carries further and a whisper less far, within limits.
+  - The rules live in `src/hearing.ts`. Checked in `hearing.test.ts`:
+    - "reads someone clearly close to, fainter further off, and not at all
+      past their reach"
+    - "carries a loud word further and a quiet one less far, within bounds"
+  - Judged with two groups talking at once, at opposite ends of the room.
+- **Captions over heads never cover each other or the room's controls, and
+  never run off the edge.**
+  - In a crowd they shrink to one line, then to just a name. They stay
+    shrunk while it's crowded, without flickering between sizes.
+  - Probes `crowd/room1.mjs`, `crowd/overlap.mjs` and `crowd/flicker.mjs`.
+    Both the overlap and the flicker happened on 9 Nov.
+
+### Space (`/r/space/`)
+
+- **In Space, you are your words,** moved about a plain field ("you are the
+  text and you can move that toward or away from others", 8 Nov).
+- **It's one floor for everyone:** if someone can read you, you can read them
+  (`hearing.test.ts`: "lays Space over one floor for everyone…").
+- **Someone new starts clear of everyone already there** (`hearing.test.ts`
+  and `room.test.ts`: "starts someone new in Space clear of everyone
+  there…").
+- **Your position is two numbers.** Only you set it, and it's never sent with
+  an id (`room.test.ts`: "puts each person in Space where they move
+  themselves…").
+- **Names are escaped** (`room.test.ts`: "escapes names in Space…").
+- **Space never appears in the rooms list.**
+- **Lenses** (Words, Colour, Emoji) redraw the same words from their numbers
+  (`src/lens.ts`), both in Space and over heads in the room.
+- **Tones** turn the same numbers into notes, never anyone's actual voice,
+  and play only when turned on.
+- **No name or words are ever drawn over anyone else's,** even with several
+  people in one corner. Probe `space-corner.mjs`: they overlapped on 9 Nov.
+- **An empty field says it's empty.**
+- **On a phone the field is turned sideways,** and right on the screen is
+  still right.
+- Judged from screenshots: both sizes, both themes, before and after joining.
 
 ## Every change
 
-- `pnpm check` passes against the running app (`node src/server.ts`),
-  including the hearing checked on real recordings in `spec/fixtures/`. A
-  change to how speech is heard is tried on real audio, not only on tones,
-  before it's accepted.
-- A fix for something the agent got wrong lands as a check in `spec/` or a
-  rule here, not only as a retry until it looks right.
-- Facts only in `notes/decisions-log.md`, each with its commit. `README.md`,
-  `PROCESS.md`, the reflections and the decision records are Brynly's to
-  write; the agent finds sources, facts and gaps for them, and doesn't draft
-  them.
-- Never force-push, and never move a crit tag.
-- Brynly's name in full, never shortened to Bryn.
+- **`pnpm check` passes against the running app** (`node src/server.ts`).
+  That includes the hearing checks on the real recordings in
+  `spec/fixtures/`.
+- **A change to how speech is heard is tried on real audio,** not only on
+  test tones.
+- **A fix for something the agent got wrong becomes a check in `spec/` or a
+  rule here,** not only a retry until it looks right.
+- **`notes/decisions-log.md` holds facts only,** each with its commit.
+- **`README.md`, `PROCESS.md`, the reflections and the decision records are
+  Brynly's to write.** The agent finds sources, facts and gaps for them, and
+  doesn't draft them.
+- **Never force-push, and never move a crit tag.**
+- **Brynly's name is always in full,** never shortened to "Bryn".
