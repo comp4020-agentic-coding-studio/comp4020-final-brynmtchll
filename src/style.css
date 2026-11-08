@@ -236,6 +236,8 @@ main.room {
 .spot-word.fading { opacity: 0; }
 /* someone who hasn't said anything yet */
 .spot:not(:has(.bubble)) .spot-word:empty::before { content: "…"; color: var(--faint); font-weight: 300; }
+/* (not while their arms are out: drawn over a hand up, it read as part of it) */
+.spot:has(.spot-avatar[data-arms]) .spot-word:empty::before { content: none; }
 
 /* What they've said lately, as text messages: a column of bubbles in their
    colour, each with a tail on its right, newest at the top; a new line in a
@@ -386,7 +388,11 @@ main.room {
 .stage > .spot[data-away]:has(.head3d) .spot-name { align-self: start; padding-top: 2px; }
 .stage > .spot[data-away] .thread { grid-column: 2; grid-row: 2 / 4; margin: 6px 0 0; padding: 0 10px 0 0; overflow: hidden; -webkit-mask-image: none; mask-image: none; align-items: flex-start; }
 .stage > .spot[data-away] .bubble:not(:first-child) { display: none; }
-.stage > .spot[data-away] .bubble { min-width: 0; max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: 0.875rem; padding: 4px 10px; border-radius: 12px 12px 12px 4px; }
+/* (just the last thing they said, on one line: two, in a card this short,
+   had the second cut through by its edge) */
+.stage > .spot[data-away] .bubble { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.875rem; padding: 4px 10px; border-radius: 12px 12px 12px 4px; }
+.stage > .spot[data-away] .bubble br { display: none; }
+.stage > .spot[data-away] .bubble > .phrase:not(:first-child) { display: none; }
 .stage > .spot[data-away] .bubble::after { content: none; }
 .stage { grid-auto-flow: row dense; }
 .spot[data-hand="1"] { box-shadow: var(--shadow), 0 0 32px -14px var(--hand); }
@@ -746,6 +752,14 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 /* a panel of glass under the "?", each paragraph a step with its own mark */
 .help-body { position: absolute; right: 0; top: 44px; z-index: 20; width: min(400px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px; display: grid; gap: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow), 0 24px 60px -20px rgb(0 0 0 / 0.55); font-size: 0.875rem; line-height: 1.55; color: var(--ink); transform-origin: calc(100% - 17px) -8px; animation: pop-in 0.22s var(--ease) both; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 @keyframes pop-in { from { opacity: 0; scale: 0.96; translate: 0 -4px; } }
+/* (more below: its foot fades out, until it's scrolled to the end; on a
+   phone, as tall as the screen allows) */
+@property --more { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes more-below { from { --more: 48px; } to { --more: 0px; } }
+@supports (animation-timeline: scroll()) {
+  .help-body { -webkit-mask-image: linear-gradient(#000 calc(100% - var(--more)), transparent); mask-image: linear-gradient(#000 calc(100% - var(--more)), transparent); animation: pop-in 0.22s var(--ease) both, more-below linear both; animation-timeline: auto, scroll(self); }
+}
+@media (max-width: 600px) { .help-body { max-height: calc(100dvh - 84px); } }
 .help-body p { margin: 0; padding-left: 30px; position: relative; color: color-mix(in oklab, var(--ink) 85%, var(--muted)); }
 .help-body p::before { position: absolute; left: 0; top: 0; width: 22px; text-align: center; font-size: 0.9375rem; }
 .help-body p:nth-child(1)::before { content: "🎙️" / ""; }
@@ -1124,12 +1138,15 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px 
 /* the settings over the top of the room, so a change shows behind them */
 .others { position: relative; }
 .room-settings[open] { position: absolute; z-index: 6; left: 0; right: 0; top: 44px; max-height: min(70vh, 640px); overflow: auto; box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.7); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-.room-settings summary { position: sticky; top: 0; background: inherit; z-index: 1; }
+/* (its title solid as it stays at the top, or what scrolls under shows
+   through it) */
+.room-settings summary { position: sticky; top: 0; background: var(--surface); border-radius: inherit; z-index: 1; }
 .room-settings[open] summary::after { content: "Done"; margin-left: auto; color: var(--accent); font-size: 0.8125rem; }
 /* on a phone, a sheet up from the bottom of the screen, all of it within
    reach (over the room, partway down the page, its end was off the screen) */
 @media (max-width: 600px) {
-  .room-settings[open] { position: fixed; top: auto; bottom: 0; left: 0; right: 0; max-height: 82dvh; border-radius: var(--radius) var(--radius) 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); z-index: 40; }
+  /* (no margin: its own, under it, held it a strip off the bottom) */
+  .room-settings[open] { position: fixed; top: auto; bottom: 0; left: 0; right: 0; margin: 0; max-height: 82dvh; border-radius: var(--radius) var(--radius) 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); z-index: 40; }
 }
 /* on a phone: the switcher and the way round on one line, the switcher
    giving way first */
