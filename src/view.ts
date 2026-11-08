@@ -432,15 +432,65 @@ export function roomPage(
 
 // Every room: the ones anyone can find (and yours that aren't), each with
 // how it looks and who's in it, and a way to make another.
+// A room drawn small, as its own looks have it: the view out of its window,
+// the curtains, the lights along the rail, a picture, the rug, the table, and
+// a chair for each seat, with someone in one for each person there now.
+const SKY_ART: Record<string, { sky: [string, string, string]; far: string; near: string; sun: string; sea?: string; sand?: string; stars?: boolean }> = {
+  dusk: { sky: ["#3d5f9e", "#8fa6cf", "#f3c48a"], far: "#5f7f86", near: "#2c4f3d", sun: "#ffdca0" },
+  day: { sky: ["#3f86d6", "#86bdf0", "#cfe6f7"], far: "#7fae7a", near: "#4b8344", sun: "#fffae1" },
+  night: { sky: ["#070b1d", "#16214a", "#2b3a6b"], far: "#1d2747", near: "#0f1528", sun: "#dce6ff", stars: true },
+  snow: { sky: ["#7f93ab", "#b9c6d6", "#dfe6ee"], far: "#dfe6ee", near: "#ffffff", sun: "#fffaf0" },
+  sea: { sky: ["#2f7cc4", "#7fc0ea", "#d6eef8"], far: "#2a7fae", near: "#2a7fae", sun: "#fff8dc", sea: "#2a7fae", sand: "#e9d7a8" },
+};
+const SEAT_HUES = [150, 30, 270, 200, 340, 90];
+function roomPicture(sc: Scene, here: number): string {
+  const wall = SCENE_PARTS.walls.find((x) => x.id === sc.walls)?.colour ?? "#434c66";
+  const floor = SCENE_PARTS.floor.find((x) => x.id === sc.floor)?.colour ?? "#a8774c";
+  const rug = SCENE_PARTS.rug.find((x) => x.id === sc.rug)?.colours ?? [];
+  const k = SKY_ART[sc.sky] ?? SKY_ART.dusk;
+  const id = `r${sc.sky}${sc.walls}${sc.floor}${sc.rug}`;
+  const curtain = rug[0] ?? "#6b5a52";
+  const land = k.sea
+    ? `<rect x="0" y="40" width="96" height="14" fill="${k.sea}"/><rect x="0" y="54" width="96" height="8" fill="${k.sand}"/>`
+    : `<path d="M0 46 Q22 36 46 44 T96 40 V62 H0Z" fill="${k.far}"/><path d="M0 54 Q30 46 60 52 T96 50 V62 H0Z" fill="${k.near}"/>`;
+  const stars = k.stars ? [[12, 10], [30, 18], [58, 8], [74, 22], [86, 12], [44, 26]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="0.9" fill="#fff" opacity="0.8"/>`).join("") : "";
+  const bulbs = Array.from({ length: 11 }, (_, i) => { const x = 60 + i * 11.6; const y = 9 + Math.sin(((i % 5) / 5) * Math.PI) * 6; return `<circle cx="${x}" cy="${y}" r="1.6" fill="#ffd98a" class="bulb" style="--i:${i}"/>`; }).join("");
+  // six chairs round the table, back row first; someone sits in one for
+  // each person here
+  const seats = [[110, 98], [160, 92], [210, 98], [96, 124], [224, 124], [160, 128]];
+  const sat = seats.map(([x, y], i) => {
+    const chair = `<rect x="${x - 11}" y="${y - 16}" width="22" height="24" rx="6" fill="#000" opacity="0.28"/>`;
+    if (i >= here) return chair;
+    const h = SEAT_HUES[i % SEAT_HUES.length];
+    return `${chair}<path d="M${x - 9} ${y + 8} Q${x - 9} ${y - 4} ${x} ${y - 4} Q${x + 9} ${y - 4} ${x + 9} ${y + 8}Z" fill="oklch(0.7 0.14 ${h})"/><circle cx="${x}" cy="${y - 11}" r="7.5" fill="oklch(0.8 0.08 ${(h + 40) % 360})"/><circle cx="${x - 2.6}" cy="${y - 12}" r="1" fill="#222"/><circle cx="${x + 2.6}" cy="${y - 12}" r="1" fill="#222"/>`;
+  }).join("");
+  return `<svg class="room-pic" viewBox="0 0 320 150" preserveAspectRatio="xMidYMid slice">
+    <defs><linearGradient id="${id}s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${k.sky[0]}"/><stop offset="0.55" stop-color="${k.sky[1]}"/><stop offset="1" stop-color="${k.sky[2]}"/></linearGradient>
+    <radialGradient id="${id}l" cx="0.5" cy="0.2" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.18"/><stop offset="1" stop-color="#000" stop-opacity="0.25"/></radialGradient></defs>
+    <rect width="320" height="150" fill="${wall}"/>
+    <rect y="84" width="320" height="66" fill="${floor}"/>
+    <rect y="84" width="320" height="3" fill="#000" opacity="0.18"/>
+    <svg x="70" y="10" width="96" height="62" viewBox="0 0 96 62"><rect width="96" height="62" fill="url(#${id}s)"/>${stars}<circle cx="${k.stars ? 22 : 70}" cy="${k.stars ? 16 : 30}" r="${k.stars ? 5 : 7}" fill="${k.sun}" opacity="0.95"/>${land}</svg>
+    <rect x="68" y="8" width="100" height="66" rx="2" fill="none" stroke="#f1e6d2" stroke-opacity="0.9" stroke-width="3"/>
+    <line x1="118" y1="10" x2="118" y2="72" stroke="#f1e6d2" stroke-opacity="0.8" stroke-width="2"/>
+    <rect x="66" y="72" width="104" height="4" rx="1" fill="#f1e6d2" opacity="0.85"/>
+    <path d="M56 6 Q62 40 54 80 H70 Q66 40 70 6Z" fill="${curtain}"/><path d="M180 6 Q174 40 182 80 H166 Q170 40 166 6Z" fill="${curtain}"/>
+    <rect x="52" y="5" width="132" height="2.5" rx="1" fill="#2a2018" opacity="0.7"/>
+    <path d="M60 9 Q89 21 118 9 Q147 21 176 9" fill="none" stroke="#2a2018" stroke-opacity="0.5" stroke-width="0.8"/>${bulbs}
+    <rect x="226" y="20" width="44" height="34" rx="2" fill="#f4ecdc"/><circle cx="242" cy="34" r="9" fill="${rug[2] ?? "#c0504d"}" opacity="0.85"/><circle cx="254" cy="40" r="8" fill="${rug[3] ?? "#5fa07a"}" opacity="0.8"/>
+    ${rug.length ? `<ellipse cx="160" cy="124" rx="118" ry="22" fill="${rug[0]}"/><ellipse cx="160" cy="124" rx="100" ry="16" fill="none" stroke="${rug[1]}" stroke-width="2" opacity="0.8"/>` : ""}
+    ${sat}
+    <ellipse cx="160" cy="114" rx="52" ry="12" fill="#7a5638"/><ellipse cx="160" cy="112" rx="52" ry="12" fill="#946b47"/>
+    <rect width="320" height="150" fill="url(#${id}l)"/>
+  </svg>`;
+}
+
 export function roomsPage(rooms: (RoomInfo & { lately: number; here: number; mine: boolean })[], joined: boolean, msg?: string): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
   const card = (r: (typeof rooms)[number]): string => {
     const wall = SCENE_PARTS.walls.find((x) => x.id === r.scene.walls)?.colour ?? "#434c66";
-    const floor = SCENE_PARTS.floor.find((x) => x.id === r.scene.floor)?.colour ?? "#a8774c";
-    const rug = SCENE_PARTS.rug.find((x) => x.id === r.scene.rug)?.colours[0] ?? "transparent";
-    const sky = SCENE_PARTS.sky.find((x) => x.id === r.scene.sky);
-    return `<li><a class="room-card" href="${roomHref(r)}" style="--wall:${wall};--floor:${floor};--rug:${rug}" data-sky="${r.scene.sky}">
-      <span class="room-card-art" aria-hidden="true"><span class="win"></span><span class="rugdot"></span><span class="sky-emoji">${sky?.emoji ?? ""}</span></span>
+    return `<li><a class="room-card" href="${roomHref(r)}" style="--wall:${wall}">
+      <span class="room-card-art" aria-hidden="true">${roomPicture(r.scene, r.here)}</span>
       <span class="room-card-text"><strong>${esc(r.name)}</strong><small>${r.here ? `${r.here} here now` : r.lately ? `${r.lately} talked lately` : "Quiet"}${r.listed ? "" : " · link only"}${r.mine ? " · yours" : ""}</small></span>
     </a></li>`;
   };
