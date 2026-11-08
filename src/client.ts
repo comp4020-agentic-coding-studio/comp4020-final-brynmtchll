@@ -258,15 +258,20 @@ function remember(p: Phrase): void {
     when.dataset.at = String(p.at);
     when.textContent = "just now";
     li.append(who, " ", text, " ", when);
+    const atEnd = lately.scrollHeight - lately.scrollTop - lately.clientHeight < 24;
     lately.append(li);
     while (lately.children.length > RECORD_LINES) lately.firstElementChild!.remove();
+    // the newest stay in sight, unless someone's scrolled back to read
+    if (atEnd) lately.scrollTop = lately.scrollHeight;
   }
   recordEmpty.hidden = true;
 
 }
-// once someone opens or closes it themselves, it stays how they left it
+// once someone opens or closes it themselves, it stays how they left it;
+// it opens on the newest
 lately.closest("details")?.addEventListener("toggle", (e) => {
   if (e.isTrusted) (e.currentTarget as HTMLElement).dataset.touched = "1";
+  if ((e.currentTarget as HTMLDetailsElement).open) lately.scrollTop = lately.scrollHeight;
 });
 setInterval(() => {
   for (const t of lately.querySelectorAll<HTMLTimeElement>("time[data-at]")) t.textContent = ago(Number(t.dataset.at));

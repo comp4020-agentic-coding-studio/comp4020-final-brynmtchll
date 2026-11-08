@@ -181,7 +181,10 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   saying something, the rest in tabs;
   the room's own settings open from the room, for whoever made it ("i want
   the ui to feel more cohesive and intuitive", 8 Nov). Judged from
-  screenshots, both sizes, both themes.
+  screenshots, both sizes, both themes. A list that scrolls fades where it's
+  cut, and Lately opens on the newest and keeps them in sight unless you've
+  scrolled back (probe `lately.mjs`: it opened on the oldest, cut mid-row,
+  on 9 Nov).
 
 ## Every change
 

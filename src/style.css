@@ -731,7 +731,8 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 .record-wrap summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; margin: -14px -20px; padding: 14px 20px; border-radius: var(--radius); }
 .record-wrap summary:hover h2 { color: var(--ink); }
 .record-wrap summary::-webkit-details-marker { display: none; }
-.record-wrap summary::after { content: "▸"; color: var(--muted); transition: rotate 0.2s var(--ease); }
+.record-wrap summary::after { content: "▸"; order: 1; color: var(--muted); transition: rotate 0.2s var(--ease); }
+.record-wrap .near-note { order: 2; }
 .record-wrap[open] summary::after { rotate: 90deg; }
 .record-wrap[open] summary { margin-bottom: 0; }
 /* a timeline: a mark in their colour, their name in a column, what they
@@ -743,7 +744,15 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 .record strong { color: var(--person); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .record .said-text { color: color-mix(in oklab, var(--ink) 90%, var(--muted)); overflow-wrap: anywhere; }
 .record time { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* (more above or below: that end fades, until it's scrolled to) */
+@property --less { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes more-either { 0% { --less: 0px; --more: 40px; } 12% { --less: 40px; } 88% { --more: 40px; } 100% { --less: 40px; --more: 0px; } }
+@supports (animation-timeline: scroll()) {
+  .record { -webkit-mask-image: linear-gradient(transparent, #000 var(--less), #000 calc(100% - var(--more)), transparent); mask-image: linear-gradient(transparent, #000 var(--less), #000 calc(100% - var(--more)), transparent); animation: more-either linear both; animation-timeline: scroll(self); }
+}
 @media (max-width: 600px) {
+  .record-wrap summary { flex-wrap: wrap; row-gap: 2px; }
+  .record-wrap .near-note { flex-basis: 100%; margin-left: 0; }
   .record li { grid-template-columns: minmax(0, 1fr) auto; justify-content: stretch; row-gap: 0; }
   .record .said-text { grid-column: 1 / -1; grid-row: 2; }
 }
