@@ -448,6 +448,47 @@ led to. Claude chose how to build each; what to build was yours.
      same in `990b708`. Your card no longer fades in
      ([`0478f98`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0478f98)).
 
+10. **Rethought into live captions.** Brynly, 8 November, after trying
+    the rooms: "it sucks, the room customiseability needs a lot more work,
+    more over the whole site feels a bit goofy and purposeless we need to
+    completely big picture the site and think about how it can be slick,
+    streamlined and useful (and not clunky) if this might entail some
+    radical change then thats ok"
+    ([`fd005d2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/fd005d2), on the branch `rethink`; the state before is
+    the tag `before-rethink`, `d627070`).
+    - Claude's proposal, built without a pause (Brynly had said "don't ask
+      any questions or pause for anything"): keep what only Said does (each
+      person's speech heard in their own browser, drawn the way it was
+      said, live on every page) and make it useful as captions for a
+      group, the use the README's sources are about (expressive captions
+      for deaf and hard-of-hearing readers: de Lacerda Pataca et al. 2023;
+      Caption Royale, CHI '24; Google's Expressive Captions). Everything
+      that was there for its own sake went.
+    - Kept: in-browser Whisper, the hearing (loud, pitch, drawn out,
+      silence and noise never sent), drafts while someone talks, typing
+      with a tone and reading it aloud in a chosen voice (device or
+      Kokoro), correcting your own words, the raised-hand queue, rooms, the
+      checks on all of these.
+    - Changed: one transcript per room, in turns (a name, a time, the
+      words), instead of a card per person; rooms have what they're about
+      and how long they keep what's said (an hour, a day, a week, until
+      closed: past it deleted), not a look; each reader sets text size, how
+      strongly how it was said shows (none is plain captions) and contrast
+      for themselves; Present shows the transcript alone, large; the
+      transcript downloads as text; the front page is what Said is and the
+      rooms.
+    - Gone: avatars and the studio, the 3D room, walking, full screen
+      with a dock, faces and hands from the camera, emotes, reactions, word
+      effects and word styles (about 7,000 lines). 123 checks (the avatar,
+      face, hands, room and walking ones went with what they checked; two
+      added on how long a room keeps things).
+    - Real speech (the JFK recording as a microphone): another page shows
+      the first draft about 3 s after speech starts and the first phrase
+      about 4.5 s; all seven phrases arrived.
+    - Gap for the README (Brynly's to write): its "How it works" and
+      "What's checked" still describe avatars, faces, emotes, effects and
+      word styles, and `/readme/` publishes it.
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Brynly's M4 Pro in headless Chrome.

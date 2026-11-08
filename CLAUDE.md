@@ -8,22 +8,25 @@ judged, and say how.
 
 ## What Said is for
 
-People in one room, talking, and everyone seeing *how* each thing was said,
-not just what: louder heavier, higher higher, drawn out drawn out. It should
-be more interesting because others are in the room at the same moment.
+Live captions for a room, that keep how each thing was said. Everyone in a
+conversation (a tutorial, a meeting, a table) talks into their own phone or
+laptop, and everyone reads one transcript as it's said: louder heavier,
+higher raised, drawn out drawn out. Someone who'd rather type can, and is
+read aloud. It's more useful the more of the room is in it.
+
+It was rebuilt into this on 8 Nov, from a room of 3D avatars ("the whole
+site feels a bit goofy and purposeless ... slick, streamlined and useful
+(and not clunky) ... if this might entail some radical change then thats
+ok"). The state before is tagged `before-rethink`.
 
 ## Never
 
-- Never send or keep audio, or a picture of anyone's face. Only words, and
-  numbers about how they were said and how a face or hand is held, leave the
-  speaker's browser (`room.test.ts`: "stores words and how they were said,
-  and nothing else"; "puts someone's expression on their avatar ... and takes
-  nothing but its numbers").
-- Never write what someone feels on their words or their card. How a word
-  was said shows in the word, for the reader to infer ("i think id rather
-  the emotion be inferrable", 13 Oct). Judged. (The nearest the app comes:
-  a big laugh or a held gasp read from someone's face sends an emote by
-  itself. If that stays, README.md says why.)
+- Never send or keep audio. Only words, and numbers about how they were
+  said, leave the speaker's browser (`room.test.ts`: "stores words and how
+  they were said, and nothing else, so audio can't ride along").
+- Never write what someone feels on their words. How a word was said shows
+  in the word, for the reader to infer ("i think id rather the emotion be
+  inferrable", 13 Oct). Judged.
 - Never say how fast someone spoke: four measures of pace disagreed on real
   speech (`real-voice.test.ts`).
 - Never send a stretch of microphone that's mostly silence, a breath or the
@@ -31,82 +34,61 @@ be more interesting because others are in the room at the same moment.
   `vad.test.ts`: "finds none in noise, a hum, or a note held like singing
   without words"). Background noise turning into words was the bug Brynly
   asked twice to be fixed (20 Oct, 4 Nov).
-- Never let anyone change, take back or speak as anyone else
-  (`room.test.ts`: "refuses a change to anyone else's words"; "credits what's
-  said to whoever's cookie sent it").
-- Never show anyone another person's login id, which is also their cookie
-  (`room.test.ts`).
-- Never put what someone said into a page unescaped (`room.test.ts`,
-  `face.test.ts`).
+- Never let anyone change or speak as anyone else (`room.test.ts`: "refuses
+  a change to anyone else's words"; "credits what's said to whoever's cookie
+  sent it").
+- Never show anyone another person's login id, which is also their cookie,
+  or who opened a room by it (`room.test.ts`: "never shows anyone another
+  person's id"; "escapes a room's name ... never shows who opened it by id").
+- Never put what someone said, their name, or a room's name or about into a
+  page unescaped (`room.test.ts`: "escapes what people say"; "escapes a
+  room's name and what it's about wherever they're shown").
+- Never keep what's said in a room past what the room keeps: past it, it's
+  deleted, not hidden, and a room closed takes everything said in it
+  (`keep.test.ts`: "deletes what's older than each room keeps, and nothing
+  newer"; "deletes at once ... and everything when it's closed";
+  `room.test.ts`: "deletes what a room no longer keeps").
 - Never make a visitor download something large they didn't ask for: the
-  speech model (about 80 MB) loads once, on joining, and is kept; natural
-  voices and anything else big are opt-in.
+  speech model (about 80 MB) loads for someone who's joined and opened a
+  room; natural voices are opt-in. Reading needs no account and no download.
 
 ## Every page
 
-- Words show up as they're said: one at a time, in the speaker's own place,
-  within a second on every other open page, with no queue, loading zone or
-  button in the way ("i want ... the text be transmitted directly", 20 Oct;
-  `room.test.ts`: "within a second, without a reload"). Each person keeps
-  their own place and colour.
-- No pitch lines or charts over the words: the words themselves carry it
-  ("get rid of the pitch lines i dont like that", 13 Oct).
+- Words show up as they're said: a faded draft while someone's talking,
+  replaced by the phrase within a second of it being heard, on every open
+  page, with nothing in the way (`room.test.ts`: "within a second, without
+  a reload"; "shows words heard early to everyone"). Tried on real speech
+  as a microphone before a change to it is kept (the JFK recording: drafts
+  about 3 s after speech starts, phrases about 4.5).
+- The transcript is the page: one turn after another, each person's name in
+  their own colour, the words themselves always high-contrast. No avatars,
+  pitch lines or charts over the words ("get rid of the pitch lines", 13
+  Oct). How strongly how it was said shows is each reader's choice, down to
+  none (plain captions), with size and contrast; theirs alone, kept in their
+  own browser, never sent. Judged from screenshots.
+- What's said in a room stays in it, live and stored; who you are goes with
+  you (`room.test.ts`: "keeps what's said in a room to that room"). Only
+  whoever opened a room changes it, and only to what's on offer in
+  `src/packs.ts` (`room.test.ts`: "lets only whoever opened a room change
+  it").
+- Everything someone can choose is from `src/packs.ts`, never free text that
+  could be anything (`speech.test.ts`: "offers voices and a silent one, takes
+  only those").
 - Works in the latest Chrome at 1920x1080 and 390x844, and on a real phone,
   with no sideways scroll. Judged with a phone-sized browser, measuring the
   page against 390 itself: a phone-sized Chrome's `innerWidth` grows with an
   overflowing page, so comparing with it can't catch one (it missed a 682 px
   page on 5 Nov).
-- Polished, smooth and stylish, not a prototype ("considerably more polished
-  stylish and slick, with seamless and stunning design", 4 Nov): motion eases
-  rather than jumps, the room stays near 60 frames a second on a laptop and
-  near 50 on a slowed phone with twelve people in it, and a slow device gives
-  up effects before it gives up smoothness. Judged from screenshots of every
-  page, both sizes, both themes, before a visual change is kept, and frame
-  rates measured, not guessed.
-- Personal: everything about how someone appears is theirs to choose (avatar,
-  word style, voice), from choices in `src/packs.ts`, never free text that
-  could be anything (`packs.test.ts`).
-- The avatar is them: it follows their face, head, hands and voice closely
-  enough to feel live ("i need the head to be more responsive", 20 Oct).
-  Judged by Brynly, with Brynly's own face and voice.
-- The room is a place to be in, not only to look at: you can walk your
-  avatar about it, everyone sees you there, and it can fill the screen
-  ("make it so that you can control your avatar and move around, also i
-  want a full screen option", 7 Nov; "theres a lot more work that needs to
-  be done on that", then "reimagine the whole thing"). Nobody walks through
-  a wall, the table or a chair: getting up and sitting go out and back
-  between the chairs, a raised row along its step and down at the end, and
-  a tap finds a way round (`walk.test.ts`: "gets everyone out of their
-  chair and back into it ... never through a chair or the table", "finds
-  the way round the table and the chairs"). Right is right, as the camera
-  sees it (`walk.test.ts`: "walks the way the stick points"; it went left
-  for a day). Keys pressed in the room are the room's: W A S D walk
-  whatever in it was last clicked (a view, Reset, Sit), except a box being
-  typed in, and never type over a word (walking once typed "wwww" over
-  your last word, and Enter sent it to everyone, 8 Nov). Judged in a
-  browser: say something, click a view, hold W, press Enter. Full screen
-  keeps a way to talk, and one finger looks round in it. Anyone who closes
-  their page while up is back in their chair within a minute and a bit
-  (`walk.test.ts`: "sits back down whoever closed their page while up").
-  Where someone stands is only ever a place on the floor, kept while
-  they're up and never stored or logged (`room.test.ts`: "shows someone
-  walking about the room").
-- There's more than one room, each its own group with its own look
-  ("options to have different rooms / spaces, featuring different groups
-  etc", 8 Nov). What's said, hands, walking and emotes in a room stay in that
-  room, live and stored (`room.test.ts`: "keeps what's said in a room to that
-  room, live and stored"). Who you are and how you look go with you. Only
-  whoever made a room changes it, and only to looks from `src/packs.ts`
-  (`room.test.ts`: "lets only whoever made a room change it, and only to
-  looks on offer"). A room's name is escaped everywhere it shows, and who
-  made it is never sent by id (`room.test.ts`: "escapes a room's name
-  wherever it's shown, and never shows who made it by id").
-- One place for each thing: what you can do sits together beside the room
-  (on a phone, under the 3D room, and above the cards), one panel for
-  saying something, the rest in tabs;
-  the room's own settings open from the room, for whoever made it ("i want
-  the ui to feel more cohesive and intuitive", 8 Nov). Judged from
-  screenshots, both sizes, both themes.
+- Slick and calm, not a prototype ("considerably more polished stylish and
+  slick", 4 Nov; "slick, streamlined and useful (and not clunky)", 8 Nov):
+  one set of controls used everywhere, nothing on screen that isn't for
+  reading or saying something, motion only where something arrives. Judged
+  from screenshots of every page, both sizes, both themes, before a visual
+  change is kept.
+- Keys are only taken for correcting a word once you've tapped one of
+  yours; never while typing, and never from anywhere else on the page
+  (walking once typed "wwww" over someone's last word and Enter sent it to
+  everyone, 8 Nov). Judged in a browser.
 
 ## Every change
 
@@ -114,6 +96,9 @@ be more interesting because others are in the room at the same moment.
   including the hearing checked on real recordings in `spec/fixtures/`. A
   change to how speech is heard is tried on real audio, not only on tones,
   before it's accepted.
+- CI is read by its jobs (`gh run view <id> --json jobs`), not by whether
+  `gh run watch` exited 0: that said success for three red runs on 8 Nov
+  and the site stayed old.
 - A fix for something the agent got wrong lands as a check in `spec/` or a
   rule here, not only as a retry until it looks right.
 - Facts only in `notes/decisions-log.md`, each with its commit. `README.md`,
