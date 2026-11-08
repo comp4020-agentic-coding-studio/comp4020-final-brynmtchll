@@ -729,6 +729,34 @@ led to. Claude chose how to build each; what to build was yours.
       chin for zzz, arms folded for cool ([`ae6098a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/ae6098a)). 12 people on a
       phone at CPU 4x: 44.4 frames a second after (41 to 51 before); 11
       talking on cards, 57.1.
+    - Listening eyes move about a speaker's face (small shifts every 0.4
+      to 0.9 s) and now and then look away and back; heads glance at
+      someone putting a hand up; a head in the studio turned by hand blinks
+      and says the "Hear it" sample with its mouth and a hand ([`8f3d16d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/8f3d16d)).
+      Measured: 12 eye movements in 4 s of listening; the studio head's
+      mouth opened to 0.75 on "SO".
+    - From a second look at every page, both sizes and themes ([`35aea91`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/35aea91)):
+      - on a phone in full screen the ways to read it (Aa, colour, emoji)
+        sat over the view bar, cutting "Above" and covering "Me" and "Sit"
+        once up; they're now a row down, under full screen;
+      - the help panel was see-through at its foot (a mask on the panel);
+        now solid, with only its words fading while there's more;
+      - the microphone buttons with no room for words (Space on a phone,
+        the full-screen dock) show a microphone, not a bare dot;
+      - the same thing had two names: "Follow my face" in the studio is now
+        "Show my face" as README.md has it, "Say it" is "Say", "Start from"
+        is "Looks like", "Copy link" is "Copy the link", "Late night" is
+        "Night", "Beach house" is "Seaside" (each matches the scene parts),
+        and wow is 😮 as an emote as it is as a reaction (it was ❗);
+      - the studio's "As well" row repeated the one worn above; it now
+        leaves that one out and is called "Add more", the Face tab's second
+        "Shape" heading is "Adjust", a filled saved slot says "Replace",
+        and colour swatches have names for a screen reader, not "#8d5524".
+    - Beside a room's name, "2 here · 1 away" rather than "2 here" next to
+      three cards; "here" and "talked lately" the same on /rooms and in
+      the switcher; an away name no longer dimmed twice (unreadable in the
+      light theme); your own card says "Your words show here, as big as
+      you say them." until you've said something ([`4427f4a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/4427f4a)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
