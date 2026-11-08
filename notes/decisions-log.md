@@ -595,6 +595,26 @@ led to. Claude chose how to build each; what to build was yours.
       Twelve faces sent from one page and drawn on another: a glare first
       shut the eyes (lids closed by angle), fixed by closing them by how
       much of the eye they cover.
+    - Then, the same night, each its own commit:
+      - emotes pull whole faces (a laugh's eyes crinkle shut, "hmm" squints
+        one eye and presses the lips to one side), and the studio follows
+        all 52 scores ([`84c5927`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/84c5927));
+      - faces sent twice as often: two on their way at once, so others see
+        about 25 a second rather than 12 ([`4f4c165`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/4f4c165));
+      - how a word was said shows on the face both ways (quiet: a squint;
+        low: brows down; a question: the head tilts), held while it's said;
+        everyone sways and breathes on their own rhythm ([`336b59e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/336b59e));
+      - hair trails the head as it moves, pupils shrink with a shock, and a
+        head a camera reads blinks only when its person does ([`aa11b0a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/aa11b0a));
+      - someone coming in waves, and everyone looks their way; a page only
+        reconnecting doesn't wave again ([`07011ca`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/07011ca));
+      - everyone glances at whoever does an emote, eyes only ([`ee788b0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/ee788b0));
+      - a voice ahead of its words changes the mouth's shape each syllable
+        ([`934afb0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/934afb0));
+      - the studio's "Pull faces" runs your avatar through twelve faces
+        without a camera ([`40c7d73`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/40c7d73)).
+      - Measured: the room with twelve people at phone size, CPU slowed four
+        times, 48 frames a second, against 45 before these changes.
 
 ### What the three spikes measured (22 October, for the next decisions)
 
