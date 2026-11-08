@@ -1225,6 +1225,10 @@ button.primary { justify-self: start; background: var(--accent); border-color: v
   .preview-words { align-self: start; text-align: left; min-height: 1.6em; font-size: 1.125rem; }
   .preview-help { display: none; }
   .preview-tools button, .preview-tools select { padding: 6px 10px; font-size: 0.8125rem; }
+  /* (two by two, so nothing's left on a row alone) */
+  .preview-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(100%, 22rem); justify-self: center; margin-inline: auto; }
+  .preview-tools select { min-width: 0; text-align: center; }
+  .preview-tools:has(#studio-hands:not([hidden])) select { grid-column: 1 / -1; }
 }
 
 /* Lately, in the room: what's said near you clear, further off faint */
