@@ -546,6 +546,36 @@ led to. Claude chose how to build each; what to build was yours.
     - Found while checking, same commit: on a phone, a caption over a head
       could run off the room's right edge. It's now measured after its words
       are in and kept within the room.
+    - Before more was built, Brynly: "i wanted to brainstorm before you got
+      started". Claude offered other purposes: a daily line, practice,
+      accessibility, events, keepsakes. Brynly: "no i dont like any of these, i
+      dont want to gamify it, actually id rather lean much further into the
+      smoothness and the realism … lets go further with the facial
+      expressiosn i want these in depth mimmicked … rethink the whole
+      graphics model if we have to". The games came out
+      ([`561c29f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/561c29f)); the caption fix stayed. The
+      overnight plan is kept, marked superseded.
+
+13. **Avatars from a toolkit made for it, cartoony and very expressive.**
+    Brynly, 8 November, in turn:
+    - "i want to scrap the stretched spheres and go with either rocketbox or
+      three js";
+    - "i mean they can be some other toolkit for modelling avatars just not
+      your own custom spheres cause thats clunky i want to use something
+      thats been made for this purpose";
+    - "they don't have to be so realistic just very expressive";
+    - "cartoony but still as expressive / face like might be good".
+    - Options looked at:
+      - Microsoft Rocketbox: MIT, realistic, and its face shapes were made
+        automatically from face bones.
+      - The three.js Face Cap head: no licence stated.
+      - Ready Player Me: shut down 31 January 2026.
+      - VRoid "perfect sync" VRM models: cartoony, with all 52 ARKit face
+        shapes hand-made. Their README allows any use and redistribution,
+        with no credit needed.
+      Chosen: the VRoid perfect-sync models, so that every one of the 52
+      scores MediaPipe reads from a face can move the avatar (until now they
+      were squeezed into 15 numbers).
 
 ### What the three spikes measured (22 October, for the next decisions)
 

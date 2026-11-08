@@ -1,5 +1,11 @@
 # Overnight plan: one purpose for Said, then extend and refine (8 to 9 November)
 
+> **Superseded, 8 November, 22:10.** Brynly turned down the games ("i dont
+> want to gamify it") in favour of seamlessness and expressive faces. The
+> games were built and then removed (`6189d0f`, reverted in `561c29f`). Kept
+> as a record of an option tried. The work now is avatars from a toolkit
+> made for it (decisions log 13).
+
 Brynly, 8 November, 21:20: "i want rather to think of ways to give a feeling
 of purpose to the original site, or something like a task to make it
 engaging and give users a reason to visit it", and "establish a
