@@ -47,7 +47,13 @@ Checked automatically in `spec/`:
 
 Judged by people:
 
-*To be written by Brynly.*
+- **My pod tested it in the crit 9 session (14 Oct).** Their feedback led
+  to four directions:
+  - face mirroring: avatars that copy your expression ([`200bce1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/200bce1),
+    [`836339c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/836339c))
+  - fuller avatars, with bodies and hands ([`90dd4fe`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/90dd4fe), [`81d2090`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/81d2090))
+  - a 3D room to be in ([`309e650`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/309e650))
+  - choosing your own voice ([`fa34255`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/fa34255))
 
 ## Sources
 
