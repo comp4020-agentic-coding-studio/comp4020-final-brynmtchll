@@ -22,9 +22,16 @@ const HELP = `<details class="help">
     <p>Show your face and your avatar pulls the faces you pull and turns as you turn. Your voice and face are read in this browser; only words, how they were said, and a handful of numbers about your face leave it. No recording or picture is kept anywhere.</p>
     <p>Hands too, and your avatar's arms and hands follow yours: a thumbs up, a wave or a peace sign sets off its emote. Raise your hand (<kbd>Shift</kbd> <kbd>R</kbd>) to take a place in the queue to speak.</p>
     <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. ✨ Natural voices sound like people and the same on every device (a download, once, made and played in this browser). Pick yours in Customise. Headphones stop it coming back through your microphone.</p>
-    <p>Or type it instead: pick how it's said (excited, calm, asking, sarcastic…) and it goes up like anything said, spoken in your voice. <kbd>*stars*</kbd> or CAPS make a word stand out. Typed messages are marked ⌨.</p>
+    <p>Or type it instead: pick how it's said (excited, calm, asking, sarcastic…) and it goes up like anything said, a word at a time as you type (each space sends the words so far; Enter, or a pause, finishes the line), spoken in your voice. <kbd>*stars*</kbd> or CAPS make a word stand out. Typed messages are marked ⌨.</p>
   </div>
 </details>`;
+
+// Ways to read what's said (lens.ts): in Space, and over heads in the room
+const LENSES = [
+  { id: "words", label: "Words", icon: "Aa" },
+  { id: "colour", label: "Colour", icon: "🎨" },
+  { id: "emoji", label: "Emoji", icon: "😀" },
+] as const;
 
 export function layout(title: string, body: string, script = "", help = HELP, middle = ""): string {
   return `<!doctype html>
@@ -231,7 +238,7 @@ function typeBox(look: Look): string {
     `<label class="slider"><span>${label}</span><input type="range" name="tune.${id}" min="-1" max="1" step="0.05" value="${tune[id] ?? 0}"></label>`;
   return `<form id="type-box" class="type-box" hidden>
           <label for="typed" class="visually-hidden">Type instead of talking</label>
-          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type… *this* stands out"><button type="submit" class="type-send" disabled>Say it</button></div>
+          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type: each word goes as you type"><button type="submit" class="type-send" disabled>Say it</button></div>
           <fieldset class="tones"><legend class="visually-hidden">How it's said</legend>${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${t.label}</span></label>`).join("")}</fieldset>
           <details class="type-voice"><summary>Your voice</summary>
             <div class="type-voice-body">
@@ -389,6 +396,7 @@ export function roomPage(
     <p id="queue" class="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
     <div id="room3d" class="room3d" tabindex="0" aria-label="The room, drawn. W, A, S and D, or a tap on the floor, walk you about it. Drag or use the arrow keys to look round, scroll, pinch or press plus and minus to zoom, 0 to put it back." hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div>
       <div class="room-bar"><div class="room-views" role="radiogroup" aria-label="Look at the room">${[["follow", "Everyone"], ["speaker", "Speaker"], ["wide", "Wide"], ["above", "Above"], ["me", "Me"]].map(([v, l]) => `<label${v === "me" ? ' class="room-me"' : ""}><input type="radio" name="room-view" value="${v}"${v === "follow" ? " checked" : ""}><span>${l}</span></label>`).join("")}</div><button type="button" class="room-reset" title="Put the camera back">Reset</button><button type="button" class="room-sit" title="Back to your chair">Sit</button></div>
+      <div class="room-lens" role="radiogroup" aria-label="Read what's said as">${LENSES.map((l) => `<label title="Read it as ${l.label.toLowerCase()}"><input type="radio" name="room-lens" value="${l.id}"${l.id === "words" ? " checked" : ""}><span aria-hidden="true">${l.icon}</span><span class="visually-hidden">${l.label}</span></label>`).join("")}</div>
       <button type="button" class="room-full" aria-pressed="false" title="Full screen (Esc to come back)"><svg viewBox="0 0 20 20" aria-hidden="true"><path class="grow" d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5"/><path class="shrink" d="M8 3v5H3M17 8h-5V3M12 17v-5h5M3 12h5v5"/></svg><span class="visually-hidden">Full screen</span></button>
       <div class="room-stick" aria-hidden="true"><span class="room-knob"></span></div>
       <div class="room-dock" aria-label="Talk from the room">
@@ -461,18 +469,16 @@ export function roomsPage(rooms: (RoomInfo & { lately: number; here: number; min
 // emoji (words that have one become it, the rest a dot each, so the rhythm
 // stays). Talk or type, as in a room.
 type InSpace = { name: string; hue: number; x: number; y: number };
-const LENSES = [
-  { id: "words", label: "Words" },
-  { id: "colour", label: "Colour" },
-  { id: "emoji", label: "Emoji" },
-] as const;
+
 const SPACE_HELP = `<details class="help">
   <summary aria-label="How Space works">?</summary>
   <div class="help-body">
     <p>You are your words. Drag yours, or use the arrow keys, to move toward whoever you want to talk to.</p>
     <p>Others' words are as clear as you are close: up close you can read them, further off they blur, too far and you only see that they're talking. A loud word carries further than a quiet one.</p>
-    <p>Talk, or type. How you said it shows in your words, and in Colour and Emoji, in other ways.</p>
+    <p>Talk, or type: each word goes as you finish it with a space, and the line's kept on Enter or a pause. How you said it shows in your words, and in Colour and Emoji, in other ways.</p>
     <p>Read it as Words, as Colour (higher is warmer and higher up, louder is bigger, drawn out is longer) or as Emoji.</p>
+    <p>Or hear it as ♪ Tones: each word a note, higher if it was said higher, louder if it was said louder or nearer you, held if drawn out. Only the numbers make them; nobody's voice is played.</p>
+    <p>A ring goes out from whoever speaks, as far as what they said carries.</p>
   </div>
 </details>`;
 export function spacePage(me: (InSpace & { look: Look }) | undefined, people: (InSpace & { look: Look })[], said: Message[], upTo: number, msg?: string): string {
@@ -489,6 +495,7 @@ export function spacePage(me: (InSpace & { look: Look }) | undefined, people: (I
   <div class="space-bar">
     <p class="space-lede">You are your words. Move toward someone to read them.</p>
     <fieldset class="lenses" aria-label="Read it as">${LENSES.map((l, i) => `<label><input type="radio" name="lens" value="${l.id}"${i === 0 ? " checked" : ""}><span>${l.label}</span></label>`).join("")}</fieldset>
+    <button type="button" class="tones-toggle" id="tones" aria-pressed="false" title="Hear what's said as notes: higher said, higher note; louder, and nearer, louder">♪ <span>Tones</span></button>
     <p class="live" id="live" hidden></p>
   </div>
   ${msg && MESSAGES[msg] ? `<p class="notice">${MESSAGES[msg]}</p>` : ""}
@@ -497,7 +504,7 @@ export function spacePage(me: (InSpace & { look: Look }) | undefined, people: (I
     me
       ? `<form class="space-say" id="type-box" autocomplete="off">
     <button type="button" class="talk" id="talk" aria-pressed="false" disabled><span class="dot" aria-hidden="true"></span><span class="label">Talk</span></button>
-    <input name="text" maxlength="300" placeholder="Or type… *this* stands out" aria-label="Type something to say" enterkeyhint="send">
+    <input name="text" maxlength="300" placeholder="Or type: each word goes as you type" aria-label="Type something to say: each word goes to everyone as you finish it" enterkeyhint="send">
     <select name="tone" aria-label="How it's said">${TONES.map((t) => `<option value="${t.id}">${t.emoji} ${t.label}</option>`).join("")}</select>
     <button type="submit" class="type-send">Say</button>
   </form>

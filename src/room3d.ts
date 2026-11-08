@@ -31,6 +31,7 @@
 // the room).
 import { roomView, walking, type RoomHead } from "./head3d.ts";
 import { clarity, near, scaleAt, seenAt } from "./hearing.ts";
+import { type Lens, savedLens, saveLens, throughLens } from "./lens.ts";
 import { seatPlaces, stepsBeside, type Place } from "./seats.ts";
 import { DEFAULT_SCENE, SCENE_PARTS, type Scene } from "./packs.ts";
 import { facing, fovFor, held, inside, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type Vec3, type View } from "./camera.ts";
@@ -1048,10 +1049,18 @@ function captionOf(card: HTMLElement, talking: boolean): string {
   const fresh = latest && (talking || Date.now() - Number(latest.dataset.at) < CAPTION_FOR);
   // (the bubble's newest phrase is at its top; the one before it under it)
   const phrases = fresh ? [...latest.querySelectorAll(":scope > .phrase")].slice(0, 2).reverse() : [];
-  const words = (el: Element): string => [...el.querySelectorAll(".w")].map((w) => w.outerHTML).join(" ");
+  const words = (el: Element): string => throughLens(lens, [...el.querySelectorAll(".w")]);
   const parts = phrases.map(words);
   if (draft) parts.push(`<span class="draft-said">${words(draft)}</span>`);
   return parts.filter(Boolean).slice(-2).join(" ");
+}
+
+// How captions are read: as words, or as colour or emoji (lens.ts), the
+// reader's choice, from the room's corner, the same as in Space.
+let lens: Lens = savedLens();
+export function readAs(l: Lens): void {
+  lens = l;
+  saveLens(l);
 }
 
 // who's near enough to you to read, as names, whenever that changes (the
@@ -1705,7 +1714,7 @@ function draw(heads: RoomHead[], THREE: T): void {
     // to read, it's only seen that they're talking.
     const saidEl = el.querySelector<HTMLElement>(".room-said")!;
     const caption = card ? captionOf(card, who.speaking || !!html) : "";
-    const key = `${caption.length}:${caption.slice(-80)}`;
+    const key = `${lens}:${caption.length}:${caption.slice(-80)}`;
     let fresh = false;
     if (saidEl.dataset.key !== key) {
       saidEl.dataset.key = key;
@@ -1717,7 +1726,7 @@ function draw(heads: RoomHead[], THREE: T): void {
       saidEl.dataset.d = String(dq);
       el.style.setProperty("--far", String(scaleAt(d)));
       let heard = 0;
-      for (const w of saidEl.querySelectorAll<HTMLElement>(".w")) {
+      for (const w of saidEl.querySelectorAll<HTMLElement>(".w, .blob, .emo, .tick")) {
         const c = clarity(d, Number(w.style.getPropertyValue("--loud")) || 0);
         w.style.setProperty("--clear", c.toFixed(2));
         w.classList.toggle("unheard", c < 0.08);
@@ -1999,6 +2008,16 @@ function control(r: Room, box: HTMLElement): void {
   box.querySelector(".room-views")?.addEventListener("change", (e) => {
     const v = (e.target as HTMLInputElement).value as View;
     if (VIEWS.includes(v)) setView(v);
+  });
+  const lenses = box.querySelector<HTMLElement>(".room-lens");
+  for (const i of lenses?.querySelectorAll<HTMLInputElement>("input") ?? []) i.checked = i.value === lens;
+  box.dataset.lens = lens;
+  lenses?.addEventListener("change", (e) => {
+    readAs((e.target as HTMLInputElement).value as Lens);
+    box.dataset.lens = lens;
+  });
+  lenses?.addEventListener("click", (e) => {
+    if ((e as MouseEvent).detail > 0) box.focus({ preventScroll: true });
   });
   box.querySelector(".room-sit")?.addEventListener("click", () => {
     sit();

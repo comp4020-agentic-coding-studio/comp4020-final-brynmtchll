@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TONES, typedWords } from "../src/typed.ts";
+import { TONES, typedWords, typing } from "../src/typed.ts";
 import { clean, hueOf, LIMITS } from "../src/voice.ts";
 
 // A message typed instead of said, given the shape of a spoken one: what the
@@ -73,6 +73,27 @@ describe("a typed message, shaped the way it's written", () => {
     // nothing to say, nothing to send
     expect(typedWords("  ")).toEqual([]);
     expect(typedWords("*** ... !!!")).toEqual([]);
+  });
+});
+
+describe("typing that goes out a word at a time", () => {
+  it("sends the words so far each time one's finished with a space, and the line when it's done", () => {
+    const t = typing();
+    expect(t.changed("h")).toBeNull();
+    expect(t.changed("hey")).toBeNull();
+    expect(t.changed("hey ")).toBe("hey");
+    // (nothing new: not sent again)
+    expect(t.changed("hey  ")).toBeNull();
+    expect(t.changed("hey th")).toBeNull();
+    expect(t.changed("hey there ")).toBe("hey there");
+    // a word taken back is sent as it now stands
+    expect(t.changed("hey ")).toBe("hey");
+    const first = t.line();
+    expect(t.done("hey there *you*")).toBe("hey there *you*");
+    expect(t.line()).toBe(first + 1);
+    // the next line starts afresh, and an empty one isn't kept
+    expect(t.changed("so ")).toBe("so");
+    expect(t.done("   ")).toBeNull();
   });
 });
 

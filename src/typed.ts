@@ -120,3 +120,44 @@ export function typedWords(text: string, tone: Tone = "plain"): Word[] {
   const round = (n: number, most = Infinity): number => Math.round(Math.min(most, Math.max(-most, n)) * 10) / 10;
   return words.map((x) => ({ ...x, start: round(x.start), end: round(x.end), loud: round(x.loud, 18), pitch: round(x.pitch ?? 0, 12), rise: round(x.rise, 12), stretch: round(x.stretch, 2), held: x.held === null ? null : round(x.held) }));
 }
+
+// Typing that goes out as it's typed, a word at a time, the way talking does
+// ("text should send on hitting space bar", 8 Nov): each space sends the
+// words so far, live, as a draft (faded, as a phrase still being said is),
+// and the line is kept as said on Enter or once typing stops for a moment
+// with nothing half-typed. The page wires it to its box (client.ts, space.ts);
+// this is the deciding, so it can be checked.
+export const KEEP_AFTER = 2500; // ms after the last space with nothing more typed
+export type Typing = {
+  // what to send now, if anything, after the box changed to `text`: a draft
+  // of the whole words so far, when a word has just been finished
+  changed: (text: string) => string | null;
+  // the line to keep, on Enter or a pause: everything typed, and the box is
+  // empty again
+  done: (text: string) => string | null;
+  // the number of the line now being typed, for its drafts
+  line: () => number;
+};
+export function typing(): Typing {
+  let line = 1;
+  let sent = "";
+  return {
+    changed(text) {
+      // (a word's finished when a space follows it; the words before the
+      // last space, if they're more than were last sent)
+      const cut = text.lastIndexOf(" ");
+      const whole = cut < 0 ? "" : text.slice(0, cut).replace(/\s+/g, " ").trim();
+      if (!whole || whole === sent) return null;
+      sent = whole;
+      return whole;
+    },
+    done(text) {
+      const all = text.replace(/\s+/g, " ").trim();
+      sent = "";
+      if (!all) return null;
+      line++;
+      return all;
+    },
+    line: () => line,
+  };
+}

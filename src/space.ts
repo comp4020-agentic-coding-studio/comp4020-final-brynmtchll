@@ -5,11 +5,13 @@
 // goes to everyone, and others' words are as clear as you are close
 // (hearing.ts: a loud word carries further, too far and you only see that
 // someone's talking). What's said is read as words, as colour or as emoji.
-import { apart, clarity, scaleAt, SEEN_AT } from "./hearing.ts";
+import { apart, clarity, FLOOR, reach, scaleAt, SEEN_AT } from "./hearing.ts";
 import { listener } from "./listen.ts";
-import { emojiOf, type Look } from "./packs.ts";
+import { play, tonesAreOn, tonesOn } from "./tones.ts";
+import { colourOf, emojiWord, type Lens, type Said as LensSaid, savedLens, saveLens } from "./lens.ts";
+import type { Look } from "./packs.ts";
 import { canSpeak, hearVoices, speak, type Spoken } from "./speech.ts";
-import { toneOf, typedWords } from "./typed.ts";
+import { KEEP_AFTER, toneOf, typedWords, typing } from "./typed.ts";
 import { esc, wordHtml, type Voice, type Word } from "./voice.ts";
 
 const main = document.querySelector<HTMLElement>("main.space-page")!;
@@ -95,47 +97,16 @@ function beingFor(name: string, hue: number): HTMLElement {
 
 // ---- reading: what you can make out of each, from where you are ----
 
-type Lens = "words" | "colour" | "emoji";
-const LENS_KEY = "said-space-lens";
-let lens: Lens = (() => {
-  try {
-    return (localStorage.getItem(LENS_KEY) as Lens | null) ?? "words";
-  } catch {
-    return "words";
-  }
-})();
-// each being's words as the lens draws them, from the words as said (kept
-// on the being as their numbers, so any lens can be drawn from them)
-type Said = { w: string; loud: number; pitch: number; stretch: number; html: string };
+let lens: Lens = savedLens();
+// each being's words as said (kept as their numbers, so any lens can draw them)
+type Said = LensSaid & { html: string };
 const saidOf = new Map<string, Said[]>();
 function draw(name: string): void {
   const el = beings.get(name);
   const ws = saidOf.get(name);
   if (!el || !ws) return;
   const box = el.querySelector(".being-words")!;
-  if (lens === "words") box.innerHTML = ws.map((w) => w.html).join(" ");
-  else if (lens === "colour")
-    // each word a soft shape: how high it was said, its hue (warmer higher)
-    // and how far up it sits; how loud, its size; how drawn out, its length
-    box.innerHTML = ws
-      .map((w) => {
-        // (blue for a word said low and quiet, through green and gold, to
-        // red-pink for one said high and loud)
-        const heat = Math.max(-1, Math.min(1, w.pitch / 6 + w.loud / 12));
-        const hue = Math.round(230 - (heat + 1) * 105);
-        const size = Math.max(0.5, Math.min(2.2, 1 + w.loud / 12));
-        const long = 1 + Math.max(0, w.stretch) * 1.2 + Math.min(1.5, w.w.length / 8);
-        return `<span class="blob" style="--h:${hue};--s:${size.toFixed(2)};--l:${long.toFixed(2)};--p:${Math.max(-12, Math.min(12, w.pitch))}" title="${esc(w.w)}"></span>`;
-      })
-      .join("");
-  else
-    box.innerHTML = ws
-      .map((w) => {
-        const e = emojiOf(w.w);
-        const size = Math.max(0.7, Math.min(2.4, 1 + w.loud / 10));
-        return e ? `<span class="emo" style="--s:${size.toFixed(2)};--p:${Math.max(-12, Math.min(12, w.pitch))}" title="${esc(w.w)}">${e}</span>` : `<span class="tick" style="--s:${size.toFixed(2)}" title="${esc(w.w)}"></span>`;
-      })
-      .join("");
+  box.innerHTML = lens === "words" ? ws.map((w) => w.html).join(" ") : ws.map(lens === "colour" ? colourOf : emojiWord).join("");
   hearFrom();
 }
 const lenses = document.querySelector<HTMLFieldSetElement>(".lenses");
@@ -144,11 +115,7 @@ field.dataset.lens = lens;
 lenses?.addEventListener("change", (e) => {
   lens = (e.target as HTMLInputElement).value as Lens;
   field.dataset.lens = lens;
-  try {
-    localStorage.setItem(LENS_KEY, lens);
-  } catch {
-    // (a private window: not remembered)
-  }
+  saveLens(lens);
   for (const name of saidOf.keys()) draw(name);
 });
 
@@ -177,6 +144,14 @@ function hearFrom(): void {
 }
 addEventListener("resize", hearFrom);
 
+// tones, on and off (tones.ts): only on a tap, as browsers need for sound
+const tonesButton = document.getElementById("tones") as HTMLButtonElement | null;
+tonesButton?.addEventListener("click", () => {
+  const on = !tonesAreOn();
+  tonesOn(on);
+  tonesButton.setAttribute("aria-pressed", String(on));
+});
+
 // ---- what's said, as it's said ----
 
 type WordOut = { html: string; t: number; d: number; say?: [number, number, number, number?] };
@@ -191,6 +166,19 @@ const textOf = (html: string): string => {
   s.querySelector(".held")?.remove();
   return s.textContent ?? "";
 };
+// A phrase said sends a ring out from whoever said it, as far as its
+// loudest word carries (hearing.ts reach): how far a word carries shows
+// without anyone reading it, the way you'd hear a laugh across a room.
+function ripple(el: HTMLElement, loud: number): void {
+  const at = onScreen(posOf(el));
+  const r = (reach(loud) / FLOOR.w) * (turned() ? field.clientHeight : field.clientWidth);
+  const ring = document.createElement("span");
+  ring.className = "ripple";
+  ring.style.cssText = `left:${(at.x * 100).toFixed(2)}%;top:${(at.y * 100).toFixed(2)}%;--r:${Math.round(r)}px;--hue:${el.style.getPropertyValue("--hue")}`;
+  field.prepend(ring);
+  ring.addEventListener("animationend", () => ring.remove());
+  setTimeout(() => ring.remove(), 3000);
+}
 // a being keeps its latest phrase up for a while, then quietens to a dot,
 // so a field of people who said something an hour ago isn't a wall of words
 const QUIET_AFTER = 45_000;
@@ -201,6 +189,17 @@ function show(p: { name: string; hue: number; words: WordOut[] }, draft = false)
     p.words.map((w) => ({ ...numbersOf(w.html), w: textOf(w.html), stretch: w.say?.[2] ?? (/class="held"/.test(w.html) ? 1.5 : 0), html: w.html })),
   );
   el.classList.toggle("draft", draft);
+  if (!draft) {
+    const ws = saidOf.get(p.name)!;
+    ripple(el, Math.max(0, ...ws.map((w) => w.loud)));
+    // (heard as notes, if tones are on: as clear as the words would be)
+    if (tonesAreOn() && p.name !== myName) {
+      const mine = beings.get(myName);
+      const d = apart(mine ? posOf(mine) : { x: 0.5, y: 0.5 }, posOf(el));
+      const hue = Number(el.style.getPropertyValue("--hue")) || 0;
+      play(p.words.map((w, i) => ({ t: w.t, d: w.d, loud: ws[i]?.loud ?? 0, pitch: ws[i]?.pitch ?? 0, stretch: ws[i]?.stretch ?? 0 })), Math.max(...ws.map((w) => clarity(d, w.loud)), 0), hue);
+    }
+  }
   el.dataset.at = String(Date.now());
   el.classList.remove("quiet");
   el.classList.remove("speaking");
@@ -379,13 +378,37 @@ const showMine = (ws: Word[], draft = false): void => show({ name: myName, hue: 
 const typeBox = document.getElementById("type-box") as HTMLFormElement | null;
 if (typeBox && me) {
   const input = typeBox.elements.namedItem("text") as HTMLInputElement;
+  const tone = (): ReturnType<typeof toneOf> => toneOf((typeBox.elements.namedItem("tone") as HTMLSelectElement).value);
+  // each word out as it's finished with a space, the line kept on Enter or
+  // a pause (typed.ts typing), as in a room
+  const typed = typing();
+  const draftNo = (): number => 1_000_000 + typed.line();
+  let keepTimer = 0;
+  const keep = (): void => {
+    clearTimeout(keepTimer);
+    const forDraft = draftNo();
+    const text = typed.done(input.value);
+    input.value = "";
+    const ws = text ? typedWords(text, tone()) : [];
+    if (!ws.length) return void me.classList.remove("draft");
+    showMine(ws);
+    void post(ws, null, forDraft, true);
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(keepTimer);
+    const sofar = typed.changed(input.value);
+    if (sofar !== null) {
+      const ws = typedWords(sofar, tone());
+      if (ws.length) {
+        showMine(ws, true);
+        void fetch("early", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ words: ws, draft: draftNo() }) }).catch(() => {});
+      }
+    }
+    if (input.value.trim() && /\s$/.test(input.value)) keepTimer = window.setTimeout(keep, KEEP_AFTER);
+  });
   typeBox.addEventListener("submit", (e) => {
     e.preventDefault();
-    const ws = typedWords(input.value, toneOf((typeBox.elements.namedItem("tone") as HTMLSelectElement).value));
-    if (!ws.length) return;
-    input.value = "";
-    showMine(ws);
-    void post(ws, null, undefined, true);
+    keep();
   });
   const talk = document.getElementById("talk") as HTMLButtonElement;
   const mic = listener({

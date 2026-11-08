@@ -9,7 +9,7 @@ import { readHands, type HandReader } from "./handreader.ts";
 import { onNear, overHead, setScene, showRoom, sit, walked, walkSent } from "./room3d.ts";
 import type { Spot as Standing } from "./walk.ts";
 import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
-import { toneOf, typedWords, type Tone } from "./typed.ts";
+import { KEEP_AFTER, toneOf, typedWords, typing as lineTyping, type Tone } from "./typed.ts";
 import { EFFECTS, emoteOf, EMOTES, fullScene, REACTIONS, STYLES, type Look as PackLook, type Scene } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
@@ -937,6 +937,7 @@ function clearDraft(n: number): void {
 // as a draft: drawn faded, then replaced by the real phrase when it ends.
 // A draft is only heard when Whisper has nothing else to do, so it never
 // delays a real phrase: a phone too slow to keep up simply sends fewer.
+const TYPED_LINES = 1_000_000; // typed lines' drafts are numbered from here
 const EARLY_AFTER = 0.9; // seconds of sound in the phrase
 const EARLY_EVERY = 900; // ms
 let draft = 1; // the number of the phrase now being said
@@ -1069,16 +1070,40 @@ if (typeBox) {
     return { ...mine, voice: v, tune: { ...(mine.tune ?? {}), voicePitch: n("voicePitch"), voiceSpeed: n("voiceSpeed") } } as Voiced;
   };
   const spoken = (words: Word[]): Spoken[] => words.map((w) => ({ text: w.w, loud: w.loud, pitch: w.pitch ?? 0, stretch: w.stretch, rise: w.rise, effect: w.effect ?? null }));
-  input.addEventListener("input", () => (send.disabled = !input.value.trim()));
-  typeBox.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const words = typedWords(input.value, tone());
-    if (!words.length) return;
+  // Each word goes out as it's finished, with a space, live for everyone as
+  // a draft; the line is kept on Enter, or once typing stops for a moment
+  // with nothing half-typed (typed.ts typing). Typed lines' drafts are
+  // numbered apart from spoken phrases' (TYPED_LINES on), so neither takes
+  // down the other's.
+  const typed = lineTyping();
+  const draftNo = (): number => TYPED_LINES + typed.line();
+  let keepTimer = 0;
+  const keep = (): void => {
+    clearTimeout(keepTimer);
+    const forDraft = draftNo();
+    const text = typed.done(input.value);
     input.value = "";
     send.disabled = true;
-    void post(words, null, undefined, true);
+    for (const d of document.querySelectorAll<HTMLInputElement>(".dock-type input")) d.value = "";
+    const words = text ? typedWords(text, tone()) : [];
+    if (!words.length) return void clearDraft(forDraft);
+    void post(words, null, forDraft, true);
     // (heard by you too, with voices on: it's your voice saying it)
     speak(spoken(words), voiceNow());
+  };
+  input.addEventListener("input", () => {
+    send.disabled = !input.value.trim();
+    clearTimeout(keepTimer);
+    const sofar = typed.changed(input.value);
+    if (sofar !== null) {
+      const words = typedWords(sofar, tone());
+      if (words.length) void fetch("early", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ words, draft: draftNo() }) }).catch(() => {});
+    }
+    if (input.value.trim() && /\s$/.test(input.value)) keepTimer = window.setTimeout(keep, KEEP_AFTER);
+  });
+  typeBox.addEventListener("submit", (e) => {
+    e.preventDefault();
+    keep();
   });
   // tried out in your voice, the way it'll go: what's typed, or a sample
   typeBox.querySelector(".type-hear")?.addEventListener("click", () => {
@@ -1794,6 +1819,13 @@ if (dock) {
     real.dispatchEvent(new Event("input", { bubbles: true }));
     typeBox!.requestSubmit();
     box.value = "";
+  });
+  // (word by word, as the box beside the room does: it's the same line)
+  form.querySelector("input")!.addEventListener("input", (e) => {
+    const real = typeBox?.elements.namedItem("text") as HTMLInputElement | null;
+    if (!real) return;
+    real.value = (e.target as HTMLInputElement).value;
+    real.dispatchEvent(new Event("input", { bubbles: true }));
   });
   // (typing here isn't walking, or anything else the room's keys do)
   form.addEventListener("keydown", (e) => e.stopPropagation());
