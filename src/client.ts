@@ -4,7 +4,7 @@
 // at a time and sends each phrase as it's heard.
 import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { face52, faceFilter, type Face52 } from "./arkit.ts";
-import { arms as headArms, cameIn, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
+import { arms as headArms, cameIn, emote as headEmote, noticed, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { onNear, overHead, setScene, showRoom, sit, walked, walkSent } from "./room3d.ts";
@@ -1738,6 +1738,7 @@ function showEmote(name: string, id: string): void {
   const slot = card?.querySelector<HTMLElement>(".spot-avatar");
   if (!em || !card || !slot) return;
   headEmote(slot, em);
+  if (!still.matches) noticed(slot);
   if (!em.burst || still.matches) return;
   // what rises from their head: a few of its emoji, floating up and away
   // (from their head in the room, if that's what's shown)

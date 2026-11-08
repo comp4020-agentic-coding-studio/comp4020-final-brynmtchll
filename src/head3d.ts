@@ -1091,7 +1091,7 @@ function frame(now: number): void {
   for (const [slot, s] of heads) if (now - s.voice.loudAt < VOICE_FOR && (!voiced || s.voice.since > voiced[1])) voiced = [slot, s.voice.since];
   const speakerNow = voiced?.[0] ?? speaker;
   // (failing a speaker, someone just come in, for a moment: everyone looks)
-  const newcomer = arrived && now - arrived.at < LOOK_AT_NEW && heads.has(arrived.slot) ? arrived.slot : null;
+  const newcomer = arrived && now - arrived.at < arrived.for && heads.has(arrived.slot) ? arrived.slot : null;
   const lookAt = speakerNow && heads.has(speakerNow) ? speakerNow : newcomer;
   const talker = lookAt ? centre(lookAt) : null;
   const inRoom: RoomHead[] = [];
@@ -1540,12 +1540,17 @@ export function arms(slot: HTMLElement, b: Body | null): void {
 // Who's speaking now, so every other head can look at them; the last to
 // start, if several are.
 const talking: HTMLElement[] = [];
-// Someone just come in: everyone's eyes go to them for a moment, as heads
-// turn when a door opens, and they wave.
+// Someone just come in, or doing something (an emote): everyone's eyes go
+// to them for a moment, as heads turn when a door opens or someone laughs.
+// Only eyes: nobody's face is pulled for them.
 const LOOK_AT_NEW = 2200; // ms
-let arrived: { slot: HTMLElement; at: number } | null = null;
+const LOOK_AT_EMOTE = 1300; // ms
+let arrived: { slot: HTMLElement; at: number; for: number } | null = null;
 export function cameIn(slot: HTMLElement): void {
-  arrived = { slot, at: performance.now() };
+  arrived = { slot, at: performance.now(), for: LOOK_AT_NEW };
+}
+export function noticed(slot: HTMLElement): void {
+  arrived = { slot, at: performance.now(), for: LOOK_AT_EMOTE };
 }
 
 export function speaking(slot: HTMLElement, on: boolean): void {
