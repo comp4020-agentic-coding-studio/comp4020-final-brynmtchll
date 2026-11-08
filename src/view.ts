@@ -184,12 +184,15 @@ function lookEditor(look: Look): string {
     </form>`;
 }
 
+// an arrow curling back, for undo (and, turned round, redo)
+const TURN_BACK = `<svg class="turn" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5.5 3 2.5 6l3 3M2.5 6h7a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
 // looks someone has saved, to wear again in a tap (a flat face of each)
 const savedSlots = (saved: (Look | null)[]): string =>
   saved
     .map(
       (l, i) =>
-        `<div class="saved-look"><button type="button" class="wear" data-slot="${i}"${l ? ` data-look="${esc(JSON.stringify(l))}"` : " disabled"} aria-label="${l ? `Wear saved look ${i + 1}` : `Slot ${i + 1} is empty`}">${l ? avatarSvg(l, REST, "") : `<span class="empty">${i + 1}</span>`}</button><button type="button" class="keep" data-slot="${i}" title="Save how you look now to slot ${i + 1}">Save</button></div>`,
+        `<div class="saved-look"><button type="button" class="wear" data-slot="${i}"${l ? ` data-look="${esc(JSON.stringify(l))}"` : " disabled"} aria-label="${l ? `Wear saved look ${i + 1}` : `Slot ${i + 1} is empty`}">${l ? avatarSvg(l, REST, "") : `<span class="empty" aria-hidden="true">+</span>`}</button><button type="button" class="keep" data-slot="${i}" title="Save how you look now to slot ${i + 1}">Save</button></div>`,
     )
     .join("");
 
@@ -221,11 +224,11 @@ export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: 
   <section class="editor" aria-label="Choose how you look">
     <div class="editor-head">
       <a href="${esc(from)}" class="done">Done</a>
-      <div class="history"><button type="button" id="undo" disabled aria-label="Undo">↶ Undo</button><button type="button" id="redo" disabled aria-label="Redo">Redo ↷</button></div>
+      <div class="history"><button type="button" id="undo" disabled aria-label="Undo">${TURN_BACK} Undo</button><button type="button" id="redo" disabled aria-label="Redo">Redo ${TURN_BACK.replace("<svg", '<svg style="scale:-1 1"')}</button></div>
       <button type="button" class="surprise" id="surprise">Surprise me</button>
     </div>
     <p id="status" class="status" aria-live="polite"></p>
-    <div class="saved-looks" aria-label="Saved looks">${savedSlots(saved)}</div>
+    <div class="saved-block"><p class="saved-title">Saved looks <small>${saved.some(Boolean) ? "tap one to wear it" : "keep up to four, to wear again in a tap"}</small></p><div class="saved-looks" aria-label="Saved looks">${savedSlots(saved)}</div></div>
     ${lookEditor(look)}
   </section>
 </main>`,

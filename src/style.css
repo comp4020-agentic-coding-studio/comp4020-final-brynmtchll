@@ -961,13 +961,18 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 /* looks someone has saved, to wear again in a tap */
 /* saved looks: a row of four, each a face to wear (or its number, empty)
    with a small Save tucked under it */
+.saved-block { display: grid; gap: 8px; }
+.saved-title { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
+.saved-title small { font-weight: 400; color: var(--faint); margin-left: 6px; }
+.editor-head .history button { display: inline-flex; align-items: center; gap: 5px; }
+.history .turn { flex: none; }
 .saved-looks { display: grid; grid-template-columns: repeat(4, minmax(0, 64px)); gap: 10px; margin: 0; }
 .saved-look { display: grid; justify-items: center; gap: 0; }
 .saved-look .wear { width: 100%; aspect-ratio: 1; padding: 6px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); transition: border-color 0.18s, transform 0.18s var(--ease); }
 .saved-look .wear:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-2px); }
 .saved-look .wear:disabled { opacity: 1; cursor: default; background: transparent; border-style: dashed; }
 .saved-look .wear .avatar { width: 100%; height: 100%; }
-.saved-look .wear .empty { color: var(--faint); font-weight: 600; font-size: 0.875rem; }
+.saved-look .wear .empty { color: var(--faint); font-weight: 300; font-size: 1.375rem; line-height: 1; }
 .saved-look .keep { margin-top: -10px; padding: 2px 9px; min-height: 0; font-size: 0.6875rem; font-weight: 600; border-radius: 999px; background: var(--surface); position: relative; }
 
 /* ---- the studio: making your avatar, on a screen of its own ---- */
@@ -1170,7 +1175,9 @@ button.primary { justify-self: start; background: var(--accent); border-color: v
   .stage-3d { top: 0; z-index: 5; padding: 8px; border-radius: 0 0 var(--radius) var(--radius); }
   /* head beside the name and words, so the part that stays put is short */
   .stage-3d .preview { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; justify-items: start; align-items: center; column-gap: 12px; row-gap: 2px; }
-  .stage-3d .preview .preview-head { width: min(38vw, 22vh); grid-row: 1 / 3; }
+  /* (as big as the bar staying put allows: a third of the screen's height
+     at most, so the choices still have most of it) */
+  .stage-3d .preview .preview-head { width: min(46vw, 26svh); grid-row: 1 / 3; }
   .preview-name { align-self: end; }
   .preview-words { align-self: start; text-align: left; min-height: 1.6em; font-size: 1.125rem; }
   .preview-help { display: none; }
