@@ -660,6 +660,26 @@ led to. Claude chose how to build each; what to build was yours.
       every frame (a probe counted 100 to 240 flips in 120 frames; now one or
       two as it settles); and a long caption hung off the right of the room
       on a phone ([`118e3c1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/118e3c1)).
+    - Hands and glances:
+      - where arms are drawn (the room, the studio), a word someone leans on
+        brings a hand up and down, a question turns a palm up, and now and
+        then a plain word gets a lighter one; idle heads glance at someone
+        else in the room about a third of the time
+        ([`d108c7c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d108c7c));
+      - spooky brings both hands up as claws, sparkle as jazz hands, and a
+        word said in a wave sways one hand
+        ([`0770b01`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0770b01)).
+      - 12 people on a phone, CPU slowed 4x, alternating runs before and
+        after: 42.0 and 46.6 frames a second before; 46.2, 42.4, 51.0, 41.0
+        and 49.2 after.
+    - Before anyone joins, the room shows four empty chairs rather than the
+      table close up, and hides the walking hint and a phone's stick
+      ([`8caabba`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/8caabba)).
+    - From a look-only sweep: Lately's times, its note and the studio's
+      saved-looks line were 3:1 against the page; now 5.7:1
+      ([`37fe0c2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/37fe0c2)). A mistyped address got a bare black "Not
+      found", 980 wide on a phone; now a page that leads back
+      ([`0801f53`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0801f53)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
