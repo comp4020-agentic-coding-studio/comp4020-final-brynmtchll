@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanLook, DEFAULT_LOOK, randomLook, SLIDERS, VOICES } from "../src/packs.ts";
+import { isVoice, voiceFor, VOICES } from "../src/packs.ts";
 import { bestVoice, drawOut, echoOf, naturalPlan, playedSpans, remember, runsOf, type Spoken } from "../src/speech.ts";
 
 // Speaking what people say, checked as what's handed to the browser to say:
@@ -40,9 +40,9 @@ describe("speaking a phrase the way it was said", () => {
 
   it("speaks in the voice chosen, moved by its pitch and speed sliders, and always within what a browser takes", () => {
     const deep = runsOf([plain("hello")], { voice: "deep", tune: {} })[0];
-    const tiny = runsOf([plain("hello")], { voice: "tiny", tune: {} })[0];
+    const high = runsOf([plain("hello")], { voice: "alice", tune: {} })[0];
     expect(deep.pitch).toBeLessThan(1);
-    expect(tiny.pitch).toBeGreaterThan(1.5);
+    expect(high.pitch).toBeGreaterThan(1.2);
     const higher = runsOf([plain("hello")], { voice: "warm", tune: { voicePitch: 1, voiceSpeed: 1 } })[0];
     expect(higher.pitch).toBeCloseTo(2 ** 0.5, 2);
     expect(higher.rate).toBeGreaterThan(1.3);
@@ -92,17 +92,14 @@ describe("not taking what was spoken for what the listener said", () => {
 });
 
 describe("the voices someone can choose", () => {
-  it("offers voices and a silent one, takes only those, and a surprise always speaks", () => {
+  it("offers voices and a silent one, takes only those, and gives newcomers every voice between them but silence", () => {
     expect(VOICES.length).toBeGreaterThan(5);
     expect(VOICES.map((v) => v.id)).toContain("silent");
-    expect(DEFAULT_LOOK.voice).not.toBe("silent");
-    expect(cleanLook({ voice: "deep" })).toMatchObject({ voice: "deep" });
-    expect(cleanLook({ voice: "Samantha" })).toBeNull();
-    expect(cleanLook({ tune: { voicePitch: 3 } })!.tune).toEqual({ voicePitch: 1 });
-    expect(SLIDERS.map((s) => s.id)).toEqual(expect.arrayContaining(["voicePitch", "voiceSpeed"]));
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < 200; i++) expect(randomLook(rnd).voice).not.toBe("silent");
+    expect(isVoice("deep")).toBe(true);
+    expect(isVoice("Samantha")).toBe(false);
+    const given = new Set(Array.from({ length: VOICES.length * 2 }, (_, seat) => voiceFor(seat)));
+    expect(given.has("silent")).toBe(false);
+    expect(given.size).toBe(VOICES.length - 1);
   });
 });
 
@@ -154,10 +151,9 @@ describe("speaking a phrase in a natural voice", () => {
     }
   });
 
-  it("whispers a hushed voice or a whispered word quietly", () => {
-    expect(naturalPlan([plain("a secret")], { voice: "whisper", tune: {} })!.volume).toBeLessThan(naturalPlan([plain("a secret")], look)!.volume);
-    const [w] = naturalPlan([{ text: "secret", loud: 0, pitch: 0, stretch: 0, effect: "whisper" }], look)!.shapes;
-    expect(w.gain).toBeLessThanOrEqual(0.45);
+  it("says a word said quietly quieter", () => {
+    const [, w] = naturalPlan([plain("a"), { text: "secret", loud: -12, pitch: 0, stretch: 0 }], look)!.shapes;
+    expect(w.gain).toBeLessThan(1);
   });
 
   it("works out where each word is played, once the ones that stood out are played faster or slower", () => {
@@ -192,10 +188,6 @@ describe("speaking a phrase in a natural voice", () => {
     expect(naturalPlan([plain("hi")], { voice: "warm", blend: "deep", tune: { voiceBlend: 1 } })!.blend!.mix).toBe(0.5);
     expect(naturalPlan([plain("hi")], { voice: "warm", blend: "deep", tune: { voiceBlend: -1 } })!.blend).toBeUndefined();
     expect(naturalPlan([plain("hi")], { voice: "warm", blend: "warm", tune: {} })!.blend).toBeUndefined();
-    // a look takes only a voice on offer to mix in
-    expect(cleanLook({ blend: "deep" })).toMatchObject({ blend: "deep" });
-    expect(cleanLook({ blend: "am_onyx" })).toBeNull();
-    expect(cleanLook({ tune: { voiceBlend: 0.4 } })!.tune).toEqual({ voiceBlend: 0.4 });
   });
 
   it("has a natural voice for every voice but silent, each one Kokoro has", () => {

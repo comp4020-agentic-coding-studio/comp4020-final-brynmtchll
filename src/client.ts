@@ -1,748 +1,448 @@
-// The page's script. The server renders everything already said, so the page
-// reads fine without this; the script keeps it live, plays each phrase in its
-// speaker's spot, and, while someone's microphone is on, hears them a phrase
-// at a time and sends each phrase as it's heard.
-import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
-import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
-import type { Body } from "./body.ts";
-import { readHands, type HandReader } from "./handreader.ts";
-import { overHead, setScene, showRoom, sit, walked, walkSent } from "./room3d.ts";
-import type { Spot as Standing } from "./walk.ts";
+// The room page's script. The server renders the transcript so far, so the
+// page reads fine without this; the script keeps it live (each phrase added
+// to the transcript as it's said, a faded draft while someone's still
+// talking), hears you a phrase at a time while your microphone is on and
+// sends each as it's heard, sends what you type, reads typed messages aloud
+// for anyone who's asked, and keeps the reader's own settings.
 import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
 import { toneOf, typedWords, type Tone } from "./typed.ts";
-import { EFFECTS, emoteOf, EMOTES, fullScene, REACTIONS, STYLES, type Look as PackLook, type Scene } from "./packs.ts";
-import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
+import { cleanReading, DEFAULT_READING, KEEPS, type Reading } from "./packs.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
-import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
+import { esc, type Voice, type Word } from "./voice.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
 
-const stage = document.getElementById("stage") as HTMLUListElement;
-const nobody = document.getElementById("nobody") as HTMLElement;
+const main = document.querySelector<HTMLElement>("main.room")!;
+const transcript = document.getElementById("transcript") as HTMLOListElement;
+const empty = document.getElementById("empty") as HTMLElement;
+const drafts = document.getElementById("drafts") as HTMLUListElement;
+const jump = document.getElementById("jump") as HTMLButtonElement;
 const live = document.getElementById("live") as HTMLElement;
-const heardAloud = document.getElementById("heard") as HTMLElement;
+const myName = main.dataset.me ?? "";
 
-// ---- the stage: each person's words, one at a time, in their spot ----
+// ---- small things kept in this browser ----
 
-type StageWord = { html: string; t: number; d: number; gap: number; say?: [number, number, number, number?] };
-type Phrase = { id: number; name: string; hue: number; look?: Look; text: string; at: number; words: StageWord[]; reactions?: Record<number, Record<string, number>>; typed?: true };
-
-// Each word appears when it was said, but stays up at least SHORTEST_WORD so
-// it can be read: fast speech has words a tenth of a second long, gone before
-// anyone sees them. Running behind like that is made up in the pauses. A long
-// pause is shortened so nobody waits on it; the last word stays up for
-// LINGER after it's said, then fades. A phrase that arrives while the last
-// one is still playing waits its turn, so nobody's words overlap themselves.
-const SHORTEST_WORD = 0.25;
-const LONGEST_PAUSE = 1.5;
-const LINGER = 2;
-// A phrase that's waited longer than STALE to be played is skipped: a tab in
-// the background (where browsers slow timers to a crawl) or a reconnect that
-// catches up on many phrases would otherwise play minutes of old words.
-const STALE = 15_000; // ms
-const still = matchMedia("(prefers-reduced-motion: reduce)");
-
-// A spot is "playing" while a phrase's words are going up, "lingering" while
-// its last word stays, and idle otherwise. A phrase that arrives while it
-// lingers starts at once, rather than waiting the linger out.
-type Spot = {
-  el: HTMLElement;
-  word: HTMLElement;
-  queue: (Phrase & { arrived: number })[];
-  state: "idle" | "playing" | "lingering";
-  timers: number[];
-};
-
-const spots = new Map<string, Spot>();
-
-// Someone who joined after the page loaded gets a card when they join.
-// Past MOST_SPOTS, the one who's been quiet longest gives theirs up, so a
-// page never fills with names. Your own card is in the middle, not the stack.
-const MOST_SPOTS = 24;
-const cardOf = (name: string): HTMLElement | null =>
-  document.querySelector<HTMLElement>(`.spot[data-name="${CSS.escape(name)}"]`);
-function spotFor(p: Pick<Phrase, "name" | "hue">, look?: Look): Spot {
-  const known = spots.get(p.name);
-  if (known) {
-    // most recently heard from last, so the quietest is first to go
-    spots.delete(p.name);
-    spots.set(p.name, known);
-    if (look && !known.el.dataset.look) {
-      known.el.dataset.look = JSON.stringify(look);
-      drawAvatar(p.name, expressionOf.get(p.name) ?? REST);
-    }
-    return known;
-  }
-  let el = cardOf(p.name);
-  if (!el) {
-    for (const [name, spot] of spots) {
-      if (spots.size < MOST_SPOTS) break;
-      if (spot.state !== "idle" || spot.el.classList.contains("mine")) continue;
-      spot.el.remove();
-      spots.delete(name);
-    }
-    el = document.createElement("li");
-    el.className = "spot";
-    el.dataset.name = p.name;
-    el.style.setProperty("--hue", String(p.hue));
-    if (look) el.dataset.look = JSON.stringify(look);
-    const head = document.createElement("div");
-    head.className = "spot-head";
-    const avatar = document.createElement("span");
-    avatar.className = "spot-avatar";
-    const label = document.createElement("p");
-    label.className = "spot-name";
-    const who = document.createElement("span");
-    who.className = "who";
-    who.textContent = p.name;
-    label.append(who);
-    head.append(avatar, label);
-    const word = document.createElement("p");
-    word.className = "spot-word";
-    word.setAttribute("aria-hidden", "true");
-    const thread = document.createElement("ol");
-    thread.className = "thread";
-    thread.setAttribute("aria-label", `What ${p.name} said lately`);
-    el.append(head, word, thread);
-    stage.append(el);
-    nobody.hidden = true;
-  }
-  const spot: Spot = { el, word: el.querySelector(".spot-word")!, queue: [], state: "idle", timers: [] };
-  spots.set(p.name, spot);
-  // a card the server drew becomes a 3D head; one just made gets its first face
-  if (look || (webgl && el.dataset.look)) drawAvatar(p.name, REST);
-  return spot;
-}
-
-// Each avatar is redrawn from its person's look (kept on their card), latest
-// expression and, while their camera's on, which way their head is turned.
-// Where the browser can, it's a 3D head (head3d.ts), which eases between
-// expressions itself; the flat one the server drew stays until that's ready,
-// and for good where it can't be.
-const expressionOf = new Map<string, Expression>();
-// how someone's words are drawn follows their look (view.ts styleVars)
-function styleWords(card: HTMLElement, look: PackLook): void {
-  const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
-  card.dataset.words = st.id;
-  card.dataset.font = st.font;
-  card.toggleAttribute("data-glow", "glow" in st);
-}
-function drawAvatar(name: string, e: Expression, pose: Pose | null = null): void {
-  expressionOf.set(name, e);
-  const card = cardOf(name);
-  const look = card?.dataset.look ? (JSON.parse(card.dataset.look) as Look) : null;
-  if (card && look) styleWords(card, look as unknown as PackLook);
-  const slot = card?.querySelector<HTMLElement>(".spot-avatar");
-  if (!look || !slot) return;
-  if (!slot.querySelector(".head3d")) slot.innerHTML = avatarSvg(look, e, `${name}'s avatar`);
-  if (webgl) void head3d(slot, look, e, pose);
-}
-const slotOf = (spot: Spot): HTMLElement | null => spot.el.querySelector<HTMLElement>(".spot-avatar");
-for (const el of document.querySelectorAll<HTMLElement>(".spot")) spotFor({ name: el.dataset.name!, hue: 0 });
-
-// The word being said goes up large (the thread underneath has the rest).
-function showWord(spot: Spot, html: string, at?: { id: number; i: number }): void {
-  spot.word.classList.remove("fading");
-  spot.word.innerHTML = html;
-  // which word it is, so it can be reacted to where it's shown big (the room)
-  if (at) Object.assign(spot.word.dataset, { id: String(at.id), i: String(at.i) });
-  else for (const k of ["id", "i"]) delete spot.word.dataset[k];
-  // restart the arrival animation on the new word
-  spot.word.classList.remove("arrive");
-  void spot.word.offsetWidth;
-  spot.word.classList.add("arrive");
-  fitWord(spot.word);
-}
-
-// A word too wide for where it's shown big shrinks to fit it, on one line
-// (broken across lines, it ran down over their thread). On the card's own
-// element rather than the word, so the room, copying the word, doesn't.
-function fitWord(el: HTMLElement): void {
-  el.style.removeProperty("--fit");
-  const w = el.querySelector<HTMLElement>(".w");
-  if (!w || !el.clientWidth) return;
-  const over = w.offsetWidth / el.clientWidth;
-  if (over > 1) el.style.setProperty("--fit", String(Math.floor((100 / over) * 0.97) / 100));
-}
-
-function play(spot: Spot): void {
-  for (const t of spot.timers) clearTimeout(t);
-  spot.timers = [];
-  while (spot.queue.length && Date.now() - spot.queue[0].arrived > STALE) spot.queue.shift();
-  const phrase = spot.queue.shift();
-  const slot = slotOf(spot);
-  if (!phrase) {
-    spot.state = "idle";
-    spot.el.classList.remove("speaking");
-    if (slot) speaking(slot, false);
-    return;
-  }
-  spot.state = "playing";
-  spot.el.classList.add("speaking");
-  if (slot) speaking(slot, true);
-  const later = (at: number, fn: () => void): void => void spot.timers.push(window.setTimeout(fn, at * 1000));
-  // each word goes up large, and their head says it, the way it was said
-  const show = (w: StageWord, i: number): void => {
-    showWord(spot, w.html, { id: phrase.id, i });
-    const shown = spot.word.querySelector<HTMLElement>(".w");
-    if (!slot || !shown) return;
-    const n = (v: string): number => Number(shown.style.getPropertyValue(v)) || 0;
-    sayWord(slot, {
-      seconds: w.d,
-      loud: n("--loud"),
-      pitch: n("--pitch"),
-      syllables: vowels(shown.textContent ?? "").length,
-      effect: /fx-(\w+)/.exec(shown.className)?.[1] ?? null,
-    });
-  };
-  // `at` is when each word goes up on the page; `due` is when it was said,
-  // pauses shortened. A word goes up when it was said or once the last has
-  // had its SHORTEST_WORD, whichever is later. Someone who has asked for less
-  // motion sees the phrase's last word only.
-  let at = 0;
-  if (still.matches) {
-    const lastWord = phrase.words.at(-1);
-    if (lastWord) showWord(spot, lastWord.html, { id: phrase.id, i: phrase.words.length - 1 });
-  } else {
-    let due = 0;
-    phrase.words.forEach((w, i) => {
-      at = Math.max(at, due);
-      later(at, () => show(w, i));
-      at += SHORTEST_WORD;
-      due += i + 1 < phrase.words.length ? w.d + Math.min(Math.max(0, w.gap), LONGEST_PAUSE) : w.d;
-    });
-    at = Math.max(at, due);
-  }
-  // then the next phrase, if one's waiting; if not, the last word lingers
-  // and goes
-  later(at, () => {
-    if (spot.queue.length) return play(spot);
-    spot.state = "lingering";
-    later(LINGER, () => {
-      spot.word.classList.add("fading");
-      play(spot);
-    });
-  });
-}
-
-// A screen reader hears each phrase whole, with who said it, rather than a
-// word at a time from the stage.
-// The brief record: a word joins its speaker's last line if they were the
-// last to speak and haven't paused long; otherwise it starts a new line.
-// Only the last RECORD_LINES are kept.
-const lately = document.getElementById("record") as HTMLOListElement;
-const recordEmpty = document.getElementById("record-empty") as HTMLElement;
-const RECORD_LINES = 12;
-const LINE_BREAK = 8_000;
-function remember(p: Phrase): void {
-  const last = lately.lastElementChild as HTMLElement | null;
-  if (last && last.dataset.name === p.name && p.at - Number(last.dataset.until) < LINE_BREAK) {
-    last.querySelector(".said-text")!.append(` ${p.text}`);
-    last.dataset.until = String(p.at);
-  } else {
-    const li = document.createElement("li");
-    li.dataset.name = p.name;
-    li.dataset.until = String(p.at);
-    li.style.setProperty("--hue", String(p.hue));
-    const who = document.createElement("strong");
-    who.textContent = p.name;
-    const text = document.createElement("span");
-    text.className = "said-text";
-    text.textContent = p.text;
-    const when = document.createElement("time");
-    when.dataset.at = String(p.at);
-    when.textContent = "just now";
-    li.append(who, " ", text, " ", when);
-    lately.append(li);
-    while (lately.children.length > RECORD_LINES) lately.firstElementChild!.remove();
-  }
-  recordEmpty.hidden = true;
-
-}
-// once someone opens or closes it themselves, it stays how they left it
-lately.closest("details")?.addEventListener("toggle", (e) => {
-  if (e.isTrusted) (e.currentTarget as HTMLElement).dataset.touched = "1";
-});
-setInterval(() => {
-  for (const t of lately.querySelectorAll<HTMLTimeElement>("time[data-at]")) t.textContent = ago(Number(t.dataset.at));
-}, 15_000);
-
-function arrive(p: Phrase & { draft?: number }): void {
-  remember(p);
-  heardAloud.textContent = `${p.name}${p.typed ? " (typed)" : ""}: ${p.text}`;
-  const spot = spotFor(p, p.look);
-  // spoken, for anyone with voices on: not your own back to you, nor what
-  // comes again after a dropped connection
-  // (said in a natural voice, their avatar's mouth moves with it)
-  if (p.name !== myName && p.look && Date.now() - openedAt > CATCHING_UP) {
-    const slot = cardOf(p.name)?.querySelector<HTMLElement>(".spot-avatar");
-    speak(spokenOf(p), p.look, undefined, slot && webgl ? (level) => voiceLevels(slot, [level]) : undefined);
-  }
-  addToThread(spot, p, p.draft);
-  spot.queue.push({ ...p, arrived: Date.now() });
-  if (spot.state !== "playing") play(spot);
-  // your latest word is the one chosen, unless you've chosen another
-  if (spot.el.classList.contains("mine") && (followLatest || !chosen) && typing === null) choose(p.id, p.words.length - 1, true);
-}
-
-// What comes in the moment the stream (re)opens is what was missed, caught
-// up on all at once: shown, not spoken. (Timed by this page's own clock: a
-// device's clock may not agree with the server's.)
-const CATCHING_UP = 1500; // ms
-let openedAt = 0;
-
-// A phrase's words as they're to be spoken: each word's text (from its
-// drawing) and how it was said.
-const scratch = document.createElement("span");
-function spokenOf(p: Phrase): Spoken[] {
-  return p.words.map((w) => {
-    scratch.innerHTML = w.html;
-    // (a drawn-out word's extra letters are for the eye)
-    for (const held of scratch.querySelectorAll(".held")) held.remove();
-    const fx = scratch.querySelector<HTMLElement>(".w")?.className.match(/fx-(\w+)/)?.[1] ?? null;
-    const [loud, pitch, stretch, rise = 0] = w.say ?? [0, 0, 0];
-    return { text: scratch.textContent ?? "", loud, pitch, stretch, rise, effect: fx };
-  });
-}
-
-// Voices: off until asked for (a page that suddenly talks is a surprise,
-// and browsers won't before a tap anyway), and remembered on this browser.
-const voicesBox = document.getElementById("voices") as HTMLInputElement | null;
-const VOICES_KEY = "said-voices";
-const naturalBox = document.getElementById("natural") as HTMLInputElement | null;
-const NATURAL_KEY = "said-natural";
-const store = (key: string, value: string): void => {
+const recall = (k: string): string | null => {
   try {
-    localStorage.setItem(key, value);
-  } catch {
-    // not remembered
-  }
-};
-const recall = (key: string): string | null => {
-  try {
-    return localStorage.getItem(key);
+    return localStorage.getItem(k);
   } catch {
     return null;
   }
 };
-// Natural voices: offered once voices are on, downloaded the first time
-// they're asked for (the download said as it goes), then used for everyone
-// who speaks; the device's voices carry on until they're ready, or if they
-// can't be.
-function showNatural(n: Natural): void {
-  if (!naturalBox) return;
-  naturalBox.closest("label")!.classList.toggle("loading", n.state === "loading");
-  if (n.state === "loading") say(n.total ? `Getting natural voices ready, once: ${mb(n.loaded ?? 0)} of ${mb(n.total)} MB.` : `Getting natural voices ready (about ${mb(willDownload())} MB, once).`);
-  else if (n.state === "ready") {
-    say("Natural voices on: everyone's words in the voice they chose, the same on every device.");
-    store(NATURAL_KEY + "-had", "yes");
-    naturalBox.closest("label")!.querySelector(".natural-size")?.replaceChildren();
+const store = (k: string, v: string): void => {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    // (a private window: it just isn't remembered)
   }
-  else if (n.state === "failed") {
-    warn("Natural voices couldn't load here, so this device's own voices are speaking.");
-    naturalBox.checked = false;
-    // (not tried again by itself next time; the smaller build, if chosen, stays chosen)
-    if (recall(NATURAL_KEY) !== "small") store(NATURAL_KEY, "off");
-  }
-}
-// (the GPU build where the graphics can run it, unless the smaller was asked for)
-const naturalOn = (yes: boolean): void => naturalVoices(yes, recall(NATURAL_KEY) !== "small", showNatural);
-// how much it'll download: the GPU build's where there are graphics to run it
-let gpu = false;
-const willDownload = (): number => naturalSize(gpu && recall(NATURAL_KEY) !== "small");
-if (naturalBox && canNatural) {
-  // (the size said on the switch itself, where there's no hovering, until
-  // it's been downloaded here)
-  const sayingSize = (): void => {
-    const megabytes = Math.round(willDownload() / 1e6);
-    naturalBox.closest("label")!.title = `Natural-sounding voices, the same on every device: about ${megabytes} MB to download, once`;
-    const size = naturalBox.closest("label")!.querySelector(".natural-size");
-    if (size && recall(NATURAL_KEY + "-had") !== "yes") size.textContent = `${megabytes} MB`;
-  };
-  sayingSize();
-  void gpuAdapter().then((yes) => {
-    gpu = yes;
-    sayingSize();
-  });
-  naturalBox.addEventListener("change", () => {
-    // (on, keeping the smaller build if that's the one chosen)
-    store(NATURAL_KEY, naturalBox.checked ? (recall(NATURAL_KEY) === "small" ? "small" : "on") : "off");
-    naturalOn(naturalBox.checked);
-    if (!naturalBox.checked) say("Natural voices off: this device's own voices speak.");
-  });
-}
-const showNaturalBox = (): void => {
-  if (naturalBox && canNatural) naturalBox.closest("label")!.hidden = !voicesBox?.checked;
 };
-if (voicesBox && (canSpeak || canNatural)) {
-  voicesBox.closest("label")!.hidden = false;
-  voicesBox.addEventListener("change", () => {
-    showNaturalBox();
-    hearVoices(voicesBox.checked);
-    // voices off takes natural ones with them, for now (they're still chosen,
-    // for when voices are on again)
-    if (naturalBox?.checked) naturalOn(voicesBox.checked);
-    // (with a word about natural voices, if they're not on and could be)
-    const offer = naturalBox && canNatural && !naturalBox.checked ? ` For voices that sound like people, the same on every device, turn on ✨ Natural (about ${Math.round(willDownload() / 1e6)} MB, once).` : "";
-    say(voicesBox.checked ? `Voices on: what people say is spoken, the way they said it.${offer || " Headphones stop it coming back through your microphone."}` : "Voices off.");
-    store(VOICES_KEY, voicesBox.checked ? "on" : "off");
-  });
-  // remembered as on: ticked, and on from the first tap anywhere (browsers
-  // won't speak before one); natural ones too, if they were
-  if (recall(VOICES_KEY) === "on") {
-    voicesBox.checked = true;
-    showNaturalBox();
-    const natural = !!naturalBox && canNatural && recall(NATURAL_KEY) !== null && recall(NATURAL_KEY) !== "off";
-    if (natural) naturalBox!.checked = true;
-    // (after the tap's own click: a first tap that turns voices off doesn't
-    // start anything)
-    const start = (): void =>
-      void setTimeout(() => {
-        if (!voicesBox.checked) return;
-        hearVoices(true);
-        if (natural && naturalBox!.checked) naturalOn(true);
-      });
-    addEventListener("pointerdown", start, { once: true, capture: true });
-    addEventListener("keydown", start, { once: true, capture: true });
-  }
-}
 
-// ---- each person's thread: what they've said lately, as text messages ----
+// ---- the transcript ----
 
-// A phrase joins its speaker's latest bubble if it came soon after it, or
-// starts a new one; a pause inside it breaks the line, as in the server's
-// drawing (view.ts threadHtml). Newest first: a new bubble goes at the top,
-// and a new phrase at the top of its bubble. The thread keeps to the top as
-// it grows, unless someone has scrolled down to read back.
-const NEW_BUBBLE = 4000;
+type Line = { html: string; t: number; d: number; say?: [number, number, number, number?] };
+type Phrase = { id: number; name: string; hue: number; text: string; at: number; words: Line[]; typed?: true; voice?: { voice: string; pitch: number; speed: number } };
+
+// A run of one person's phrases, with nobody else between and no long gap,
+// is one turn: one name, one time, their words flowing on. Same as the
+// server draws it (view.ts turnsHtml).
+const NEW_TURN = 20_000;
 const NEW_LINE = 0.7;
-const THREAD_BUBBLES = 40;
-const phraseHtml = (p: Phrase): string =>
-  `<span class="phrase${p.typed ? " typed" : ""}" data-id="${p.id}"${p.typed ? ' title="Typed"' : ""}>${p.words.map((w, i) => `<span class="tw" data-i="${i}">${w.html}${reactionsHtml(p.reactions?.[i])}</span>${w.gap > NEW_LINE && i + 1 < p.words.length ? "<br>" : " "}`).join("")}</span>`;
-const said = new Map<number, Phrase>(); // each phrase on the page, by id, for redrawing
-
-// The real phrase takes the place of its draft (`draft`, the number its
-// speaker's page gave it): in the draft's own bubble when it starts a new
-// one, so the words settle where they were rather than jump.
-function addToThread(spot: Spot, p: Phrase, draftNo?: number): void {
-  const thread = spot.el.querySelector<HTMLOListElement>(".thread");
-  if (!thread) return;
-  let draft = thread.querySelector<HTMLElement>(":scope > .draft");
-  if (draft && draftNo !== undefined && Number(draft.dataset.draft) > draftNo) draft = null; // (a later phrase's)
-  if (thread.querySelector(`.phrase[data-id="${p.id}"]`)) return void draft?.remove();
-  said.set(p.id, p);
-  const atTop = thread.scrollTop < 40;
-  // (the newest bubble of what's been said, not a draft of what's being
-  // said, which stays on top of it until the real phrase replaces it)
-  const latest = thread.querySelector<HTMLElement>(":scope > .bubble:not(.draft)");
-  let bubble: HTMLElement;
-  if (latest && p.at - Number(latest.dataset.at) < NEW_BUBBLE) {
-    draft?.remove();
-    latest.insertAdjacentHTML("afterbegin", `${phraseHtml(p)}<br>`);
-    bubble = latest;
-  } else {
-    bubble = draft ?? document.createElement("li");
-    bubble.className = "bubble";
-    delete bubble.dataset.draft;
-    bubble.innerHTML = phraseHtml(p);
-    if (!draft) thread.prepend(bubble);
-    while (thread.children.length > THREAD_BUBBLES) thread.lastElementChild!.remove();
-  }
-  if (draft) clearTimeout(draftTimers.get(p.name));
-  // (the words that were faded settle, rather than pop)
-  bubble.querySelector(".phrase")?.classList.add("settled");
-  bubble.dataset.at = String(p.at);
-  if (atTop) thread.scrollTop = 0;
+const clock = (at: number): string => new Date(at).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
+const phraseHtml = (p: Pick<Phrase, "id" | "words" | "typed" | "at">): string =>
+  `<span class="phrase${p.typed ? " typed" : ""}" data-id="${p.id}" data-at="${p.at}">${p.words.map((w, i) => `<span class="tw" data-i="${i}">${w.html}</span>${i + 1 < p.words.length && gapAfter(p.words, i) > NEW_LINE ? " <br>" : " "}`).join("")}</span>`;
+const gapAfter = (ws: Line[], i: number): number => ws[i + 1].t - (ws[i].t + ws[i].d);
+function turnFor(p: Phrase): HTMLElement {
+  const last = transcript.lastElementChild as HTMLElement | null;
+  const lastAt = Number(last?.dataset.until ?? last?.dataset.at ?? 0);
+  if (last && last.dataset.name === p.name && p.at - lastAt < NEW_TURN) return last;
+  const li = document.createElement("li");
+  li.className = `turn${p.name === myName ? " mine" : ""}`;
+  li.dataset.name = p.name;
+  li.dataset.at = String(p.at);
+  li.style.setProperty("--hue", String(p.hue));
+  li.innerHTML = `<p class="turn-head"><span class="who">${esc(p.name)}</span><time datetime="${new Date(p.at).toISOString()}">${clock(p.at)}</time></p><p class="turn-words"></p>`;
+  transcript.append(li);
+  return li;
 }
 
-// A draft: the words of a phrase still being said, faded, at the top of its
-// speaker's thread, each new draft of the same phrase in place of the last.
-// The real phrase, when it comes, takes its place; one that never comes is
-// taken down after DRAFT_FOR.
-const DRAFT_FOR = 8000;
-type Draft = { name: string; hue: number; look?: Look; draft: number; words: StageWord[] };
+// Following along: the transcript stays at its newest while you're there; if
+// you've scrolled up to read back, it leaves you be and offers a way down.
+const scroller = (): HTMLElement => (document.body.classList.contains("presenting") ? transcript : document.scrollingElement as HTMLElement);
+const atBottom = (): boolean => {
+  const s = scroller();
+  return s.scrollHeight - s.scrollTop - s.clientHeight < 120;
+};
+const toBottom = (smooth = true): void => {
+  const s = scroller();
+  s.scrollTo({ top: s.scrollHeight, behavior: smooth && !still.matches ? "smooth" : "auto" });
+  jump.hidden = true;
+};
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+jump.addEventListener("click", () => toBottom());
+addEventListener("scroll", () => {
+  if (atBottom()) jump.hidden = true;
+}, { passive: true });
+transcript.addEventListener("scroll", () => {
+  if (atBottom()) jump.hidden = true;
+}, { passive: true });
+
+// what each phrase on the page is, to redraw it when it's corrected
+const said = new Map<number, Phrase>();
+
+function arrive(p: Phrase, draft?: number): void {
+  if (document.querySelector(`.phrase[data-id="${p.id}"]`)) return;
+  said.set(p.id, p);
+  const follow = atBottom();
+  dropDraft(p.name, draft);
+  const turn = turnFor(p);
+  const words = turn.querySelector(".turn-words")!;
+  words.insertAdjacentHTML("beforeend", (words.childElementCount ? " " : "") + phraseHtml(p));
+  turn.dataset.until = String(p.at);
+  empty.hidden = true;
+  if (follow) toBottom();
+  else if (p.name !== myName) jump.hidden = false;
+  if (p.name === myName) followLatest && chooseLatest();
+  // typed, read aloud in its writer's voice for whoever's asked (not your own:
+  // you heard it as you sent it)
+  if (p.typed && p.name !== myName && aloud()) speak(spokenOf(p.words), voicedOf(p.voice));
+}
+const spokenOf = (ws: Line[]): Spoken[] => ws.map((w) => ({ text: textOfHtml(w.html), loud: w.say?.[0] ?? 0, pitch: w.say?.[1] ?? 0, stretch: w.say?.[2] ?? 0, rise: w.say?.[3] ?? 0 }));
+const textOfHtml = (html: string): string => {
+  const d = document.createElement("span");
+  d.innerHTML = html;
+  d.querySelectorAll(".held").forEach((h) => h.remove());
+  return d.textContent ?? "";
+};
+const voicedOf = (v?: { voice: string; pitch: number; speed: number }): Voiced => ({ voice: v?.voice ?? "warm", tune: { voicePitch: v?.pitch ?? 0, voiceSpeed: v?.speed ?? 0 } });
+
+function edited(p: Phrase | { id: number; removed: true }): void {
+  const el = document.querySelector(`.phrase[data-id="${p.id}"]`);
+  if (!el) return;
+  if ("removed" in p) {
+    const turn = el.closest(".turn");
+    el.remove();
+    if (turn && !turn.querySelector(".phrase")) turn.remove();
+    said.delete(p.id);
+    empty.hidden = !!transcript.querySelector(".turn");
+    return;
+  }
+  said.set(p.id, p);
+  el.outerHTML = phraseHtml(p);
+  markChosen();
+}
+
+// Someone still talking: what's been heard of the phrase so far, faded, at
+// the foot of the transcript, until the real phrase replaces it. Each page
+// keeps only the latest for each speaker.
+type Draft = { name: string; hue: number; draft: number; words: { html: string }[] };
+const DRAFT_FOR = 6000;
 const draftTimers = new Map<string, number>();
 function showDraft(d: Draft): void {
-  const spot = spotFor(d, d.look);
-  const thread = spot.el.querySelector<HTMLOListElement>(".thread");
-  if (!thread) return;
-  let el = thread.querySelector<HTMLElement>(".draft");
-  if (!el || Number(el.dataset.draft) !== d.draft) {
-    el?.remove();
+  const follow = atBottom();
+  let el = drafts.querySelector<HTMLElement>(`[data-name="${CSS.escape(d.name)}"]`);
+  if (!el) {
     el = document.createElement("li");
-    el.className = "bubble draft";
-    el.dataset.draft = String(d.draft);
-    thread.prepend(el);
+    el.className = "draft";
+    el.dataset.name = d.name;
+    el.style.setProperty("--hue", String(d.hue));
+    drafts.append(el);
   }
-  el.innerHTML = d.words.map((w, i) => `${w.html}${w.gap > NEW_LINE && i + 1 < d.words.length ? "<br>" : " "}`).join("");
-  if (thread.scrollTop < 40) thread.scrollTop = 0;
-  // (the big word waits for the real phrase: a guess's last word shown big
-  // would jump back to the phrase's first when it plays, and a misheard one
-  // would stand there large meanwhile)
+  el.dataset.draft = String(d.draft);
+  el.innerHTML = `<span class="who">${esc(d.name)}</span> <span class="draft-words">${d.words.map((w) => w.html).join(" ")}</span>`;
+  if (follow) toBottom(false);
   clearTimeout(draftTimers.get(d.name));
   draftTimers.set(d.name, window.setTimeout(() => dropDraft(d.name), DRAFT_FOR));
 }
 function dropDraft(name: string, n?: number): void {
-  const el = cardOf(name)?.querySelector<HTMLElement>(".thread .draft");
+  const el = drafts.querySelector<HTMLElement>(`[data-name="${CSS.escape(name)}"]`);
   if (el && (n === undefined || Number(el.dataset.draft) <= n)) el.remove();
 }
 
-// a phrase changed by its speaker, drawn again in place, everywhere it is
-function redrawPhrase(id: number): void {
-  const p = said.get(id);
-  const el = document.querySelector(`.phrase[data-id="${id}"]`);
-  if (!el) return;
-  if (p) el.outerHTML = phraseHtml(p);
-  markChosen();
+// ---- who's here, and hands up ----
+
+type Here = { name: string; hue: number };
+const hereList = document.getElementById("here-list") as HTMLUListElement;
+function showHere(here: Here[]): void {
+  hereList.innerHTML = here.length
+    ? here.map((p) => `<li style="--hue:${p.hue}"${p.name === myName ? ' class="me"' : ""}><span class="who">${esc(p.name)}</span>${p.name === myName ? " <span class='you-tag'>you</span>" : ""}</li>`).join("")
+    : `<li class="nobody">Nobody's here right now</li>`;
 }
-function edited(p: Phrase | { id: number; removed: true }): void {
-  if ("removed" in p) {
-    const el = document.querySelector(`.phrase[data-id="${p.id}"]`);
-    const next = el?.nextSibling;
-    const prev = el?.previousSibling;
-    if (next?.nodeName === "BR") next.remove();
-    else if (prev?.nodeName === "BR") prev.remove();
-    const bubble = el?.closest(".bubble");
-    el?.remove();
-    if (bubble && !bubble.querySelector(".phrase")) bubble.remove();
-    said.delete(p.id);
-    if (chosen?.id === p.id) chosen = null;
-  } else {
-    said.set(p.id, p);
-    // the chosen word stays chosen if it's still there, or moves back one
-    if (chosen?.id === p.id && chosen.index >= p.words.length) chosen.index = p.words.length - 1;
-    redrawPhrase(p.id);
+const queueEl = document.getElementById("queue") as HTMLElement;
+let queueNow: string[] = [];
+function showQueue(queue: string[]): void {
+  queueNow = queue;
+  queueEl.hidden = !queue.length;
+  queueEl.innerHTML = queue.length ? `<span aria-hidden="true">✋</span> Next to speak: ${queue.map((n) => (n === myName ? "<strong>you</strong>" : esc(n))).join(", then ")}` : "";
+  const up = queue.includes(myName);
+  const btn = document.querySelector<HTMLButtonElement>(".hand");
+  if (btn) {
+    btn.classList.toggle("up", up);
+    btn.setAttribute("aria-pressed", String(up));
+    btn.querySelector(".hand-label")!.textContent = up ? "Lower hand" : "Raise hand";
+    (btn.form?.elements.namedItem("up") as HTMLInputElement | null)?.setAttribute("value", String(!up));
   }
 }
-// the threads the server drew: each phrase known by its id (from the words
-// as drawn, with their pauses, and the reactions on each apart from it), so
-// a change to it can be drawn again; and each thread scrolled to the latest
-const REACTION_OF = new Map<string, string>(REACTIONS.map((r) => [r.label, r.id]));
-for (const el of document.querySelectorAll<HTMLElement>(".thread .phrase")) {
-  const tws = [...el.querySelectorAll<HTMLElement>(".tw")];
-  const reactions: Record<number, Record<string, number>> = {};
-  tws.forEach((t, i) => {
-    for (const r of t.querySelectorAll<HTMLElement>(".reacts .react")) {
-      const id = REACTION_OF.get(r.title);
-      if (id) (reactions[i] ??= {})[id] = Number(r.querySelector("b")?.textContent ?? 1);
-    }
-  });
-  said.set(Number(el.dataset.id), {
-    id: Number(el.dataset.id),
-    name: el.closest<HTMLElement>(".spot")?.dataset.name ?? "",
-    hue: 0,
-    text: tws.map((t) => t.querySelector(".w")?.textContent ?? "").join(" "),
-    at: 0,
-    words: tws.map((t) => ({ html: t.querySelector(".w")?.outerHTML ?? t.innerHTML, t: 0, d: 0, gap: t.nextElementSibling?.nodeName === "BR" ? 1 : 0 })),
-    reactions,
-    ...(el.classList.contains("typed") ? { typed: true as const } : {}),
-  });
-}
-for (const thread of document.querySelectorAll<HTMLOListElement>(".thread")) thread.scrollTop = 0;
+const handForm = document.querySelector<HTMLFormElement>(".hand-form");
+handForm?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const up = !queueNow.includes(myName);
+  showQueue(up ? [...queueNow, myName] : queueNow.filter((n) => n !== myName));
+  void fetch("hand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ up }) })
+    .then((r) => r.json())
+    .then((r: { queue?: string[] }) => r.queue && showQueue(r.queue))
+    .catch(() => warn("Your hand didn't go up. Check your connection."));
+});
 
+// ---- the room itself changing ----
+
+type RoomShown = { name: string; about: string; keep: string; listed: boolean };
+function showRoom(r: RoomShown): void {
+  document.querySelector(".room-name")!.textContent = r.name;
+  document.title = `${r.name} · Said`;
+  const about = document.querySelector<HTMLElement>(".room-about")!;
+  about.textContent = r.about;
+  about.hidden = !r.about;
+  const k = KEEPS.find((x) => x.id === r.keep);
+  document.querySelector(".keep-label")!.textContent = r.keep === "always" ? "Kept until it's closed" : `Kept for ${k?.label.toLowerCase() ?? ""}`;
+}
+// what a room no longer keeps comes off the page too
+function forgot(before: number): void {
+  for (const t of [...transcript.querySelectorAll<HTMLElement>(".phrase[data-at]")]) if (Number(t.dataset.at) < before) t.remove();
+  for (const t of [...transcript.querySelectorAll<HTMLElement>(".turn")]) if (!t.querySelector(".phrase")) t.remove();
+  empty.hidden = !!transcript.querySelector(".turn");
+}
 
 // ---- live: every phrase, as it's said ----
 
-// Each phrase arrives with what the stage needs to play it. A page plays
-// what's said from when it opened: words are for the moment they're said,
-// not for catching up on. If the stream drops, it picks up from the last
-// phrase it had, so a moment's lost connection doesn't lose a phrase.
-//
-// The browser reconnects a dropped stream on its own, but gives up for good
-// if the server answers with an error (a deploy, a restart, a full room), so
-// the page then opens a new one itself, waiting longer each time.
-// (a page starts after the last phrase it was drawn with, so what's said
-// while it loads isn't lost)
-let lastSeen: number | "now" = Number(stage.dataset.upTo) || "now";
+// A page plays what's said from where it was drawn; if the stream drops, it
+// picks up from the last phrase it had. The browser reconnects a dropped
+// stream on its own, but gives up for good if the server answers with an
+// error (a deploy, a restart), so the page then opens a new one itself,
+// waiting longer each time.
+let lastSeen = Number(main.dataset.upTo) || 0;
 let wait = 1000;
-let opened = false;
-
 const showLive = (on: boolean, text: string): void => {
   live.hidden = false;
   live.classList.toggle("on", on);
   live.textContent = text;
 };
-
 function connect(): void {
-  const stream = new EventSource(`events?after=${lastSeen}${opened ? "&back" : ""}`);
+  const stream = new EventSource(`events?after=${lastSeen}`);
   stream.addEventListener("open", () => {
     wait = 1000;
-    openedAt = Date.now();
-    opened = true;
     showLive(true, "Live");
   });
-  stream.addEventListener("room", (e) => caughtUp(JSON.parse((e as MessageEvent<string>).data) as RoomNow));
   stream.addEventListener("error", () => {
     showLive(false, "Reconnecting…");
     if (stream.readyState !== EventSource.CLOSED) return;
     setTimeout(connect, wait);
     wait = Math.min(wait * 2, 30_000);
   });
-  stream.addEventListener("joined", (e) => {
-    const p = JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue"> & { look: Look };
-    // (you, opening this room in another tab: you're here already)
-    if (p.name === myName) return;
-    spotFor(p, p.look);
-    cardOf(p.name)?.removeAttribute("data-away");
-    showQueue(queueNow);
+  const on = <T>(name: string, f: (v: T) => void): void => stream.addEventListener(name, (e) => f(JSON.parse((e as MessageEvent<string>).data) as T));
+  on<{ upTo: number; queue: string[]; here: Here[] }>("room", (r) => {
+    lastSeen = Math.max(lastSeen, r.upTo);
+    showQueue(r.queue);
+    showHere(r.here);
   });
-  stream.addEventListener("face", (e) => {
-    const { name, e: expression, pose, body } = JSON.parse((e as MessageEvent<string>).data) as { name: string; e: Expression; pose?: Pose | null; body?: Body | null };
-    // your own avatar follows your face here, not the server's echo of it
-    if (cardOf(name)?.classList.contains("mine") && faceOn) return;
-    drawAvatar(name, expression, pose ?? null);
-    const slot = cardOf(name)?.querySelector<HTMLElement>(".spot-avatar");
-    if (slot && webgl) headArms(slot, body ?? null);
+  on<Phrase & { draft?: number }>("said", (p) => {
+    if (p.id <= lastSeen && document.querySelector(`.phrase[data-id="${p.id}"]`)) return;
+    lastSeen = Math.max(lastSeen, p.id);
+    arrive(p, p.draft);
   });
-  stream.addEventListener("hand", (e) => {
-    const { queue } = JSON.parse((e as MessageEvent<string>).data) as { queue: string[] };
-    // (your own hand as you last put it, while the room hasn't caught up)
-    const mine = queueNow.includes(myName);
-    if (handSending && queue.includes(myName) !== mine) showQueue(mine ? [...queue, myName] : queue.filter((n) => n !== myName));
-    else showQueue(queue);
+  on<Phrase | { id: number; removed: true }>("edited", edited);
+  on<Draft>("early", (d) => d.name !== myName && showDraft(d));
+  on<{ queue: string[] }>("hand", (h) => showQueue(h.queue));
+  on<{ here: Here[] }>("here", (h) => showHere(h.here));
+  on<RoomShown>("changed", showRoom);
+  on<{ before: number }>("forgot", (f) => forgot(f.before));
+  on<object>("closed", () => {
+    stream.close();
+    location.href = "/?m=closed";
   });
-  // who's on the stage with no page open: shown as away until they're back
-  stream.addEventListener("here", (e) => {
-    const { away, elsewhere } = JSON.parse((e as MessageEvent<string>).data) as { away: string[]; elsewhere?: string[] };
-    for (const card of document.querySelectorAll<HTMLElement>("#stage .spot")) card.toggleAttribute("data-away", away.includes(card.dataset.name ?? ""));
-    goneElsewhere(elsewhere ?? []);
-    countHere();
-  });
-  stream.addEventListener("voice", (e) => {
-    const { name, levels } = JSON.parse((e as MessageEvent<string>).data) as { name: string; levels: number[] };
-    // your own head moves with your voice here, as you talk
-    if (name === myName) return;
-    const slot = cardOf(name)?.querySelector<HTMLElement>(".spot-avatar");
-    if (slot) voiceLevels(slot, levels);
-  });
-  stream.addEventListener("look", (e) => {
-    const { name, look } = JSON.parse((e as MessageEvent<string>).data) as { name: string; look: Look };
-    const card = cardOf(name);
-    if (!card) return;
-    card.dataset.look = JSON.stringify(look);
-    drawAvatar(name, expressionOf.get(name) ?? REST);
-  });
-  stream.addEventListener("said", (e) => {
-    const p = JSON.parse((e as MessageEvent<string>).data) as Phrase;
-    if (typeof lastSeen === "number" && p.id <= lastSeen) return;
-    lastSeen = p.id;
-    arrive(p);
-  });
-  stream.addEventListener("edited", (e) => edited(JSON.parse((e as MessageEvent<string>).data)));
-  // someone up and walking about the room, or sat back down (your own
-  // moves here as you walk)
-  stream.addEventListener("walk", (e) => {
-    const { name, at } = JSON.parse((e as MessageEvent<string>).data) as { name: string; at: Standing | null };
-    if (name !== myName) walked(name, at);
-  });
-  stream.addEventListener("emote", (e) => {
-    const { name, emote } = JSON.parse((e as MessageEvent<string>).data) as { name: string; emote: string };
-    // your own went off here already, as you asked for it
-    if (name !== myName) showEmote(name, emote);
-  });
-  stream.addEventListener("reacted", (e) => {
-    const { id, index, counts } = JSON.parse((e as MessageEvent<string>).data) as { id: number; index: number; counts: Record<string, number> };
-    showReactions(id, index, counts);
-  });
-  stream.addEventListener("early", (e) => showDraft(JSON.parse((e as MessageEvent<string>).data) as Draft));
-  // the room's maker changed it: its name, how it looks
-  stream.addEventListener("scene", (e) => {
-    const { name, scene } = JSON.parse((e as MessageEvent<string>).data) as { name: string; scene: Scene };
-    showScene(name, scene);
-  });
-}
-
-// The room as it is when a stream opens: whose hands are up and who's away,
-// and, coming back after the stream dropped, who's on the stage and the
-// latest phrases as they stand now, which this page may have missed being
-// edited, reacted to or taken away while it wasn't listening.
-type RoomNow = {
-  upTo: number;
-  queue: string[];
-  away: string[];
-  elsewhere?: string[];
-  standing?: Record<string, Standing>;
-  people?: (Pick<Phrase, "name" | "hue"> & { look: Look })[];
-  from?: number;
-  phrases?: Phrase[];
-};
-function caughtUp(now: RoomNow): void {
-  if (typeof lastSeen !== "number" || now.upTo > lastSeen) lastSeen = now.upTo;
-  goneElsewhere(now.elsewhere ?? []);
-  for (const p of now.people ?? []) {
-    if (p.name === myName) continue;
-    const had = cardOf(p.name)?.dataset.look;
-    spotFor(p, p.look);
-    const card = cardOf(p.name);
-    if (card && had && had !== JSON.stringify(p.look)) {
-      card.dataset.look = JSON.stringify(p.look);
-      drawAvatar(p.name, expressionOf.get(p.name) ?? REST);
-    }
-  }
-  if (now.phrases) {
-    const kept = new Map(now.phrases.map((p) => [p.id, p]));
-    for (const el of document.querySelectorAll<HTMLElement>(".thread .phrase[data-id]")) {
-      const id = Number(el.dataset.id);
-      const p = kept.get(id);
-      if (p) {
-        const had = said.get(id);
-        const as = (q?: Phrase): string => JSON.stringify([q?.words.map((w) => w.html), q?.reactions ?? {}]);
-        if (as(had) === as(p)) continue;
-        said.set(id, { ...had, ...p, look: had?.look });
-        // (not the word being typed over: that's redrawn when it's done)
-        if (!(typing !== null && chosen?.id === id)) redrawPhrase(id);
-      } else if (id > (now.from ?? Infinity) && id <= now.upTo) edited({ id, removed: true });
-    }
-  }
-  showQueue(handSending ? queueNow : now.queue);
-  for (const card of document.querySelectorAll<HTMLElement>("#stage .spot")) card.toggleAttribute("data-away", now.away.includes(card.dataset.name ?? ""));
-  // who's up and walking about the room (anyone sat down meanwhile is
-  // back in their chair)
-  const up = now.standing ?? {};
-  for (const card of document.querySelectorAll<HTMLElement>(".spot[data-name]")) {
-    const name = card.dataset.name ?? "";
-    if (name !== myName) walked(name, up[name] ?? null);
-  }
 }
 connect();
+
+// ---- the reader's settings: theirs, in this browser only ----
+
+const READING_KEY = "said-reading";
+let reading: Reading = cleanReading(JSON.parse(recall(READING_KEY) ?? "{}"));
+const readingForm = document.querySelector<HTMLElement>(".reading .menu-body");
+function applyReading(): void {
+  for (const [k, v] of Object.entries(reading)) document.documentElement.dataset[k] = v;
+  for (const [k, v] of Object.entries(reading)) {
+    const input = readingForm?.querySelector<HTMLInputElement>(`input[name="${k}"][value="${v}"]`);
+    if (input) input.checked = true;
+  }
+}
+applyReading();
+readingForm?.addEventListener("change", (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.name in DEFAULT_READING) {
+    reading = cleanReading({ ...reading, [t.name]: t.value });
+    store(READING_KEY, JSON.stringify(reading));
+    applyReading();
+  }
+});
+
+// Reading typed messages aloud: the device's own voices at once, natural
+// ones (Kokoro, a download, once) for anyone who turns them on.
+const ALOUD_KEY = "said-aloud";
+const NATURAL_KEY = "said-natural";
+const aloudBox = readingForm?.querySelector<HTMLInputElement>('input[name="aloud"]') ?? null;
+const naturalBox = readingForm?.querySelector<HTMLInputElement>('input[name="natural"]') ?? null;
+const aloud = (): boolean => !!aloudBox?.checked;
+let gpu = false;
+const mb = (bytes: number): string => (bytes / 1e6).toFixed(0);
+const naturalNote = (n?: Natural): void => {
+  const note = readingForm?.querySelector(".natural-note");
+  if (!note) return;
+  note.textContent = n?.state === "loading" ? (n.total ? `${mb(n.loaded ?? 0)} of ${mb(n.total)} MB` : "getting ready") : n?.state === "failed" ? "couldn't load here" : recall(NATURAL_KEY + "-had") === "yes" ? "" : `about ${mb(naturalSize(gpu))} MB, once`;
+};
+const naturalOn = (yes: boolean): void =>
+  naturalVoices(yes, true, (n) => {
+    naturalNote(n);
+    if (n.state === "ready") store(NATURAL_KEY + "-had", "yes");
+    if (n.state === "failed" && naturalBox) naturalBox.checked = false;
+  });
+if (aloudBox && (canSpeak || canNatural)) {
+  const naturalRow = naturalBox?.closest<HTMLElement>(".natural-row") ?? null;
+  const showNaturalRow = (): void => {
+    if (naturalRow) naturalRow.hidden = !canNatural || !aloudBox.checked;
+  };
+  void gpuAdapter().then((yes) => {
+    gpu = yes;
+    naturalNote();
+  });
+  aloudBox.addEventListener("change", () => {
+    store(ALOUD_KEY, aloudBox.checked ? "on" : "off");
+    hearVoices(aloudBox.checked);
+    if (naturalBox?.checked) naturalOn(aloudBox.checked);
+    showNaturalRow();
+  });
+  naturalBox?.addEventListener("change", () => {
+    store(NATURAL_KEY, naturalBox.checked ? "on" : "off");
+    naturalOn(naturalBox.checked);
+  });
+  // remembered as on: on from the first tap anywhere (browsers won't speak
+  // before one)
+  if (recall(ALOUD_KEY) === "on") {
+    aloudBox.checked = true;
+    if (naturalBox && canNatural && recall(NATURAL_KEY) === "on") naturalBox.checked = true;
+    const start = (): void =>
+      void setTimeout(() => {
+        if (!aloudBox.checked) return;
+        hearVoices(true);
+        if (naturalBox?.checked) naturalOn(true);
+      });
+    addEventListener("pointerdown", start, { once: true, capture: true });
+    addEventListener("keydown", start, { once: true, capture: true });
+  }
+  showNaturalRow();
+} else aloudBox?.closest("label")?.setAttribute("hidden", "");
+
+// Present: the transcript alone, full screen, large, for a projector or a
+// phone propped up on the table. Esc, or the button again, comes back.
+const presentBtn = document.querySelector<HTMLButtonElement>("[data-present]");
+async function present(on: boolean): Promise<void> {
+  document.body.classList.toggle("presenting", on);
+  presentBtn?.setAttribute("aria-pressed", String(on));
+  if (presentBtn) presentBtn.textContent = on ? "Stop presenting" : "Present";
+  if (on && !document.fullscreenElement) await document.documentElement.requestFullscreen?.().catch(() => undefined);
+  if (!on && document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
+  toBottom(false);
+}
+presentBtn?.addEventListener("click", () => void present(!document.body.classList.contains("presenting")));
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement && document.body.classList.contains("presenting")) void present(false);
+});
+addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.body.classList.contains("presenting")) void present(false);
+});
+
+document.querySelector("[data-copy-link]")?.addEventListener("click", async (e) => {
+  const b = e.currentTarget as HTMLButtonElement;
+  try {
+    await navigator.clipboard.writeText(location.href.split("?")[0]);
+    b.textContent = "Copied";
+  } catch {
+    b.textContent = location.href.split("?")[0];
+  }
+  setTimeout(() => (b.textContent = "Copy link"), 1800);
+});
+
+// Menus close when you click away from them, and Esc closes the open one.
+addEventListener("click", (e) => {
+  for (const d of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) if (!d.contains(e.target as Node)) d.open = false;
+});
+addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  for (const d of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) {
+    d.open = false;
+    d.querySelector("summary")?.focus();
+  }
+});
+
+// ---- the room's own settings, for whoever opened it ----
+
+const settings = document.querySelector<HTMLFormElement>("[data-room-settings]");
+if (settings) {
+  const status = settings.querySelector(".settings-status")!;
+  let timer = 0;
+  const save = async (): Promise<void> => {
+    const f = new FormData(settings);
+    status.textContent = "Saving…";
+    try {
+      const res = await fetch("room", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: f.get("name"), about: f.get("about"), keep: f.get("keep"), listed: f.get("listed") === "on" }) });
+      status.textContent = res.ok ? "Saved" : "That didn't save. Check the name.";
+    } catch {
+      status.textContent = "That didn't save. Check your connection.";
+    }
+  };
+  settings.addEventListener("input", (e) => {
+    clearTimeout(timer);
+    timer = window.setTimeout(save, (e.target as HTMLInputElement).type === "text" ? 700 : 0);
+  });
+  settings.addEventListener("submit", (e) => e.preventDefault());
+  settings.querySelector("[data-close-room]")?.addEventListener("click", async () => {
+    if (!confirm("Close this room? Everything said in it is deleted, for everyone.")) return;
+    await fetch("room", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ close: true }) }).catch(() => undefined);
+    location.href = "/?m=closed";
+  });
+}
 
 // ---- speaking: only for someone who has joined ----
 
 const RATE = 16_000; // what Whisper listens at
 
 const talk = document.getElementById("talk") as HTMLButtonElement | null;
-const status = document.getElementById("status") as HTMLElement;
+const statusEl = document.getElementById("status");
 // The status line. Something gone wrong stays up for a few seconds before
 // ordinary news ("Listening.") can replace it, or it'd be gone before anyone
 // read it.
 let holdUntil = 0;
 const say = (text: string): void => {
-  if (Date.now() < holdUntil) return;
-  status.textContent = text;
+  if (!statusEl || Date.now() < holdUntil) return;
+  statusEl.textContent = text;
 };
 const warn = (text: string): void => {
-  status.textContent = text;
+  if (!statusEl) return;
+  statusEl.textContent = text;
   holdUntil = Date.now() + 6000;
 };
-const mb = (bytes: number): string => (bytes / 1e6).toFixed(0);
 
-// The worker holds Whisper. It's only started once someone first turns their
-// microphone on, so people who only read never download the model.
+// The worker holds Whisper. It's only started once someone who's joined
+// opens a room, so people who only read never download the model.
 let worker: Worker | undefined;
 let modelReady = false;
 const MODEL_BYTES = 80e6; // about what the model's files come to
-// what each transcription asked for is waiting on, by its id
 const waiting = new Map<number, { resolve: (chunks: Heard[]) => void; reject: (e: Error) => void }>();
 let nextId = 1;
-
 function whisper(): Worker {
   if (worker) return worker;
   worker = new Worker("/js/worker.ts", { type: "module" });
   worker.onmessage = (e: MessageEvent<FromWorker>) => {
     const m = e.data;
     if (m.type === "loading" && !modelReady && m.total > 1e6) {
-      // (the total grows as each file starts: until the big one has, it's
-      // the 80 MB it comes to, not the 3 of the first few)
       downloaded = `${mb(m.loaded)} of ${mb(Math.max(m.total, MODEL_BYTES))} MB`;
       showBehind();
     } else if (m.type === "ready") {
@@ -757,16 +457,12 @@ function whisper(): Worker {
       waiting.get(m.id)?.reject(new Error(m.error));
       waiting.delete(m.id);
     } else if (m.type === "failed") {
-      // the model itself didn't load: everything waiting on it fails, and
-      // what it said of the download isn't so any more (the next try starts
-      // it again)
       for (const w of waiting.values()) w.reject(new Error(m.error));
       waiting.clear();
       couldntLoad();
     }
   };
-  // The worker couldn't even start: its import from the CDN failed (a flaky
-  // connection, a blocked CDN) or the browser can't run module workers. It's
+  // The worker couldn't even start (a flaky connection, a blocked CDN): it's
   // thrown away so the next try starts a fresh one.
   worker.onerror = (e) => {
     e.preventDefault();
@@ -779,8 +475,6 @@ function whisper(): Worker {
   worker.postMessage({ type: "load" } satisfies ToWorker);
   return worker;
 }
-// The download failed (a phone's connection dropping, say): said, rather
-// than left showing how far it had got, and tried again when they next talk.
 function couldntLoad(): void {
   if (modelReady) return;
   downloaded = "";
@@ -789,8 +483,7 @@ function couldntLoad(): void {
 
 // Each transcription is matched to its answer by id. One that takes longer
 // than TRANSCRIBE_LIMIT fails, so a phone that quietly kills the worker for
-// its memory doesn't hold every later phrase back for good; the worker is
-// started afresh for the next.
+// its memory doesn't hold every later phrase back; the worker starts afresh.
 const TRANSCRIBE_LIMIT = 60_000;
 function transcribe(pcm: Float32Array): Promise<Heard[]> {
   const id = nextId++;
@@ -819,7 +512,7 @@ function transcribe(pcm: Float32Array): Promise<Heard[]> {
 function downsampler(from: number): (input: Float32Array) => Float32Array {
   if (from < RATE) return upsampler(from);
   const ratio = from / RATE;
-  let carry = 0; // where the next output sample starts, in input samples, relative to this batch
+  let carry = 0;
   let sum = 0;
   let n = 0;
   return (input) => {
@@ -838,19 +531,17 @@ function downsampler(from: number): (input: Float32Array) => Float32Array {
     return Float32Array.from(out);
   };
 }
-
 // A microphone slower than 16 kHz (a Bluetooth headset on its hands-free
 // link runs at 8) is stretched up to it by drawing straight lines between its
 // samples; averaging down would hand Whisper half the samples, and speech at
 // twice the speed.
 function upsampler(from: number): (input: Float32Array) => Float32Array {
-  const step = from / RATE; // input samples per output sample, under 1
-  let pos = 0; // where the next output sample falls, in input samples, from the last one kept
-  let last = 0; // the last input sample of the previous batch
+  const step = from / RATE;
+  let pos = 0;
+  let last = 0;
   return (input) => {
     const out: number[] = [];
-    // positions are measured from `last`, at -1, then this batch's 0, 1, ...
-    while (pos < input.length - 1 + 1) {
+    while (pos < input.length) {
       const i = Math.floor(pos) - 1;
       const a = i < 0 ? last : input[i];
       const b = input[i + 1];
@@ -873,73 +564,35 @@ let on = false;
 let stopRecording: (() => Promise<void>) | undefined;
 let phrases: Phraser = phraser();
 let behind = 0;
-
 let downloaded = "";
 const showBehind = (): void => {
-  if (!modelReady && downloaded) {
-    say(on ? `Listening. Downloading the speech model, once: ${downloaded}. Keep talking; it'll catch up.` : `Downloading the speech model, once: ${downloaded}.`);
-  } else if (on) {
-    say(!modelReady ? "Listening. The speech model is downloading, once." : behind > 1 ? `Listening. Catching up on ${behind} phrases…` : "Listening.");
-  }
+  if (!modelReady && downloaded) say(on ? `Listening. Downloading the speech model, once: ${downloaded}. Keep talking; it'll catch up.` : `Downloading the speech model, once: ${downloaded}.`);
+  else if (on) say(!modelReady ? "Listening. The speech model is downloading, once." : behind > 1 ? `Listening. Catching up on ${behind} phrases…` : "Listening.");
 };
 
+// how loud you are, a microphone batch at a time, rings the button; and
+// read-aloud voices wait while you talk (not counting the voices
+// themselves, heard back through the microphone)
+let loudAt = 0;
 function onAudio(samples: Float32Array): void {
   for (const phrase of phrases.push(samples)) send(phrase);
-  talk!.style.setProperty("--level", phrases.level().toFixed(2));
-  sendVoice(phrases.mouth());
-  maybeEarly();
-}
-
-// ---- your voice, on your avatar's mouth, as you talk ----
-
-// How loud you are, a microphone batch at a time (0 to 1, above the room),
-// moves your avatar's mouth here at once and on everyone else's page a
-// moment later, so heads talk as people do, before their words are heard.
-// Sent VOICE_EVERY in a batch, and only while there's something to send: a
-// loudness, never the sound.
-const VOICE_EVERY = 120; // ms
-let voiceBatch: number[] = [];
-let voiceSentAt = 0;
-let voiceQuiet = 0;
-let loudAt = 0;
-function sendVoice(level: number): void {
-  const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
-  if (slot) voiceLevels(slot, [level], true);
-  // others' voices wait while you're talking, and carry on after a moment
-  // (not counting the voices themselves, heard through the microphone)
-  if (level > 0.35 && !voicesSpeaking()) loudAt = Date.now();
+  const level = phrases.level();
+  talk!.style.setProperty("--level", level.toFixed(2));
+  if (phrases.mouth() > 0.35 && !voicesSpeaking()) loudAt = Date.now();
   duck(Date.now() - loudAt < 900);
-  voiceBatch.push(Math.round(level * 100) / 100);
-  if (Date.now() - voiceSentAt < VOICE_EVERY) return;
-  const levels = voiceBatch;
-  voiceBatch = [];
-  voiceSentAt = Date.now();
-  // silence goes once, then nothing until there's sound again
-  voiceQuiet = levels.every((l) => l < 0.08) ? voiceQuiet + 1 : 0;
-  if (voiceQuiet > 1) return;
-  void fetch("voice", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ levels }) }).catch(() => {});
+  maybeEarly();
 }
 
 // ---- hearing a phrase early, while it's still being said ----
 
-// a draft whose phrase came to nothing (silence, or one of Whisper's
-// inventions) is taken down here; other pages take theirs down when the
-// speaker's next phrase arrives, or after DRAFT_FOR
-function clearDraft(n: number): void {
-  const mineName = document.querySelector<HTMLElement>(".spot.mine")?.dataset.name;
-  if (mineName) dropDraft(mineName, n);
-}
-
 // Whisper only hears whole phrases well, and a phrase only ends at a pause,
-// so the first words of one used to reach everyone a second after it ended.
-// Now, while a phrase is under way, what there is of it so far is heard
-// every EARLY_EVERY once it has EARLY_AFTER of sound, and goes out at once
-// as a draft: drawn faded, then replaced by the real phrase when it ends.
-// A draft is only heard when Whisper has nothing else to do, so it never
-// delays a real phrase: a phone too slow to keep up simply sends fewer.
-const EARLY_AFTER = 0.9; // seconds of sound in the phrase
-const EARLY_EVERY = 900; // ms
-let draft = 1; // the number of the phrase now being said
+// so what there is of one so far is heard every EARLY_EVERY once it has
+// EARLY_AFTER of sound, and goes out at once as a draft: drawn faded, then
+// replaced by the real phrase when it ends. A draft is only heard when
+// Whisper has nothing else to do, so it never delays a real phrase.
+const EARLY_AFTER = 0.9;
+const EARLY_EVERY = 900;
+let draft = 1;
 let earlyAt = 0;
 let earlyBusy = false;
 function maybeEarly(): void {
@@ -951,10 +604,10 @@ function maybeEarly(): void {
   const forDraft = draft;
   transcribe(pcm.slice())
     .then(async (chunks) => {
-      // the phrase may have ended (and been sent for real) while this was heard
       if (forDraft !== draft) return;
       const ws = hear(pcm, RATE, words(chunks, pcm.length / RATE)).words;
       if (ws.length === 0 || invented(ws.map((w) => w.w).join(" "), true)) return;
+      showMyDraft(ws, forDraft);
       await fetch("early", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ words: ws, draft: forDraft }) });
     })
     .catch(() => {
@@ -964,23 +617,27 @@ function maybeEarly(): void {
       earlyBusy = false;
     });
 }
+// your own draft, drawn here as soon as it's heard, plainly (the server
+// draws everyone else's)
+function showMyDraft(ws: Word[], n: number): void {
+  showDraft({ name: myName, hue: Number(document.querySelector<HTMLElement>(".here .me")?.style.getPropertyValue("--hue") || 0), draft: n, words: ws.map((w) => ({ html: `<span class="w">${esc(w.w)}</span>` })) });
+}
 
 // A phrase that's mostly a breath, a click or the room is never sent to
 // Whisper, which would hear a sentence in it (spoke() says why), nor is a
-// voice somewhere else in the room, a television or the next room (near()
-// says why). How loud this person usually speaks is the median of their
-// last few phrases' voices. What's heard goes out in the order it was said.
+// voice somewhere else in the room (near() says why). How loud this person
+// usually speaks is the median of their last few phrases' voices.
 const usualLevels: number[] = [];
 const usualLevel = (): number | null => (usualLevels.length >= 2 ? [...usualLevels].sort((a, b) => a - b)[Math.floor(usualLevels.length / 2)] : null);
 function fromHere(pcm: Float32Array): boolean {
   if (!spoke(pcm, RATE)) return false;
-  const level = voiceLevel(pcm, RATE);
-  return near(level, phrases.room(), usualLevel());
+  return near(voiceLevel(pcm, RATE), phrases.room(), usualLevel());
 }
+let hearing: Promise<void> = Promise.resolve(); // so phrases go out in the order they were said
 function send(pcm: Float32Array): void {
   const forDraft = draft++;
   earlyAt = Date.now();
-  if (!fromHere(pcm)) return void clearDraft(forDraft);
+  if (!fromHere(pcm)) return void dropDraft(myName, forDraft);
   const level = voiceLevel(pcm, RATE);
   if (level !== null) {
     usualLevels.push(level);
@@ -995,9 +652,9 @@ function send(pcm: Float32Array): void {
       // Whisper's inventions for a breath or the room ("Thank you."): a
       // phrase that's only that, with no voice under it, is dropped
       const voiced = result.voice?.pitch != null && result.words.some((w) => w.pitch !== null);
-      if (result.words.length === 0 || invented(result.words.map((w) => w.w).join(" "), voiced)) return void clearDraft(forDraft);
-      // someone else's words, spoken here, heard back through the microphone
-      if (echoOf(result.words.map((w) => w.w).join(" "))) return void clearDraft(forDraft);
+      if (result.words.length === 0 || invented(result.words.map((w) => w.w).join(" "), voiced)) return void dropDraft(myName, forDraft);
+      // someone's typed words read aloud here, heard back through the microphone
+      if (echoOf(result.words.map((w) => w.w).join(" "))) return void dropDraft(myName, forDraft);
       await post(result.words, result.voice, forDraft);
     } catch (err) {
       console.error(err);
@@ -1009,16 +666,10 @@ function send(pcm: Float32Array): void {
   });
 }
 
-// ---- sending what you said, and changing it live ----
-
-let hearing: Promise<void> = Promise.resolve(); // so phrases go out in the order they were said
-
-// A phrase goes out the moment it's heard, whole: it plays in your place and
-// joins your thread for everyone.
-// (a moment's outage, a redeploy or the server waking, is waited out:
-// tried again a few times before it's given up, still in order)
-const RETRY_AFTER = [1000, 2000, 3000]; // ms
-async function post(words: Word[], voice: Voice | null, forDraft?: number, typed = false): Promise<void> {
+// A phrase goes out the moment it's heard. A moment's outage (a redeploy,
+// the server waking) is waited out: tried again a few times, still in order.
+const RETRY_AFTER = [1000, 2000, 3000];
+async function post(ws: Word[], voice: Voice | null, forDraft?: number, typed = false): Promise<void> {
   try {
     let res: Response | null = null;
     for (let i = 0; ; i++) {
@@ -1026,8 +677,7 @@ async function post(words: Word[], voice: Voice | null, forDraft?: number, typed
         res = await fetch("say", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ words, voice, draft: forDraft, ...(typed ? { typed } : {}) }),
-          // a send that hangs mustn't hold up every phrase after it
+          body: JSON.stringify({ words: ws, voice, draft: forDraft, ...(typed ? { typed } : {}) }),
           signal: AbortSignal.timeout(15_000),
         });
         if (res.status < 500 || i >= RETRY_AFTER.length) break;
@@ -1041,11 +691,8 @@ async function post(words: Word[], voice: Voice | null, forDraft?: number, typed
     if (res.status === 401) {
       void turnOff();
       warn("You've been signed out. Reload the page and join again.");
-    } else if (res.status === 429) {
-      warn("That's a lot at once. Some of it didn't send.");
-    } else if (!res.ok) {
-      warn("Something you said couldn't be sent.");
-    }
+    } else if (res.status === 429) warn("That's a lot at once. Some of it didn't send.");
+    else if (!res.ok) warn("Something you said couldn't be sent.");
   } catch (err) {
     console.error(err);
     warn("Something you said couldn't be sent. Check your connection.");
@@ -1055,134 +702,122 @@ async function post(words: Word[], voice: Voice | null, forDraft?: number, typed
 // ---- typing instead: written here, said like the rest (typed.ts) ----
 
 const typeBox = document.getElementById("type-box") as HTMLFormElement | null;
+const myVoice = (): Voiced => {
+  const v = JSON.parse(main.dataset.voice ?? "{}") as { voice?: string; pitch?: number; speed?: number };
+  return voicedOf({ voice: v.voice ?? "warm", pitch: v.pitch ?? 0, speed: v.speed ?? 0 });
+};
 if (typeBox) {
-  typeBox.hidden = false;
   const input = typeBox.elements.namedItem("text") as HTMLInputElement;
-  const send = typeBox.querySelector<HTMLButtonElement>(".type-send")!;
-  const tone = (): Tone => toneOf((typeBox.elements.namedItem("tone") as RadioNodeList).value);
-  // your voice as the box has it, with the rest of your look (a voice mixed
-  // in, from the studio)
-  const voiceNow = (): Voiced => {
-    const mine = JSON.parse(document.querySelector<HTMLElement>(".spot.mine")?.dataset.look ?? "{}") as Partial<Look>;
-    const v = (typeBox.elements.namedItem("voice") as HTMLSelectElement).value;
-    const n = (id: string): number => Number((typeBox.elements.namedItem(`tune.${id}`) as HTMLInputElement).value) || 0;
-    return { ...mine, voice: v, tune: { ...(mine.tune ?? {}), voicePitch: n("voicePitch"), voiceSpeed: n("voiceSpeed") } } as Voiced;
-  };
-  const spoken = (words: Word[]): Spoken[] => words.map((w) => ({ text: w.w, loud: w.loud, pitch: w.pitch ?? 0, stretch: w.stretch, rise: w.rise, effect: w.effect ?? null }));
-  input.addEventListener("input", () => (send.disabled = !input.value.trim()));
+  const sendBtn = typeBox.querySelector<HTMLButtonElement>(".send")!;
+  const tone = (): Tone => toneOf((document.querySelector<HTMLInputElement>('input[name="tone"]:checked'))?.value);
+  input.addEventListener("input", () => (sendBtn.disabled = !input.value.trim()));
   typeBox.addEventListener("submit", (e) => {
     e.preventDefault();
-    const words = typedWords(input.value, tone());
-    if (!words.length) return;
+    const ws = typedWords(input.value, tone());
+    if (!ws.length) return;
     input.value = "";
-    send.disabled = true;
-    void post(words, null, undefined, true);
-    // (heard by you too, with voices on: it's your voice saying it)
-    speak(spoken(words), voiceNow());
+    sendBtn.disabled = true;
+    void post(ws, null, undefined, true);
+    // (read aloud here too, if you read aloud: it's your voice saying it)
+    if (aloud()) speak(ws.map((w) => ({ text: w.w, loud: w.loud, pitch: w.pitch ?? 0, stretch: w.stretch, rise: w.rise })), myVoice());
   });
-  // tried out in your voice, the way it'll go: what's typed, or a sample
-  typeBox.querySelector(".type-hear")?.addEventListener("click", () => {
-    const words = typedWords(input.value || "Hey, this is *me*. How do I sound?", tone());
-    tryVoice(voiceNow(), spoken(words));
+}
+
+// Your voice: kept with you, a moment after you stop changing it, and tried
+// out as it'll sound.
+const voiceMenu = document.querySelector<HTMLElement>(".your-voice .menu-body");
+if (voiceMenu) {
+  const now = (): { voice: string; pitch: number; speed: number } => ({
+    voice: (voiceMenu.querySelector("select") as HTMLSelectElement).value,
+    pitch: Number((voiceMenu.querySelector('input[name="pitch"]') as HTMLInputElement).value),
+    speed: Number((voiceMenu.querySelector('input[name="speed"]') as HTMLInputElement).value),
   });
-  // your voice, kept with your look (the studio's, the same one) a moment
-  // after you stop changing it
   let saving = 0;
-  typeBox.addEventListener("change", (e) => {
-    const t = e.target as HTMLElement;
-    if (!t.matches("select[name=voice], input[name^='tune.']")) return;
+  voiceMenu.addEventListener("change", () => {
+    main.dataset.voice = JSON.stringify(now());
     clearTimeout(saving);
     saving = window.setTimeout(async () => {
       try {
-        const { voice, tune } = voiceNow();
-        const res = await fetch("look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: { voice, tune: { voicePitch: tune?.voicePitch ?? 0, voiceSpeed: tune?.voiceSpeed ?? 0 } } }) });
+        const res = await fetch("/voice", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(now()) });
         if (!res.ok) warn("Your voice didn't save.");
       } catch {
         warn("Your voice didn't save. Check your connection.");
       }
     }, 400);
   });
+  voiceMenu.querySelector("[data-try-voice]")?.addEventListener("click", () => {
+    const text = (typeBox?.elements.namedItem("text") as HTMLInputElement | null)?.value || "Hi, this is *me*. How do I sound?";
+    tryVoice(myVoice(), typedWords(text, "plain").map((w) => ({ text: w.w, loud: w.loud, pitch: w.pitch ?? 0, stretch: w.stretch, rise: w.rise })));
+  });
 }
 
+// ---- correcting your own words ----
+
 // One of your words is chosen at a time: your latest, unless you've tapped
-// another of yours in your thread. Whatever you do goes to the server at once
-// and comes back to everyone (yourself included) as the changed phrase; a
-// change to a word that isn't yours is refused there, not just here.
+// another of yours. Type to replace it, Enter to put it in; Backspace with
+// nothing typed takes it out; Esc gives up. ← and → choose the word before or
+// after. Every correction goes to the server and comes back to everyone as
+// the changed phrase; a change to a word that isn't yours is refused there.
 let chosen: { id: number; index: number } | null = null;
 let followLatest = true;
 let typing: string | null = null;
-const myThread = (): HTMLOListElement | null => document.querySelector(".spot.mine .thread");
-
+const myWords = (): HTMLElement[] => [...transcript.querySelectorAll<HTMLElement>(".turn.mine .tw")];
 function choose(id: number, index: number, follow = false): void {
   chosen = { id, index };
   followLatest = follow;
   typing = null;
   markChosen();
 }
+function chooseLatest(): void {
+  const last = myWords().at(-1);
+  const ph = last?.closest<HTMLElement>(".phrase");
+  if (last && ph) choose(Number(ph.dataset.id), Number(last.dataset.i), true);
+}
 function markChosen(): void {
   for (const el of document.querySelectorAll(".tw.chosen")) el.classList.remove("chosen", "typing");
-  if (!chosen) return;
-  const el = myThread()?.querySelector(`.phrase[data-id="${chosen.id}"] .tw[data-i="${chosen.index}"]`);
+  if (!chosen || !myName) return;
+  const el = transcript.querySelector<HTMLElement>(`.turn.mine .phrase[data-id="${chosen.id}"] .tw[data-i="${chosen.index}"]`);
   if (!el) return;
   el.classList.add("chosen");
   if (typing !== null) {
     el.classList.add("typing");
-    el.innerHTML = `<span class="w">${typing.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}<span class="caret"></span></span>`;
+    el.innerHTML = `<span class="w">${esc(typing)}<span class="caret"></span></span>`;
   }
 }
-
-async function change(edit: { text?: string; effect?: string | null; remove?: boolean }): Promise<void> {
+async function change(edit: { text?: string; remove?: boolean }): Promise<void> {
   if (!chosen) return;
-  const target = chosen;
   try {
-    const res = await fetch("edit", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: target.id, index: target.index, ...edit }),
-    });
-    if (!res.ok) warn("That change didn't go through.");
+    const res = await fetch("edit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: chosen.id, index: chosen.index, ...edit }) });
+    if (!res.ok) warn("That correction didn't go through.");
   } catch {
-    warn("That change didn't go through. Check your connection.");
+    warn("That correction didn't go through. Check your connection.");
   }
 }
-
-// What a key does to the chosen word: a letter starts (or carries on) typing
-// over it, and Enter or Space puts what's typed in its place; Escape gives
-// up; 1, 2, 3 put on or take off Impact, Whisper, Glow; Backspace mends
-// what's being typed, or with nothing typed, takes the word away.
 function key(k: string): boolean {
-  if (!chosen) return false;
+  if (!chosen || !myName) return false;
   if (typing !== null) {
     if (k === "Enter" || k === " ") {
       const text = typing.trim();
       typing = null;
       if (text) void change({ text });
-      markChosen();
+      else edited(said.get(chosen.id) ?? { id: chosen.id, removed: true });
     } else if (k === "Escape") {
       typing = null;
-      // put the word back as it was
-      const ph = myThread()?.querySelector<HTMLElement>(`.phrase[data-id="${chosen.id}"]`);
-      if (ph) redrawPhrase(Number(ph.dataset.id));
+      const p = said.get(chosen.id);
+      if (p) edited(p);
+      else location.reload();
     } else if (k === "Backspace") typing = typing.slice(0, -1);
     else if (k.length === 1 && typing.length < 40) typing += k;
     else return false;
     markChosen();
     return true;
   }
-  const fx = EFFECTS.find((x) => x.key === k)?.id;
-  if (fx) {
-    const on = myThread()?.querySelector(`.phrase[data-id="${chosen.id}"] .tw[data-i="${chosen.index}"] .w`)?.classList.contains(`fx-${fx}`);
-    void change({ effect: on ? null : fx });
-    return true;
-  }
   if (k === "Backspace" || k === "Delete") {
     void change({ remove: true });
     return true;
   }
-  // ← and → choose the word before or after, as they're shown (so choosing
-  // doesn't need a pointer)
   if (k === "ArrowLeft" || k === "ArrowRight") {
-    const all = [...(myThread()?.querySelectorAll<HTMLElement>(".bubble:not(.draft) .phrase .tw") ?? [])];
+    const all = myWords();
     const at = all.findIndex((el) => el.classList.contains("chosen"));
     const next = all[at + (k === "ArrowLeft" ? -1 : 1)];
     const ph = next?.closest<HTMLElement>(".phrase");
@@ -1197,41 +832,39 @@ function key(k: string): boolean {
   }
   return false;
 }
-
-// While you've something chosen, the keyboard is for it, except in a text box
-// or the room (whose keys walk, turn and zoom: walking once typed "wwww" over
-// your last word, and Enter sent it to everyone)
+// The keyboard is for your chosen word only once you've tapped one of your
+// words (not always: typing a message, or using the page, mustn't change
+// what you said), and never in a text box.
+let editing = false;
 addEventListener("keydown", (e) => {
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!editing || e.metaKey || e.ctrlKey || e.altKey) return;
   const t = e.target as HTMLElement;
-  if (t.closest("input, textarea, [contenteditable], .room3d")) return;
-  // Space and Enter on a focused button press the button, as they should
-  if ((e.key === " " || e.key === "Enter") && t.closest("button")) return;
+  if (t.closest("input, textarea, select, [contenteditable]")) return;
+  if ((e.key === " " || e.key === "Enter") && t.closest("button, summary, a")) return;
   if (key(e.key)) e.preventDefault();
+  if (e.key === "Escape" && typing === null) stopEditing();
 });
-document.querySelector(".edit-tools")?.addEventListener("click", (e) => {
-  const k = (e.target as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key;
-  if (k) key(k);
-});
-// your latest word starts out chosen
-{
-  const last = myThread()?.querySelector<HTMLElement>(".bubble:first-child .phrase");
-  const n = last?.querySelectorAll(".tw").length ?? 0;
-  if (last && n) choose(Number(last.dataset.id), n - 1, true);
+function stopEditing(): void {
+  editing = false;
+  chosen = null;
+  typing = null;
+  markChosen();
+  transcript.classList.remove("editing");
 }
-
-// tap one of your own words to choose it; tap it again to go back to following your latest
-myThread()?.addEventListener("click", (e) => {
-  const w = (e.target as HTMLElement).closest<HTMLElement>(".tw");
+transcript.addEventListener("click", (e) => {
+  const w = (e.target as HTMLElement).closest<HTMLElement>(".turn.mine .tw");
   const ph = w?.closest<HTMLElement>(".phrase");
   if (!w || !ph) return;
-  const [id, index] = [Number(ph.dataset.id), Number(w.dataset.i)];
-  if (chosen?.id === id && chosen.index === index && !followLatest) {
-    const last = myThread()?.querySelector<HTMLElement>(".bubble:first-child .phrase");
-    const lastIndex = last ? last.querySelectorAll(".tw").length - 1 : -1;
-    if (last && lastIndex >= 0) choose(Number(last.dataset.id), lastIndex, true);
-  } else choose(id, index);
+  editing = true;
+  transcript.classList.add("editing");
+  choose(Number(ph.dataset.id), Number(w.dataset.i));
+  say("Type to correct that word, Enter to put it in, Backspace to take it out, Esc when you're done.");
 });
+addEventListener("click", (e) => {
+  if (editing && !(e.target as HTMLElement).closest(".turn.mine .tw")) stopEditing();
+});
+
+// ---- the microphone ----
 
 // Records the microphone through tap.ts. The browser's automatic gain and
 // noise suppression are turned off: gain control flattens loudness, which is
@@ -1257,8 +890,7 @@ async function record(ctx: AudioContext): Promise<() => Promise<void>> {
     throw err;
   }
   // The microphone can stop without anyone turning it off: the phone locks,
-  // a call comes in, a headset drops out. Then the page says so rather than
-  // go on saying "Listening." to nothing.
+  // a call comes in, a headset drops out. Then the page says so.
   for (const track of mic.getAudioTracks()) {
     track.addEventListener("ended", () => {
       if (!on) return;
@@ -1280,7 +912,6 @@ async function record(ctx: AudioContext): Promise<() => Promise<void>> {
   source.connect(tap);
   tap.connect(ctx.destination); // the tap outputs silence; this just keeps it running
   return async () => {
-    // the last partial batch, but don't wait long for it
     await new Promise<void>((done) => {
       flushed = done;
       tap.port.postMessage("flush");
@@ -1296,28 +927,23 @@ async function record(ctx: AudioContext): Promise<() => Promise<void>> {
 
 function showOn(state: boolean): void {
   talk!.disabled = false;
-  talk!.querySelector(".label")!.textContent = state ? "Microphone on" : "Turn on microphone";
+  talk!.querySelector(".label")!.textContent = state ? "Listening — tap to stop" : "Turn on microphone";
   talk!.setAttribute("aria-pressed", String(state));
   talk!.classList.toggle("recording", state);
 }
-
 async function turnOn(): Promise<void> {
   if (on || stopRecording) return;
   talk!.disabled = true;
   // made before anything is awaited, while this still counts as the tap
   const ctx = new AudioContext();
   void ctx.resume();
-  whisper(); // start the download now, so it overlaps with talking
+  whisper();
   try {
     stopRecording = await record(ctx);
   } catch (err) {
     void ctx.close();
     const blocked = err instanceof DOMException && err.name === "NotAllowedError";
-    say(
-      blocked
-        ? "The microphone is blocked. Allow it for this site in your browser's settings, then try again."
-        : "Couldn't open a microphone in this browser.",
-    );
+    say(blocked ? "The microphone is blocked. Allow it for this site in your browser's settings, then try again." : "Couldn't open a microphone in this browser.");
     talk!.disabled = false;
     return;
   }
@@ -1326,7 +952,6 @@ async function turnOn(): Promise<void> {
   showOn(true);
   showBehind();
 }
-
 async function turnOff(): Promise<void> {
   if (!on || !stopRecording) return;
   on = false;
@@ -1334,25 +959,22 @@ async function turnOff(): Promise<void> {
   const stop = stopRecording;
   stopRecording = undefined;
   await stop();
-  for (const phrase of phrases.end()) send(phrase); // whatever was said last
+  for (const phrase of phrases.end()) send(phrase);
   showOn(false);
   say(behind ? "Hearing the last of it…" : "");
   void hearing.then(() => {
     if (!on) say("");
   });
 }
-
 if (talk) {
   if (!navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) {
-    say("This browser can't record here. You can still watch and read everything live.");
+    say("This browser can't record here. You can still type, and read everything live.");
   } else {
     showOn(false);
     talk.addEventListener("click", () => void (on ? turnOff() : turnOn()));
-    // Someone who's joined is here to talk, so the speech model starts
-    // downloading now rather than when they first press the button: the
-    // first time, on a slow connection, that's the difference between
-    // talking straight away and waiting most of a minute. It waits until the
-    // page has loaded and settled, so it doesn't hold the page itself up.
+    // Someone who's joined a room is here to talk, so the speech model
+    // starts downloading once the page has settled, rather than when they
+    // first press the button.
     say("Getting the speech model ready (about 80 MB, once).");
     const warm = (): void => void setTimeout(() => whisper(), 500);
     if (document.readyState === "complete") warm();
@@ -1360,760 +982,5 @@ if (talk) {
   }
 }
 
-// ---- your face, on your avatar: only for someone who has joined, only if they ask ----
-
-// MediaPipe's face landmarker runs in this page on a small copy of the
-// camera, every frame it can keep up with; avatar.ts turns its expression
-// scores and head position into a few numbers, smoothed so they hold steady
-// without lagging, which draw your avatar here at once and go to everyone
-// else's up to SEND_EVERY. Only those numbers leave the browser: no picture.
-// The model (about 4 MB) loads the first time someone turns it on.
-const VISION = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1";
-const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
-const READ_EVERY = 30; // ms: at most this often, slower if reading takes long
-const SEND_EVERY = 50; // ms
-
-type Landmarker = {
-  detectForVideo(
-    video: HTMLVideoElement,
-    at: number,
-  ): { faceBlendshapes?: { categories: { categoryName: string; score: number }[] }[]; facialTransformationMatrixes?: { data: number[] }[] };
-  close(): void;
-};
-
-const faceButton = document.getElementById("face") as HTMLButtonElement | null;
-let faceOn = false;
-let stopFace: (() => void) | undefined;
-let myName = document.querySelector<HTMLElement>(".spot.mine")?.dataset.name ?? "";
-
-// Sent as it changes, at most every SEND_EVERY, one at a time (a slow
-// connection drops readings rather than queueing them), and again now and
-// then while still: the server puts back to rest a face it stops hearing of.
-// A change too small to see isn't sent.
-let sendingFace = false;
-let lastSent = "";
-let lastSentAt = 0;
-const coarse = (o: Record<string, number> | null): string => (o ? Object.values(o).map((v) => Math.round(v * 40)).join(",") : "-");
-async function sendFace(e: Expression | null, pose: Pose | null = null): Promise<void> {
-  // (and their arms and hands, while those are being read)
-  const body = e && hands ? bodyNow : null;
-  const key = coarse(e) + "|" + coarse(pose) + "|" + (body ? JSON.stringify(body) : "-");
-  const since = Date.now() - lastSentAt;
-  if (sendingFace || since < SEND_EVERY || (key === lastSent && since < 2000)) return;
-  sendingFace = true;
-  lastSent = key;
-  lastSentAt = Date.now();
-  try {
-    await fetch("face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ e, pose, body }) });
-  } catch {
-    // a missed reading is soon replaced by the next
-  } finally {
-    sendingFace = false;
-  }
-}
-// a face lost from view eases back to rest
-const ease = <O extends Record<string, number>>(from: O, to: O, k: number): O =>
-  Object.fromEntries(Object.keys(to).map((key) => [key, Math.round((from[key] * (1 - k) + to[key] * k) * 100) / 100])) as O;
-// Where someone's head usually is, learned slowly (HOME_OVER seconds), so a
-// camera off to one side or below the screen reads as facing it, and a
-// lean or a turn that's held long enough becomes the new usual.
-const HOME_OVER = 15;
-
-async function faceStart(): Promise<void> {
-  faceButton!.disabled = true;
-  let camera: MediaStream;
-  try {
-    // big enough to find a face across a desk in a dim room, small enough
-    // to read quickly
-    camera = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: "user" } });
-  } catch (err) {
-    faceButton!.disabled = false;
-    const blocked = err instanceof DOMException && err.name === "NotAllowedError";
-    return warn(blocked ? "The camera is blocked. Allow it for this site to show your face on your avatar." : "Couldn't open a camera in this browser.");
-  }
-  say("Looking for your face…");
-  let landmarker: Landmarker;
-  try {
-    const { FaceLandmarker, FilesetResolver } = await import(`${VISION}/vision_bundle.mjs`);
-    const files = await FilesetResolver.forVisionTasks(`${VISION}/wasm`);
-    // a stalled download mustn't leave the button stuck
-    landmarker = await Promise.race([
-      FaceLandmarker.createFromOptions(files, {
-        // On the processor: on an M4 Pro it read a face in 12 ms, and on the
-        // graphics card in 143 (each frame goes through WebGL to get there).
-        baseOptions: { modelAssetPath: FACE_MODEL, delegate: "CPU" },
-        // found in poorer light, and kept hold of as a face turns, rather
-        // than lost and searched for again
-        minFaceDetectionConfidence: 0.3,
-        minFacePresenceConfidence: 0.3,
-        minTrackingConfidence: 0.3,
-        runningMode: "VIDEO",
-        outputFaceBlendshapes: true,
-        outputFacialTransformationMatrixes: true,
-        numFaces: 1,
-      }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("the face reader took too long to load")), 30_000)),
-    ]);
-  } catch (err) {
-    console.error(err);
-    for (const t of camera.getTracks()) t.stop();
-    faceButton!.disabled = false;
-    return warn("Couldn't load the face reader. Check your connection and try again.");
-  }
-  // the small preview by the controls, so you can see what it's reading
-  const video = (document.getElementById("face-preview") as HTMLVideoElement | null) ?? document.createElement("video");
-  video.muted = true;
-  video.playsInline = true;
-  video.srcObject = camera;
-  video.hidden = false;
-  try {
-    await video.play();
-  } catch {
-    for (const t of camera.getTracks()) t.stop();
-    landmarker.close();
-    faceButton!.disabled = false;
-    return warn("Couldn't start the camera. Try again.");
-  }
-  const started = Date.now();
-  let seenFace = false;
-  // whether it can see a face right now, on the preview (a ring) and the
-  // button, where the speech model's progress can't write over it
-  const label = faceButton!.querySelector(".label")!;
-  let showing: boolean | null = null;
-  const found = (yes: boolean): void => {
-    if (showing === yes) return;
-    showing = yes;
-    video.classList.toggle("found", yes);
-    label.textContent = yes ? "Following your face" : "Looking for your face…";
-  };
-  found(false);
-  let shown: Expression = REST;
-  let turned: Pose = STILL;
-  const steadyFace = smoother<Expression>(1.2, 0.6);
-  const steadyPose = smoother<Pose>(1, 0.8);
-  const rest = resting();
-  let restNow = rest.rest();
-  let home: Placed | undefined;
-  let readings = 0;
-  let lastAt = 0;
-  let wait = READ_EVERY;
-  let running = true;
-  let lastFrame = -1;
-  const read = (): void => {
-    if (!running) return;
-    schedule();
-    // a hidden page (a phone put away) isn't reading anyone's face
-    if (document.hidden) return void sendFace(null);
-    const now = performance.now();
-    if (video.readyState < 2 || now - lastAt < wait || video.currentTime === lastFrame) return;
-    lastFrame = video.currentTime;
-    const dt = now - lastAt;
-    lastAt = now;
-    let shapes: { categoryName: string; score: number }[] | undefined;
-    let matrix: number[] | undefined;
-    try {
-      const seen = landmarker.detectForVideo(video, now);
-      shapes = seen.faceBlendshapes?.[0]?.categories;
-      matrix = seen.facialTransformationMatrixes?.[0]?.data;
-    } catch (err) {
-      console.error(err);
-      return faceStop();
-    }
-    // a slow device reads less often rather than falling behind: reading
-    // takes at most about half the page's time
-    const took = performance.now() - now;
-    wait = took > 25 ? took * 1.8 : READ_EVERY;
-    found(!!shapes);
-    if (!shapes) {
-      if (Date.now() - started > 4000 && !seenFace) warn("Can't see a face. Face the camera, with light on your face rather than behind you.");
-      const k = 1 - Math.exp(-dt / 250);
-      shown = ease(shown, REST, k);
-      turned = ease(turned, STILL, k);
-    } else {
-      if (!seenFace) {
-        seenFace = true;
-        say("Your avatar's following your face. Only numbers about it are sent, never a picture.");
-      }
-      const scores = Object.fromEntries(shapes.map((c) => [c.categoryName, c.score]));
-      rest.add(scores);
-      if (++readings % 15 === 0) restNow = rest.rest();
-      shown = steadyFace(fromShapes(scores, restNow), now / 1000);
-      if (matrix) {
-        const at = placed(matrix);
-        const k = home ? 1 - Math.exp(-dt / 1000 / HOME_OVER) : 1;
-        home = home ? ease(home, at, k) : { ...at };
-        turned = steadyPose(poseFrom(matrix, home), now / 1000);
-      }
-    }
-    drawAvatar(myName, shown, turned);
-    void sendFace(shown, turned);
-    if (shapes) faceEmotes(shown);
-    handsFrame(video, now);
-  };
-  // each new camera frame where the browser says when there is one, the
-  // screen's frames where it doesn't
-  const schedule = (): void => {
-    if ("requestVideoFrameCallback" in video) video.requestVideoFrameCallback(read);
-    else requestAnimationFrame(read);
-  };
-  schedule();
-  // the camera itself can stop (unplugged, taken by another app)
-  for (const t of camera.getVideoTracks()) t.addEventListener("ended", () => faceOn && faceStop());
-  stopFace = () => {
-    running = false;
-    for (const t of camera.getTracks()) t.stop();
-    landmarker.close();
-    video.srcObject = null;
-    video.hidden = true;
-    video.classList.remove("found");
-  };
-  faceOn = true;
-  faceButton!.disabled = false;
-  faceButton!.setAttribute("aria-pressed", "true");
-}
-
-function faceStop(): void {
-  stopFace?.();
-  stopFace = undefined;
-  faceOn = false;
-  handsStop();
-  drawAvatar(myName, REST);
-  lastSent = "";
-  void sendFace(null);
-  faceButton!.setAttribute("aria-pressed", "false");
-  faceButton!.querySelector(".label")!.textContent = "Show my face";
-}
-
-if (faceButton && "mediaDevices" in navigator) {
-  faceButton.hidden = false;
-  faceButton.addEventListener("click", () => void (faceOn ? faceStop() : faceStart()));
-  // a face showing when you've left the page would be a lie
-  addEventListener("pagehide", () => {
-    if (faceOn) navigator.sendBeacon("face", new Blob([JSON.stringify({ e: null })], { type: "application/json" }));
-  });
-}
-
-// ---- your arms and hands, with your face ----
-
-// Read off the same camera as your face, in a worker (hands.ts) so the face
-// keeps its pace: each frame goes to it whenever it's free. What it sees
-// becomes a few numbers (body.ts) that go with your face to everyone, and a
-// hand held in a gesture it knows (a thumbs up) does that emote. Only on
-// when asked: it's two more models (about 14 MB) and more work for the
-// processor than a face.
-const handsBox = document.getElementById("hands") as HTMLInputElement | null;
-let hands: HandReader | null = null;
-// a gesture held for GESTURE_HOLD does its emote (packs.ts EMOTES gesture)
-const GESTURE_HOLD = 400; // ms
-const gestureEmotes = EMOTES.filter((em) => "gesture" in em);
-let gestureHeld: { name: string; since: number } | null = null;
-const HAND_HOLD = 1000; // ms
-let raisedSince: number | null = null;
-let bodyNow: Body | null = null;
-
-function handsFrame(video: HTMLVideoElement, at: number): void {
-  hands?.frame(video, at);
-}
-
-function handsStart(): void {
-  if (hands || !faceOn) return;
-  say("Loading the hand reader…");
-  hands = readHands({
-    ready: () => say("Your avatar's arms and hands follow yours. Try a thumbs up, a wave, a peace sign, or hold a hand up high to speak next."),
-    failed: (why) => {
-      console.error(why);
-      warn("Couldn't read your hands here. Your face still shows.");
-      handsStop();
-    },
-    read: (body, seen) => {
-      bodyNow = body;
-      const now = performance.now();
-      const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
-      if (slot && webgl) headArms(slot, bodyNow);
-      // an open hand held up above your head, still, for HAND_HOLD: your hand
-      // up to speak (lower down, an open hand is a wave)
-      const pose = seen.pose;
-      const raised = !!pose && seen.hands.some((h) => h.gesture === "Open_Palm" && h.score > 0.6 && h.image[0].y < pose.image[0].y - 0.08);
-      if (!raised) raisedSince = null;
-      else if (raisedSince === null) raisedSince = now;
-      else if (now - raisedSince >= HAND_HOLD && !queueNow.includes(myName)) {
-        raisedSince = Infinity;
-        void raiseHand(true);
-      }
-      // a gesture held: its emote
-      const best = seen.hands.filter((h) => h.score > 0.6 && !(raised && h.gesture === "Open_Palm")).sort((a, b) => b.score - a.score)[0];
-      const em = best && gestureEmotes.find((g) => g.gesture === best.gesture);
-      if (!em) gestureHeld = null;
-      else if (gestureHeld?.name !== em.id) gestureHeld = { name: em.id, since: now };
-      else if (now - gestureHeld.since >= GESTURE_HOLD && Date.now() - emotedAt > 2500) {
-        gestureHeld = { name: em.id, since: Infinity };
-        void sendEmote(em.id);
-      }
-    },
-  });
-}
-
-function handsStop(): void {
-  hands?.stop();
-  hands = null;
-  bodyNow = null;
-  if (handsBox) handsBox.checked = false;
-  const slot = cardOf(myName)?.querySelector<HTMLElement>(".spot-avatar");
-  if (slot && webgl) headArms(slot, null);
-}
-
-handsBox?.addEventListener("change", () => (handsBox.checked ? handsStart() : handsStop()));
-
-// ---- your avatar's look ----
-
-// Made in the studio (studio.ts), on a screen of its own; a change there
-// comes back here, as to every page, as a "look" event.
-
-// ---- emotes: your head does something, for everyone, for a moment ----
-
-// From the buttons, from Shift and a letter (packs.ts EMOTES says which),
-// and of its own accord when your face does one hard enough for long enough
-// (a big laugh). Shown here at once; everyone else's page hears of it.
-function showEmote(name: string, id: string): void {
-  const em = emoteOf(id);
-  const card = cardOf(name);
-  const slot = card?.querySelector<HTMLElement>(".spot-avatar");
-  if (!em || !card || !slot) return;
-  headEmote(slot, em);
-  if (!em.burst || still.matches) return;
-  // what rises from their head: a few of its emoji, floating up and away
-  // (from their head in the room, if that's what's shown)
-  const from = overHead(slot) ?? slot;
-  for (let i = 0; i < 3; i++) {
-    const b = document.createElement("span");
-    b.className = "burst";
-    b.textContent = em.burst;
-    b.setAttribute("aria-hidden", "true");
-    b.style.setProperty("--dx", `${(i - 1) * 26 + (Math.random() - 0.5) * 14}px`);
-    b.style.animationDelay = `${i * 120}ms`;
-    from.append(b);
-    b.addEventListener("animationend", () => b.remove());
-  }
-}
-let emotedAt = 0;
-async function sendEmote(id: string): Promise<void> {
-  if (!myName || Date.now() - emotedAt < 700) return;
-  emotedAt = Date.now();
-  showEmote(myName, id);
-  heardAloud.textContent = `You: ${emoteOf(id)?.label ?? id}`;
-  try {
-    const res = await fetch("emote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ emote: id }) });
-    if (res.status === 429) warn("That's a lot of emotes. Give it a moment.");
-  } catch {
-    // a missed emote is no loss
-  }
-}
-document.querySelector(".emotes")?.addEventListener("click", (e) => {
-  const id = (e.target as HTMLElement).closest<HTMLElement>("[data-emote]")?.dataset.emote;
-  if (id) void sendEmote(id);
-});
-addEventListener("keydown", (e) => {
-  if (!myName || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || typing !== null) return;
-  if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]")) return;
-  const em = EMOTES.find((x) => x.key === e.key.toUpperCase());
-  if (!em) return;
-  e.preventDefault();
-  e.stopImmediatePropagation();
-  void sendEmote(em.id);
-}, { capture: true });
-// an emote your face does by itself: held for FACE_HOLD, then not again for
-// a while
-const FACE_HOLD = 500; // ms
-const autoEmotes = EMOTES.filter((em) => "when" in em);
-const heldSince = new Map<string, number>();
-function faceEmotes(e: Expression): void {
-  for (const em of autoEmotes) {
-    const when = (em as { when: Record<string, number> }).when;
-    const doing = Object.entries(when).every(([k, v]) => (e[k as keyof Expression] ?? 0) >= v);
-    if (!doing) {
-      heldSince.delete(em.id);
-      continue;
-    }
-    const since = heldSince.get(em.id) ?? Date.now();
-    heldSince.set(em.id, since);
-    if (Date.now() - since >= FACE_HOLD && Date.now() - emotedAt > 4000) {
-      heldSince.set(em.id, Infinity);
-      void sendEmote(em.id);
-    }
-  }
-}
-
-// ---- walking about the room ----
-
-// Where you are as you walk, sent as you go (room3d.ts sends a few a
-// second), the latest only: one sent while another's on its way waits for
-// it, and is replaced by any after it.
-let walkNext: Standing | null | undefined;
-let walkSending = false;
-walkSent((at) => {
-  walkNext = at;
-  if (walkSending) return;
-  walkSending = true;
-  void (async () => {
-    while (walkNext !== undefined) {
-      const at = walkNext;
-      walkNext = undefined;
-      await fetch("walk", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(at ? { at } : { sit: true }) }).catch(() => {});
-    }
-    walkSending = false;
-  })();
-});
-
-// ---- talking from inside the room, full screen ----
-
-// Full screen, the page's own controls are out of sight: the room has a few
-// of its own, which do what those do (the microphone, typing, a handful of
-// emotes), so you can talk there.
-const dock = roomBoxEl()?.querySelector<HTMLElement>(".room-dock");
-function roomBoxEl(): HTMLElement | null {
-  return document.getElementById("room3d");
-}
-if (dock) {
-  const dockTalk = dock.querySelector<HTMLButtonElement>(".dock-talk")!;
-  const mirror = (): void => {
-    const on = talk?.getAttribute("aria-pressed") === "true";
-    dockTalk.setAttribute("aria-pressed", String(on));
-    dockTalk.disabled = !talk || talk.disabled;
-    dockTalk.title = talk?.querySelector(".label")?.textContent ?? "Microphone";
-  };
-  if (talk) new MutationObserver(mirror).observe(talk, { attributes: true, subtree: true, characterData: true, childList: true });
-  mirror();
-  dockTalk.addEventListener("click", () => talk?.click());
-  const form = dock.querySelector<HTMLFormElement>(".dock-type")!;
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const box = form.querySelector("input")!;
-    const real = typeBox?.elements.namedItem("text") as HTMLInputElement | null;
-    if (!real || !box.value.trim()) return;
-    real.value = box.value;
-    real.dispatchEvent(new Event("input", { bubbles: true }));
-    typeBox!.requestSubmit();
-    box.value = "";
-  });
-  // (typing here isn't walking, or anything else the room's keys do)
-  form.addEventListener("keydown", (e) => e.stopPropagation());
-  for (const b of dock.querySelectorAll<HTMLButtonElement>("[data-dock-emote]")) {
-    b.addEventListener("click", () => document.querySelector<HTMLButtonElement>(`.emotes [data-emote="${b.dataset.dockEmote}"]`)?.click());
-  }
-}
-
-// ---- seeing everyone as cards, or together in a room ----
-
-// The room (room3d.ts) draws everyone at once, around a table, with what
-// they're saying over their heads; the cards stay underneath for a screen
-// reader, and come back with "Cards". Remembered for next time, on this
-// browser only. Offered only where 3D heads are drawn at all.
-const viewSwitch = document.querySelector<HTMLElement>(".view-switch");
-const roomBox = document.getElementById("room3d");
-const VIEW_KEY = "said-view";
-async function seeAs(view: string): Promise<void> {
-  const inRoom = view === "room" && !!roomBox;
-  document.querySelector("main")?.classList.toggle("in-room", inRoom);
-  if (roomBox) roomBox.hidden = !inRoom;
-  const on = inRoom && (await showRoom(roomBox!.querySelector("canvas"), roomBox!.querySelector(".room-labels")));
-  if (inRoom && !on) {
-    warn("Couldn't draw the room here. Showing everyone as cards.");
-    return void seeAs("cards");
-  }
-  if (!inRoom) {
-    sit();
-    await showRoom(null, null);
-  }
-  for (const r of viewSwitch?.querySelectorAll<HTMLInputElement>("input") ?? []) r.checked = r.value === (on ? "room" : "cards");
-  try {
-    localStorage.setItem(VIEW_KEY, on ? "room" : "cards");
-  } catch {
-    // (a private window: it just isn't remembered)
-  }
-}
-if (viewSwitch && roomBox && webgl) {
-  viewSwitch.hidden = false;
-  viewSwitch.addEventListener("change", (e) => void seeAs((e.target as HTMLInputElement).value));
-  let saved: string | null = null;
-  try {
-    saved = localStorage.getItem(VIEW_KEY);
-  } catch {
-    saved = null;
-  }
-  if (saved === "room") void seeAs("room");
-}
-
-// ---- a hand up to speak next ----
-
-// The queue as the server has it, shown everywhere at once: a badge with
-// each place on its card (and the avatar's arm up), a line under the room's
-// heading, and your button saying which way it goes. Raised by the button,
-// Shift+R, or (with "Hands too") an open hand held up above your head.
-const handButton = document.getElementById("hand") as HTMLButtonElement | null;
-const queueLine = document.getElementById("queue");
-let queueNow: string[] = [];
-function showQueue(queue: string[]): void {
-  queueNow = queue;
-  for (const card of document.querySelectorAll<HTMLElement>(".spot")) {
-    const place = queue.indexOf(card.dataset.name ?? "") + 1;
-    if (String(place || "") === (card.dataset.hand ?? "")) continue;
-    if (place) card.dataset.hand = String(place);
-    else delete card.dataset.hand;
-    card.querySelector(".hand-badge")?.remove();
-    if (place) card.querySelector(".who")?.insertAdjacentHTML("afterend", handBadge(place));
-    const slot = card.querySelector<HTMLElement>(".spot-avatar");
-    if (slot && webgl) handUp(slot, place > 0);
-  }
-  if (queueLine) {
-    queueLine.innerHTML = queueHtml(queue, myName);
-    queueLine.hidden = queue.length === 0;
-  }
-  if (handButton) {
-    const up = queue.includes(myName);
-    handButton.setAttribute("aria-pressed", String(up));
-    handButton.querySelector(".label")!.textContent = up ? "Lower hand" : "Raise hand";
-    (handButton.form?.elements.namedItem("up") as HTMLInputElement | null)?.setAttribute("value", String(!up));
-  }
-}
-// Shown at once, as asked (the room's answer can take a moment, longer if
-// it's waking up), then as the room has it. A second press meanwhile is
-// sent after the first, so the hand ends where it was last put.
-let handWanted: boolean | null = null;
-let handSending = false;
-async function raiseHand(up: boolean): Promise<void> {
-  if (!myName) return;
-  handWanted = up;
-  showQueue(up ? [...queueNow.filter((n) => n !== myName), myName] : queueNow.filter((n) => n !== myName));
-  if (handSending) return;
-  handSending = true;
-  try {
-    while (handWanted !== null) {
-      const want = handWanted;
-      handWanted = null;
-      const res = await fetch("hand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ up: want }) });
-      if (res.status === 429) warn("Give it a moment before raising your hand again.");
-      if (handWanted === null && res.ok) showQueue(((await res.json()) as { queue: string[] }).queue);
-    }
-  } catch {
-    warn("Couldn't reach the room to raise your hand. Check your connection.");
-  } finally {
-    handSending = false;
-    handWanted = null;
-  }
-}
-handButton?.form?.addEventListener("submit", (e) => {
-  e.preventDefault();
-  void raiseHand(!queueNow.includes(myName));
-});
-addEventListener("keydown", (e) => {
-  if (!myName || !e.shiftKey || e.key.toUpperCase() !== "R" || e.metaKey || e.ctrlKey || e.altKey || typing !== null) return;
-  if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]")) return;
-  e.preventDefault();
-  e.stopImmediatePropagation();
-  void raiseHand(!queueNow.includes(myName));
-}, { capture: true });
-// the queue as the page was drawn with it
-showQueue([...document.querySelectorAll<HTMLElement>(".spot[data-hand]")].sort((a, b) => Number(a.dataset.hand) - Number(b.dataset.hand)).map((c) => c.dataset.name!));
-
-// ---- reactions: tap a word someone else said to react to it ----
-
-const picker = document.getElementById("react-picker");
-let reactingTo: { id: number; index: number } | null = null;
-function showReactions(id: number, index: number, counts: Record<string, number>): void {
-  const p = said.get(id);
-  if (p) (p.reactions ??= {})[index] = counts;
-  for (const w of document.querySelectorAll<HTMLElement>(`.phrase[data-id="${id}"] .tw[data-i="${index}"]`)) {
-    w.querySelector(".reacts")?.remove();
-    w.insertAdjacentHTML("beforeend", reactionsHtml(counts));
-    w.querySelector(".reacts")?.classList.add("pop");
-  }
-}
-function closePicker(): void {
-  picker?.setAttribute("hidden", "");
-  reactingTo = null;
-}
-stage.addEventListener("click", (e) => {
-  const w = (e.target as HTMLElement).closest<HTMLElement>(".tw");
-  const ph = w?.closest<HTMLElement>(".phrase");
-  if (!w || !ph || w.closest(".spot.mine")) return;
-  openPicker({ id: Number(ph.dataset.id), index: Number(w.dataset.i) }, w);
-  e.stopPropagation();
-});
-// a word over someone's head in the room, the same
-document.querySelector(".room-labels")?.addEventListener("click", (e) => {
-  const w = (e.target as HTMLElement).closest<HTMLElement>(".room-word[data-id]");
-  if (!w || w.closest(".room-label.mine")) return;
-  openPicker({ id: Number(w.dataset.id), index: Number(w.dataset.i) }, w);
-  e.stopPropagation();
-});
-function openPicker(to: { id: number; index: number }, w: HTMLElement): void {
-  if (!picker || !myName || !Number.isFinite(to.id) || !Number.isFinite(to.index)) return;
-  reactingTo = to;
-  const r = w.getBoundingClientRect();
-  picker.hidden = false;
-  picker.style.left = `${Math.max(8, Math.min(innerWidth - picker.offsetWidth - 8, r.left + r.width / 2 - picker.offsetWidth / 2))}px`;
-  picker.style.top = `${r.top + scrollY - picker.offsetHeight - 8}px`;
-  (picker.querySelector("button") as HTMLButtonElement | null)?.focus();
-}
-picker?.addEventListener("click", async (e) => {
-  const reaction = (e.target as HTMLElement).closest<HTMLElement>("[data-reaction]")?.dataset.reaction;
-  const to = reactingTo;
-  closePicker();
-  if (!reaction || !to) return;
-  try {
-    const res = await fetch("react", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...to, reaction }) });
-    if (res.ok) showReactions(to.id, to.index, ((await res.json()) as { counts: Record<string, number> }).counts);
-    else if (res.status === 429) warn("That's a lot of reactions. Give it a moment.");
-  } catch {
-    warn("Couldn't react. Check your connection.");
-  }
-});
-addEventListener("click", (e) => {
-  if (picker && !picker.hidden && !(e.target as HTMLElement).closest("#react-picker")) closePicker();
-});
-addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && picker && !picker.hidden) closePicker();
-});
-
-
-// ---- this room: its name, its look, who's here ----
-
-// How many are here (not away), beside the room's name.
-const countEl = document.getElementById("room-count");
-function countHere(): void {
-  if (!countEl) return;
-  const n = [...document.querySelectorAll<HTMLElement>(".spot")].filter((c) => !c.hasAttribute("data-away")).length;
-  countEl.textContent = n ? `${n} here` : "";
-}
-// (whenever a card comes, goes, or is marked away or back: counted only on
-// some of those, a page already open was a person short)
-new MutationObserver(countHere).observe(document.getElementById("stage") ?? document.body, { childList: true, subtree: true, attributeFilter: ["data-away"] });
-
-// The room as its maker has it: the name everywhere it's shown, and the 3D
-// room redrawn in its look.
-const mainEl = document.querySelector<HTMLElement>("main.room");
-let sceneNow: Scene = fullScene(JSON.parse(mainEl?.dataset.scene ?? "null"));
-setScene(sceneNow);
-function showScene(name: string, scene: Scene): void {
-  for (const el of document.querySelectorAll(".room-title, .room-switch-name")) el.textContent = name;
-  sceneNow = scene;
-  if (mainEl) mainEl.dataset.scene = JSON.stringify(scene);
-  setScene(scene);
-  // (the form, for its maker on another page, as it now is)
-  if (settings && !settings.contains(document.activeElement)) fillSettings(scene, name);
-}
-
-// Its settings, for whoever made it: each change goes straight to the room
-// (a name once typing stops), for everyone in it.
-const settings = document.querySelector<HTMLFormElement>("[data-room-settings]");
-function fillSettings(scene: Scene, name?: string): void {
-  if (!settings) return;
-  for (const [k, v] of Object.entries(scene)) for (const r of settings.querySelectorAll<HTMLInputElement>(`input[name="${k}"]`)) r.checked = r.value === v;
-  // (a theme's shown as chosen while the room's still exactly it)
-  for (const r of settings.querySelectorAll<HTMLInputElement>('input[name="theme"]')) {
-    const t = JSON.parse(r.dataset.scene ?? "{}") as Record<string, string>;
-    r.checked = Object.entries(scene).every(([k, v]) => t[k] === v);
-  }
-  if (name !== undefined) (settings.elements.namedItem("name") as HTMLInputElement).value = name;
-}
-async function changeRoom(change: Record<string, unknown>): Promise<void> {
-  try {
-    const res = await fetch("room", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(change) });
-    if (!res.ok) warn(res.status === 429 ? "That's a lot of changes. Give it a moment." : "Couldn't change the room.");
-  } catch {
-    warn("Couldn't reach the room to change it.");
-  }
-}
-if (settings) {
-  fillSettings(sceneNow);
-  settings.addEventListener("submit", (e) => e.preventDefault());
-  settings.addEventListener("change", (e) => {
-    const t = e.target as HTMLInputElement;
-    if (t.name === "theme") {
-      const scene = JSON.parse(t.dataset.scene ?? "{}") as Scene;
-      showScene((settings.elements.namedItem("name") as HTMLInputElement).value, scene);
-      void changeRoom({ scene });
-    } else if (t.name === "listed") void changeRoom({ listed: t.checked });
-    else if (t.name !== "name") {
-      const scene = { ...sceneNow, [t.name]: t.value } as Scene;
-      showScene((settings.elements.namedItem("name") as HTMLInputElement).value, scene);
-      void changeRoom({ scene });
-    }
-  });
-  let naming: ReturnType<typeof setTimeout> | undefined;
-  const nameBox = settings.elements.namedItem("name") as HTMLInputElement;
-  nameBox.addEventListener("input", () => {
-    clearTimeout(naming);
-    const name = nameBox.value.trim();
-    if (!name) return;
-    naming = setTimeout(() => void changeRoom({ name }), 600);
-  });
-}
-
-// A link to this room, copied, to bring someone in.
-for (const b of document.querySelectorAll<HTMLButtonElement>(".copy-link")) {
-  b.addEventListener("click", async () => {
-    const was = b.textContent;
-    try {
-      await navigator.clipboard.writeText(location.origin + location.pathname);
-      b.textContent = "Copied";
-    } catch {
-      b.textContent = "Copy failed";
-    }
-    setTimeout(() => (b.textContent = was), 1600);
-  });
-}
-
-// The tabs under the say panel: one shown at a time; arrow keys move along
-// them (as tabs do); the one last open is remembered.
-const TAB_KEY = "said-tab";
-const tabs = [...document.querySelectorAll<HTMLButtonElement>('.tabs [role="tab"]')];
-function openTab(t: HTMLButtonElement, focus = false): void {
-  for (const x of tabs) {
-    const on = x === t;
-    x.setAttribute("aria-selected", String(on));
-    x.tabIndex = on ? 0 : -1;
-    const panel = document.getElementById(x.getAttribute("aria-controls") ?? "");
-    if (panel) panel.hidden = !on;
-  }
-  if (focus) t.focus();
-  try {
-    localStorage.setItem(TAB_KEY, t.id);
-  } catch {
-    // (not remembered)
-  }
-}
-for (const t of tabs) {
-  t.addEventListener("click", () => openTab(t));
-  t.addEventListener("keydown", (e) => {
-    const i = tabs.indexOf(t);
-    const to = e.key === "ArrowRight" ? tabs[(i + 1) % tabs.length] : e.key === "ArrowLeft" ? tabs[(i - 1 + tabs.length) % tabs.length] : e.key === "Home" ? tabs[0] : e.key === "End" ? tabs.at(-1) : null;
-    if (!to) return;
-    e.preventDefault();
-    e.stopPropagation();
-    openTab(to, true);
-  });
-}
-try {
-  const kept = document.getElementById(localStorage.getItem(TAB_KEY) ?? "");
-  if (kept && tabs.includes(kept as HTMLButtonElement)) openTab(kept as HTMLButtonElement);
-} catch {
-  // (the first, then)
-}
-// (the room switcher closes when you click elsewhere)
-document.addEventListener("click", (e) => {
-  for (const d of document.querySelectorAll<HTMLDetailsElement>(".room-switch[open]")) if (!d.contains(e.target as Node)) d.open = false;
-});
-
-// Someone in another room now: their card goes from this one (they're
-// talking somewhere else), and comes back with what they say when they're
-// back here (as anyone arriving does).
-function goneElsewhere(names: string[]): void {
-  for (const name of names) {
-    if (name === myName) continue;
-    const card = document.querySelector<HTMLElement>(`#stage .spot[data-name="${CSS.escape(name)}"]`);
-    if (card) card.remove();
-  }
-  const nobody = document.getElementById("nobody");
-  if (nobody) nobody.hidden = !!document.querySelector("#stage .spot");
-}
+// the page opens at the newest
+toBottom(false);

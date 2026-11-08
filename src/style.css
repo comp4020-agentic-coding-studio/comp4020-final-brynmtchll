@@ -1,1118 +1,352 @@
-/* Said. A dark room by default, lit by the people in it: the surfaces stay
-   quiet so the only colour on screen is each person's, on their name and
-   their words. A light theme from the same palette for those who ask. */
+/* Said: live captions for a room. One transcript to read, set in a face
+   made for reading at length; everything else gets out of its way. Each
+   person's colour is on their name only, so the words themselves stay
+   high-contrast however they were said. */
 
-/* Inter for everything you read, Bricolage Grotesque for the name and the
-   headline (both SIL Open Font License, variable, latin only: about 90 KB
-   together, cached; the system's sans until they arrive) */
+/* Inter for the interface, Literata for what people said (a text face
+   built for long reading on screens, with real weights from 200 to 900,
+   which is what loudness is drawn with). Both variable, from jsDelivr. */
 @font-face { font-family: "Inter Variable"; font-style: normal; font-display: swap; font-weight: 100 900; src: url(https://cdn.jsdelivr.net/npm/@fontsource-variable/inter@5.2.8/files/inter-latin-wght-normal.woff2) format("woff2-variations"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: "Bricolage Grotesque Variable"; font-style: normal; font-display: swap; font-weight: 200 800; src: url(https://cdn.jsdelivr.net/npm/@fontsource-variable/bricolage-grotesque@5.2.8/files/bricolage-grotesque-latin-wght-normal.woff2) format("woff2-variations"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Literata Variable"; font-style: normal; font-display: swap; font-weight: 200 900; src: url(https://cdn.jsdelivr.net/npm/@fontsource-variable/literata@5.2.8/files/literata-latin-wght-normal.woff2) format("woff2-variations"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
 :root {
   --font: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --display: "Bricolage Grotesque Variable", var(--font);
+  --read: "Literata Variable", "Literata", "Iowan Old Style", Georgia, ui-serif, serif;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  /* every person's colour is a hue from their seat (voice.ts) at this
-     lightness and chroma, in OKLCH so every hue is equally light: chosen per
-     theme so the smallest text in any person's colour clears 4.5:1 against
-     the cards at every hue (8.6:1 at worst on dark, 4.8:1 on light) */
-  --person-l: 0.8;
-  --person-c: 0.13;
-
-  --bg: #0b0e15;
-  --bg-glow: #19223a;
-  --bg-warm: #2a1c24;
-  --surface: #141923;
-  --surface-2: #1b2130;
-  --line: #252c3c;
-  --glass: rgb(20 25 35 / 0.72);
-  --ink: #eef1f7;
-  --muted: #8b93a7; /* 5.7:1 on surface */
-  --faint: #5d6579; /* 3:1: only for what doesn't need reading, like how long ago */
-  --accent: #8ab4ff;
-  --live: #ff6b6b;
-  --ok: #3ddc97;
-  --hand: #f0b44c; /* a hand up to speak; dark ink on it is 9:1 */
-  --shadow: 0 1px 0 rgb(255 255 255 / 0.045) inset, 0 1px 2px rgb(0 0 0 / 0.3), 0 16px 40px -18px rgb(0 0 0 / 0.7);
-  --radius: 18px;
-  color-scheme: dark;
+  color-scheme: light;
+  /* paper and ink */
+  --bg: #f6f3ec;
+  --surface: #fffdf8;
+  --surface-2: #efebe1;
+  --line: #e2dccf;
+  --ink: #17161a;
+  --muted: #5f5a52; /* 6.4:1 on bg */
+  --faint: #847e73; /* 3.7:1: times and hints, never what must be read */
+  --accent: #2f5bd3;
+  --live: #c93a32;
+  --ok: #1d8553;
+  --hand: #b97a10;
+  /* a person's colour, at a lightness that reads as text on this paper */
+  --person-l: 0.5;
+  --person-c: 0.15;
+  --shadow: 0 1px 2px rgb(40 30 10 / 0.06), 0 8px 24px -12px rgb(40 30 10 / 0.18);
+  --radius: 14px;
+  /* the reader's own settings (packs.ts READING), set on <html> */
+  --size: 1;
+  --feeling: 1;
 }
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
-    --person-l: 0.5;
-    --person-c: 0.14;
-    --bg: #eef1f6;
-    --bg-glow: #dce5f6;
-    --bg-warm: #f6e4e4;
-    --glass: rgb(255 255 255 / 0.78);
-    --surface: #ffffff;
-    --surface-2: #f5f7fb;
-    --line: #dde2ec;
-    --ink: #121621;
-    --muted: #5b6375;
-    --faint: #8b93a7;
-    --accent: #2f5fd0;
-    --live: #d33a3a;
-    --ok: #138a5a;
-    --hand: #a86400; /* white on it is 4.6:1 */
-    --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 12px 32px -16px rgb(16 24 40 / 0.18);
-    color-scheme: light;
+    color-scheme: dark;
+    --bg: #101114;
+    --surface: #17181c;
+    --surface-2: #1f2025;
+    --line: #2a2b31;
+    --ink: #f2efe8;
+    --muted: #a39e94; /* 7:1 on bg */
+    --faint: #77736a;
+    --accent: #8fb0ff;
+    --live: #ff6b62;
+    --ok: #4fd18b;
+    --hand: #f0b44c;
+    --person-l: 0.78;
+    --person-c: 0.13;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -14px rgb(0 0 0 / 0.7);
   }
 }
+html[data-size="s"] { --size: 0.85; }
+html[data-size="l"] { --size: 1.3; }
+html[data-size="xl"] { --size: 1.75; }
+html[data-feeling="none"] { --feeling: 0; }
+html[data-feeling="some"] { --feeling: 0.6; }
+html[data-feeling="more"] { --feeling: 1.5; }
+html[data-contrast="high"] { --muted: var(--ink); --faint: var(--ink); --line: var(--ink); --surface-2: var(--surface); }
+@media (prefers-color-scheme: light) { html[data-contrast="high"] { --bg: #fff; --surface: #fff; --ink: #000; --person-l: 0.4; } }
+@media (prefers-color-scheme: dark) { html[data-contrast="high"] { --bg: #000; --surface: #000; --ink: #fff; --person-l: 0.85; } }
 
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: radial-gradient(1100px 620px at 78% -12%, var(--bg-glow), transparent 70%), radial-gradient(900px 520px at -10% 110%, var(--bg-warm), transparent 70%), var(--bg);
-  background-attachment: fixed;
-  color: var(--ink);
-  font: 16px/1.5 var(--font);
-  font-feature-settings: "cv11";
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
-/* going between the room and the studio: a cross-fade, your head carried
-   from your card to the big one (where the browser does this) */
-@view-transition { navigation: auto; }
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.28s; animation-timing-function: var(--ease); }
-.mine-card .spot-avatar, .stage-3d .preview-head { view-transition-name: my-head; }
-::view-transition-group(my-head) { animation-duration: 0.42s; animation-timing-function: var(--ease); }
-@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 400 1rem/1.5 var(--font); -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-h2 { margin: 0; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-.fine { color: var(--muted); font-size: 0.875rem; margin: 8px 0 0; }
-kbd { font: 600 0.75rem ui-monospace, "SF Mono", Menlo, monospace; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--surface-2); color: var(--ink); }
+.skip { position: absolute; left: 12px; top: -48px; padding: 8px 12px; background: var(--ink); color: var(--bg); border-radius: 8px; z-index: 50; text-decoration: none; }
+.skip:focus { top: 12px; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
-/* the bar along the top: the name, and the way to the README */
-.top { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 14px; max-width: 1480px; margin: 0 auto; }
-.name { font-family: var(--display); font-weight: 750; font-size: 1.5rem; letter-spacing: -0.035em; color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: 9px; }
-/* the mark: a speech bubble's dot, lit, in three of the people colours */
-.name::before { content: ""; width: 14px; height: 14px; border-radius: 50% 50% 50% 4px; background: conic-gradient(from 200deg, oklch(0.8 0.13 20), oklch(0.8 0.13 160), oklch(0.8 0.13 260), oklch(0.8 0.13 20)); box-shadow: 0 0 16px rgb(138 180 255 / 0.45); }
-.top nav { display: flex; gap: 6px; font-size: 0.9375rem; }
-.top nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px; transition: color 0.2s, background 0.2s; }
-.top nav a:hover { color: var(--ink); background: var(--surface-2); }
+/* ---- buttons, fields, menus: one set, used everywhere ---- */
 
-button {
-  font: inherit;
-  font-weight: 600;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px 16px;
-  min-height: 44px;
-  background: var(--surface-2);
-  color: var(--ink);
-  cursor: pointer;
-  transition: background 0.18s, border-color 0.18s, color 0.18s, box-shadow 0.18s, transform 0.12s var(--ease);
-}
-button:hover:not(:disabled) { border-color: var(--faint); background: color-mix(in oklab, var(--surface-2) 92%, var(--ink)); }
-button:active:not(:disabled) { transform: scale(0.97); }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.primary, .ghost, .danger, .send, .hand, .talk { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid transparent; font-weight: 600; font-size: 0.9375rem; white-space: nowrap; transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.12s var(--ease), box-shadow 0.2s; }
+.primary { background: var(--ink); color: var(--bg); }
+.primary:hover { background: color-mix(in oklab, var(--ink) 85%, var(--accent)); }
+.ghost, .hand { background: var(--surface); border-color: var(--line); }
+.ghost:hover, .hand:hover { border-color: var(--faint); }
+.danger { background: transparent; border-color: color-mix(in srgb, var(--live) 50%, var(--line)); color: var(--live); }
+.danger:hover { background: color-mix(in srgb, var(--live) 10%, transparent); }
+:is(.primary, .ghost, .danger, .send, .hand, .talk):active:not(:disabled) { transform: scale(0.97); }
+:is(.primary, .ghost, .send, .talk):disabled { opacity: 0.45; cursor: default; }
+.primary-link { display: inline-flex; min-height: 44px; align-items: center; padding: 0 18px; border-radius: 999px; background: var(--ink); color: var(--bg); text-decoration: none; font-weight: 600; }
 
-/* ---- the room: you on the left, everyone else on the right, what you're
-   about to say along the bottom ---- */
+.field-label { display: block; margin: 14px 0 6px; font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
+.field-label .optional { font-weight: 400; color: var(--faint); }
+input[type="text"], input:not([type]), select { width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); transition: border-color 0.15s, box-shadow 0.15s; }
+input:not([type]):focus, input[type="text"]:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+::placeholder { color: var(--faint); }
+.hint { margin: 6px 0 0; font-size: 0.8125rem; color: var(--muted); }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 
-main.room {
-  display: grid;
-  gap: 24px;
-  padding: 4px 20px 40px;
-  max-width: 1480px;
-  margin: 0 auto;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "me" "others" "record";
-}
-@media (min-width: 900px) {
-  main.room { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: "me others" "record record"; align-items: start; }
-}
+/* choices as pills: radio buttons, one picked */
+.choices, .seg, .tones { display: flex; flex-wrap: wrap; gap: 6px; }
+.choices legend, .seg legend { width: 100%; padding: 0; margin: 14px 0 6px; font-size: 0.8125rem; font-weight: 600; color: var(--muted); float: left; }
+:is(.choices, .seg, .tones) label { position: relative; }
+:is(.choices, .seg, .tones) input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+:is(.choices, .seg, .tones) span { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 0.875rem; transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
+:is(.choices, .seg, .tones) label:hover span { border-color: var(--faint); }
+:is(.choices, .seg, .tones) input:checked + span { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+:is(.choices, .seg, .tones) input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { gap: 0; }
+.seg label { flex: 1 1 auto; }
+.seg span { width: 100%; justify-content: center; border-radius: 0; margin-left: -1px; padding: 0 10px; }
+.seg label:first-of-type span { border-radius: 999px 0 0 999px; margin-left: 0; }
+.seg label:last-of-type span { border-radius: 0 999px 999px 0; }
 
-.me { grid-area: me; }
-.others { grid-area: others; }
-.record-wrap { grid-area: record; }
-.join-card, .record-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.switch { display: flex; align-items: center; gap: 10px; margin-top: 14px; cursor: pointer; font-size: 0.9375rem; }
+.switch input { appearance: none; flex: none; width: 40px; height: 24px; margin: 0; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); position: relative; cursor: pointer; transition: background-color 0.15s; }
+.switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); transition: translate 0.18s var(--ease); }
+.switch input:checked { background: var(--ink); border-color: var(--ink); }
+.switch input:checked::after { translate: 16px 0; background: var(--bg); }
+.switch .hint { display: inline; margin: 0 0 0 4px; }
 
-/* ---- a person's card: name, latest word large, the last few under it ---- */
+.slider { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 10px; font-size: 0.875rem; color: var(--muted); }
+.slider input { width: 100%; accent-color: var(--ink); }
 
-.stage, .mine-card { list-style: none; margin: 0; padding: 0; }
-.stage { display: grid; gap: 12px; }
-.spot {
-  --person: oklch(var(--person-l) var(--person-c) var(--hue));
-  position: relative;
-  /* a fixed height, so a card doesn't grow and shrink as words come and go:
-     the head, a slot for the word being said, and the thread filling the rest */
-  height: var(--card-h, 300px);
-  display: flex;
-  flex-direction: column;
-  padding: 14px 18px 0 20px;
-  /* a little of their colour behind their head, so each card is theirs */
-  background: radial-gradient(260px 180px at 0 0, color-mix(in srgb, var(--person) 9%, transparent), transparent 72%), linear-gradient(180deg, color-mix(in oklab, var(--surface) 94%, var(--ink)), var(--surface) 120px);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-  transition: border-color 0.4s, box-shadow 0.4s, height 0.4s var(--ease), opacity 0.4s;
-  animation: card-in 0.5s var(--ease) both;
-}
-@keyframes card-in { from { opacity: 0; translate: 0 10px; scale: 0.985; } }
-/* (yours is there when the page opens, not arriving: and with the room
-   being built in the same moment, its fade was caught part way, and the
-   card stayed dim) */
-.mine-card .spot { animation: none; }
-.mine-card .spot.speaking { animation: breathe 2.4s ease-in-out infinite; }
-/* a thin bar of their colour down the side, bright while they speak */
-.spot::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--person); opacity: 0.3; transition: opacity 0.3s; }
-.spot.speaking { border-color: color-mix(in srgb, var(--person) 50%, var(--line)); box-shadow: var(--shadow), 0 0 48px -14px var(--person); animation: card-in 0.5s var(--ease) both, breathe 2.4s ease-in-out infinite; }
-/* while they talk, their glow breathes */
-@keyframes breathe { 50% { box-shadow: var(--shadow), 0 0 64px -10px var(--person); } }
-.spot.speaking::before { opacity: 1; }
-.spot-head { display: flex; align-items: center; gap: 10px; }
-.spot-avatar { flex: none; width: 52px; height: 52px; display: block; }
-.spot-avatar .avatar { width: 100%; height: 100%; display: block; filter: drop-shadow(0 3px 6px rgb(0 0 0 / 0.3)); }
-/* a 3D head fills its frame (a hat's brim reaches the edges), so it's given
-   a little more room than the flat face */
-.spot:has(.head3d) .spot-avatar { width: 112px; height: 112px; margin: -12px 0 -14px -14px; }
-.mine-card .spot:has(.head3d) .spot-avatar { width: 176px; height: 176px; margin: -24px 0 -26px -22px; }
-/* on a phone, a little smaller, so the thread keeps its room */
-@media (max-width: 600px) {
-  .spot:has(.head3d) .spot-avatar { width: 92px; height: 92px; margin: -10px 0 -10px -12px; }
-  .mine-card .spot:has(.head3d) .spot-avatar { width: 128px; height: 128px; margin: -16px 0 -16px -16px; }
-}
-/* with their arms up (a gesture, or their hands on camera), more room, so
-   the head doesn't shrink to fit the shoulders and hands in */
-/* It grows over what's beside and below it rather than pushing it (as a
-   change of size would: every emote moved the whole thread down and back),
-   from its top corner, clear of the card's top edge where a hand held up
-   was cut off. */
-.spot:has(.head3d) .spot-avatar { transition: transform 0.35s ease, translate 0.35s ease; transform-origin: 0 0; z-index: 1; }
-.spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.5); translate: 0 12px; }
-.mine-card .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.36); translate: 0 16px; }
-@media (max-width: 600px) {
-  .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.4); translate: 0 10px; }
-  .mine-card .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.3); }
-}
-@media (prefers-reduced-motion: reduce) { .spot:has(.head3d) .spot-avatar { transition: none; } }
-/* on a phone, someone who hasn't said anything lately is only as tall as
-   their head and name, and a thread gets less room than on a wide screen:
-   a screen of empty cards to scroll past is just a gap */
-@media (max-width: 600px) {
-  .stage > .spot:not([data-away]) { --card-h: 236px; }
-  .stage > .spot:not([data-away]):not(:has(.bubble)) { --card-h: 132px; }
-}
-/* and what they're saying stays in front of it, its hand showing round the words */
-.spot:has(.head3d) :is(.spot-name, .spot-word, .thread) { z-index: 2; }
-/* With a head that size, the word being said goes beside it, under their
-   name, as if it's coming from the head, rather than in a row of its own
-   (where the head crowded it). The head's row and the word's are one. */
-.spot:has(.head3d) { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 10px; }
-.spot:has(.head3d) .spot-head { display: contents; }
-.spot:has(.head3d) .spot-avatar { grid-column: 1; grid-row: 1 / 3; align-self: start; }
-.spot:has(.head3d) .spot-name { grid-column: 2; grid-row: 1; align-self: end; padding-top: 6px; }
-.spot:has(.head3d) .spot-word { grid-column: 2; grid-row: 2; align-self: start; margin: 2px 0 0; }
-.spot:has(.head3d) .thread { grid-column: 1 / -1; grid-row: 3; }
-.mine-card .spot:has(.head3d) .spot-name { padding-top: 22px; }
-.mine-card .spot:has(.head3d) .spot-word { margin-top: 6px; }
-.spot-name { flex: 1; display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.9375rem; font-weight: 700; color: var(--person); }
-/* a long name ends in … rather than running off the card */
-.spot-name { min-width: 0; }
-.spot-name .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.spot-name .you { margin-left: auto; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-.spot-word {
-  flex: none;
-  margin: 6px 0 0;
-  height: 1.3em;
-  display: flex;
-  align-items: center;
-  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.5rem);
-  line-height: 1.2;
-  color: var(--person);
-  overflow-wrap: anywhere;
-  transition: opacity 1.2s;
-}
-@keyframes arrive { from { opacity: 0; translate: 0 6px; } }
-/* the last word, once someone stops, lingers and then goes */
-.spot-word.fading { opacity: 0; }
-/* someone who hasn't said anything yet */
-.spot:not(:has(.bubble)) .spot-word:empty::before { content: "…"; color: var(--faint); font-weight: 300; }
+/* menus: a button that opens a panel under it, over the page */
+.menu { position: relative; }
+.menu summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 0.875rem; font-weight: 600; cursor: pointer; user-select: none; transition: border-color 0.15s; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu summary:hover { border-color: var(--faint); }
+.menu[open] summary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.menu-body { position: absolute; z-index: 30; right: 0; top: calc(100% + 8px); width: min(360px, calc(100vw - 32px)); padding: 6px 18px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow), 0 24px 60px -24px rgb(0 0 0 / 0.35); animation: pop 0.18s var(--ease); }
+@keyframes pop { from { opacity: 0; translate: 0 -4px; } }
 
-/* What they've said lately, as text messages: a column of bubbles in their
-   colour, each with a tail on its right, newest at the top; a new line in a
-   bubble for each pause. It fills the rest of the card and scrolls, fading
-   out at the bottom rather than stopping dead at the card's edge. */
-.thread {
-  flex: 1;
-  min-height: 0;
-  list-style: none;
-  margin: 10px 0 0;
-  padding: 2px 10px 28px 2px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  overflow-y: auto;
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
-}
-.thread:empty { visibility: hidden; }
-.bubble {
-  position: relative;
-  /* wide enough that a line breaks where the speaker paused, not word by word */
-  width: max-content;
-  min-width: min(60%, 14rem);
-  max-width: 92%;
-  padding: 7px 12px;
-  border-radius: 16px 16px 4px 16px;
-  background: color-mix(in srgb, var(--person) 16%, var(--surface-2));
-  border: 1px solid color-mix(in srgb, var(--person) 28%, transparent);
-  color: var(--ink);
-  font-size: 1rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-/* the tail, bottom right */
-.bubble::after {
-  content: "";
-  position: absolute;
-  right: -7px;
-  bottom: -1px;
-  width: 12px;
-  height: 14px;
-  background: inherit;
-  border-right: 1px solid color-mix(in srgb, var(--person) 28%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--person) 28%, transparent);
-  clip-path: polygon(0 0, 0 100%, 100% 100%);
-  border-bottom-right-radius: 4px;
-}
-/* words heard early, while the phrase is still being said: faded, and
-   breathing, until the real phrase replaces them */
-.bubble.draft { opacity: 0.6; border-style: dashed; animation: drafting 1.4s ease-in-out infinite; }
-@keyframes drafting { 50% { opacity: 0.4; } }
-.phrase.settled { animation: settle 0.35s ease-out; }
-@keyframes settle { from { opacity: 0.55; } }
-.bubble .w { font-size: 1em; transform: none; margin: 0; }
-.bubble .w.fx-impact { font-size: 1.15em; }
-.bubble .w.fx-whisper { font-size: 0.85em; }
-/* your own words can be chosen and changed */
-.spot.mine .tw { cursor: pointer; border-radius: 4px; }
-.spot.mine .tw:hover { background: color-mix(in srgb, var(--person) 18%, transparent); }
-.tw.chosen { background: color-mix(in srgb, var(--person) 30%, transparent); box-shadow: 0 0 0 1.5px var(--person); }
-.tw.typing .w { font-style: normal; }
-.caret { display: inline-block; width: 2px; height: 0.95em; margin-left: 1px; background: currentColor; vertical-align: -0.1em; animation: caret 1s steps(1) infinite; }
-@keyframes caret { 50% { opacity: 0; } }
+/* ---- the header ---- */
 
-/* yours, on the left: bigger, with the controls under it */
-.me { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
-.mine-card .spot { --card-h: 460px; padding: 22px 26px 0 28px; }
-/* (on a phone, shorter: your controls are under it, and a screen's worth of
-   empty card pushes them out of reach) */
-@media (max-width: 600px) { .mine-card .spot { --card-h: min(320px, 42vh); padding: 16px 18px 0 20px; } }
-/* (and until you've said something, only as tall as your head and name:
-   an empty card above the controls is just a gap) */
-@media (max-width: 600px) { .mine-card .spot:not(:has(.bubble)) { --card-h: 168px; } }
-/* (on a wide screen too, only as tall as your head and the word you're
-   saying until there's a thread to show under it) */
-@media (min-width: 601px) { .mine-card .spot:not(:has(.bubble)) { --card-h: 264px; } }
-.mine-card .spot-avatar { width: 88px; height: 88px; }
-.mine-card .spot-name { font-size: 1.0625rem; }
-.mine-card .spot-word { margin-top: 14px; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
+.top { display: flex; align-items: center; gap: 16px; max-width: 1180px; margin: 0 auto; padding: 14px 20px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 750; font-size: 1.1875rem; letter-spacing: -0.02em; color: var(--ink); text-decoration: none; }
+.mark { width: 26px; height: 26px; border-radius: 8px; background: var(--ink); position: relative; flex: none; }
+.mark::before, .mark::after { content: ""; position: absolute; left: 6px; height: 2.5px; border-radius: 2px; background: var(--bg); }
+.mark::before { top: 8px; width: 14px; }
+.mark::after { top: 13px; width: 9px; box-shadow: 0 5px 0 0 var(--bg); }
+.site-nav { margin-left: auto; display: flex; gap: 4px; }
+.site-nav a { padding: 8px 12px; border-radius: 999px; color: var(--muted); text-decoration: none; font-size: 0.9375rem; font-weight: 500; }
+.site-nav a:hover { color: var(--ink); background: var(--surface-2); }
 
-.mine-card .bubble { font-size: 1.0625rem; }
-/* everyone else's are side by side where there's room (and shorter, two to
-   a row: a head, a word and the last few bubbles, not a column of space) */
-@media (min-width: 1300px) {
-  .stage { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stage:has(> .spot:nth-child(3)) > .spot:not([data-away]) { --card-h: 248px; }
-  /* (one or two others: the whole width each, not half and a gap) */
-  .stage:not(:has(> .spot:nth-child(3))) { grid-template-columns: minmax(0, 1fr); }
-}
-/* someone on their own with you: a card as big as yours, so their words and
-   their thread have room */
-@media (min-width: 900px) {
-  .stage:not(:has(> .spot:nth-child(2))) > .spot { --card-h: 460px; padding: 22px 26px 0 28px; }
-  .stage:not(:has(> .spot:nth-child(2))) > .spot:has(.head3d) .spot-avatar { width: 176px; height: 176px; margin: -24px 0 -26px -22px; }
-  .stage:not(:has(> .spot:nth-child(2))) > .spot .spot-word { margin-top: 14px; font-size: clamp(2.5rem, 1.6rem + 3vw, 4.25rem); }
-}
+.notice { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--live) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--live) 30%, var(--line)); font-size: 0.9375rem; }
 
-.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-/* every control one size and shape: a pill, 44px tall */
-.controls :is(.face-toggle, .hand-toggle, .voices-toggle) { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 16px; border-radius: 999px; font-size: 0.9375rem; font-weight: 600; background: var(--surface-2); border: 1px solid var(--line); }
-.controls .voices-toggle[hidden] { display: none; }
-.talk { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 22px; border-radius: 999px; background: var(--ink); color: var(--bg); border-color: var(--ink); box-shadow: 0 8px 24px -10px rgb(255 255 255 / 0.25); }
-.talk:hover:not(:disabled) { background: color-mix(in oklab, var(--ink) 88%, var(--accent)); border-color: transparent; }
-/* on a phone: the microphone across the width, the rest sharing each row
-   between them (however many are showing, no row half empty) */
-@media (max-width: 600px) {
-  .controls .talk { flex: 1 1 100%; min-height: 52px; font-size: 1.0625rem; }
-  .controls :is(.face-toggle, .hand-toggle, .voices-toggle) { flex: 1 1 auto; padding: 10px 14px; }
-  .controls .hand-form { display: contents; }
-}
-.talk .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
-/* while on, the dot is live and the button's ring follows the input level */
-.talk.recording { background: var(--surface-2); color: var(--ink); border-color: var(--live); box-shadow: 0 0 0 calc(var(--level, 0) * 10px) color-mix(in srgb, var(--live) 22%, transparent); }
-.talk.recording .dot { background: var(--live); box-shadow: 0 0 10px var(--live); animation: pulse 1.6s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: 0.45; } }
-.face-toggle { border-radius: 999px; }
-.face-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-2)); }
-.face-preview { width: 64px; height: 48px; object-fit: cover; border-radius: 10px; border: 2px solid var(--hand); transform: scaleX(-1); transition: border-color 0.2s; }
-/* green while it can see your face, amber while it's looking */
-.face-preview.found { border-color: var(--ok, #3ecf8e); }
-/* a hand up to speak next: the button, a badge on their card, and the queue */
-.hand-form { display: contents; }
-.hand-toggle { border-radius: 999px; }
-.hand-toggle[aria-pressed="true"] { border-color: var(--hand); color: var(--hand); background: color-mix(in srgb, var(--hand) 10%, var(--surface-2)); }
-.hand-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; color: var(--surface); background: var(--hand); }
-.spot[data-hand] { border-color: color-mix(in srgb, var(--hand) 55%, var(--line)); }
-/* someone with no page open: faded, and said to be away, their words kept */
-.spot[data-away] .spot-avatar { opacity: 0.6; filter: saturate(0.5); transition: opacity 0.6s, filter 0.6s; }
-.spot[data-away] .spot-name .who { opacity: 0.6; }
-.spot[data-away] .spot-name::after { content: "away"; flex: none; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
-/* (the pill is dark on either page, so its grey is the dark page's; and
-   it's the name that dims, not the pill, which over the window went to mud) */
-.room-name[data-away] { color: color-mix(in oklab, var(--person) 62%, rgb(12 15 22)); }
-.room-name[data-away]::before { content: "away · "; font-weight: 500; color: #8b93a7; }
-.spot[data-away] .spot-word:empty::before { content: none; }
-/* away, a card is short (their name, their head dozing, the last of what
-   they said), and goes after everyone who's here; two away fit a row */
-.stage > .spot[data-away] { order: 1; --card-h: 104px; opacity: 0.82; padding-bottom: 12px; }
-/* (the last of what they said beside their head, rather than below it where
-   a card that short would cut it off) */
-.stage > .spot[data-away] .spot-word { display: none; }
-.stage > .spot[data-away]:has(.head3d) .spot-avatar { width: 84px; height: 84px; margin: -8px 0 -10px -12px; }
-.stage > .spot[data-away]:has(.head3d) .spot-name { align-self: start; padding-top: 2px; }
-.stage > .spot[data-away] .thread { grid-column: 2; grid-row: 2 / 4; margin: 6px 0 0; padding: 0 10px 0 0; overflow: hidden; -webkit-mask-image: none; mask-image: none; align-items: flex-start; }
-.stage > .spot[data-away] .bubble:not(:first-child) { display: none; }
-.stage > .spot[data-away] .bubble { min-width: 0; max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: 0.875rem; padding: 4px 10px; border-radius: 12px 12px 12px 4px; }
-.stage > .spot[data-away] .bubble::after { content: none; }
-.stage { grid-auto-flow: row dense; }
-.spot[data-hand="1"] { box-shadow: var(--shadow), 0 0 32px -14px var(--hand); }
-.queue { margin: 0 0 10px; padding: 9px 16px; border-radius: 999px; background: color-mix(in srgb, var(--hand) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--hand) 30%, transparent); color: var(--ink); font-size: 0.875rem; animation: card-in 0.4s var(--ease) both; }
-.queue strong { color: var(--hand); }
-/* hearing what people say */
-.voices-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 0.875rem; font-weight: 600; color: var(--ink); cursor: pointer; transition: border-color 0.18s, color 0.18s, background 0.18s; }
-.voices-toggle:hover { border-color: var(--faint); }
-.voices-toggle[hidden] { display: none; }
-.voices-toggle input { position: absolute; opacity: 0; pointer-events: none; }
-.voices-toggle:has(input:checked) { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-2)); }
-.voices-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* arms and hands as well, offered once the face is showing */
-.hands-toggle { display: none; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
-.controls:has(.face-toggle[aria-pressed="true"]) .hands-toggle { display: inline-flex; }
-.hands-toggle input { accent-color: var(--accent); }
-.face-preview[hidden] { display: none; }
-.status { margin: 0; color: var(--muted); font-size: 0.875rem; min-height: 1.4em; }
+/* ---- the front page ---- */
 
-/* the way in, for someone who hasn't joined */
-.join-card { position: relative; padding: clamp(24px, 4vw, 44px); overflow: hidden; background: radial-gradient(500px 300px at 100% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%), radial-gradient(420px 280px at 0 100%, color-mix(in srgb, oklch(0.8 0.13 20) 10%, transparent), transparent 70%), var(--surface); }
-/* the headline, drawn the way the app draws what people say: each word as
-   loud and as high as it was said */
-.hero-words.words { margin: 0 0 22px; font-family: var(--display); font-size: clamp(2.25rem, 1.4rem + 3.4vw, 3.75rem); line-height: 1.35; letter-spacing: -0.03em; color: var(--ink); }
-.hero-line { display: block; }
-.hero-line + .hero-line .w:nth-child(1) { color: oklch(var(--person-l) var(--person-c) 20); }
-.hero-line + .hero-line .w:nth-child(2) { color: oklch(var(--person-l) var(--person-c) 200); }
-.hero-words .w { animation: arrive 0.6s var(--ease) both; }
-.hero-words .w:nth-child(2) { animation-delay: 0.08s; } .hero-words .w:nth-child(3) { animation-delay: 0.16s; } .hero-words .w:nth-child(4) { animation-delay: 0.24s; }
-.hero-line + .hero-line .w:nth-child(1) { animation-delay: 0.36s; } .hero-line + .hero-line .w:nth-child(2) { animation-delay: 0.48s; }
-.join-card h2 { font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-.join-card .fine { font-size: 1rem; max-width: 46ch; margin-top: 10px; }
-.join { display: flex; gap: 8px; margin-top: 22px; max-width: 520px; min-width: 0; }
-/* (the card's one column no wider than the card: a text box's own width
-   would push it past the padding on a phone) */
-.join-card { grid-template-columns: minmax(0, 1fr); }
-.join input { flex: 1; min-width: 0; font: inherit; font-size: 1.0625rem; padding: 12px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--ink); min-height: 52px; transition: border-color 0.18s, box-shadow 0.18s; }
-.join input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
-.join button { background: var(--accent); border-color: var(--accent); color: #0b1020; padding: 12px 26px; border-radius: 999px; min-height: 52px; font-size: 1.0625rem; box-shadow: 0 10px 28px -12px var(--accent); }
-.join button:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 85%, white); border-color: transparent; }
-@media (prefers-color-scheme: light) { .join button { color: #fff; } }
-.notice { background: color-mix(in srgb, var(--live) 14%, transparent); border-left: 3px solid var(--live); padding: 8px 12px; margin: 12px 0 0; border-radius: 8px; }
+main.home { max-width: 1180px; margin: 0 auto; padding: 8px 20px 80px; display: grid; gap: 40px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 960px) {
+  main.home { grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); column-gap: 56px; align-items: start; }
+  main.home .intro, main.home .notice { grid-column: 1 / -1; }
+  main.home .open-room, main.home .join-card { position: sticky; top: 16px; }
+}
+.intro h1 { margin: 24px 0 18px; max-width: 17ch; font-family: var(--read); font-size: clamp(2.25rem, 1.5rem + 3.2vw, 4rem); font-weight: 500; line-height: 1.06; letter-spacing: -0.025em; text-wrap: balance; }
+.intro h1 em { font-style: italic; font-weight: 750; }
+.lede { max-width: 62ch; margin: 0; font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem); line-height: 1.6; color: var(--muted); }
+.lede .demo { color: var(--ink); font-family: var(--read); }
+.you { margin: 18px 0 0; color: var(--muted); }
+.who { color: oklch(var(--person-l) var(--person-c) var(--hue, 250)); font-weight: 650; }
+.rooms h2, .open-room h2, .join-card h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 700; letter-spacing: -0.01em; }
+.room-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.room-card { display: grid; gap: 4px; padding: 16px 18px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); color: var(--ink); text-decoration: none; transition: border-color 0.15s, transform 0.15s var(--ease), box-shadow 0.2s; }
+.room-card:hover { border-color: var(--faint); box-shadow: var(--shadow); transform: translateY(-1px); }
+.room-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.room-card-name { font-weight: 650; font-size: 1.0625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-card-about { color: var(--muted); font-size: 0.9375rem; overflow-wrap: anywhere; }
+.room-card-meta { color: var(--faint); font-size: 0.8125rem; }
+.live-dot { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem; font-weight: 600; color: var(--ok); }
+.live-dot span { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.open-room, .join-card { padding: 22px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.open-room h2 + .hint { margin-top: -6px; }
+.open-room > .primary { margin-top: 20px; width: 100%; }
+.join-card .hint { margin: -6px 0 4px; }
+.join-row { display: flex; gap: 8px; }
+.join-row input { flex: 1; min-width: 0; }
 
-/* everyone else, stacked */
-.others { display: grid; gap: 12px; align-content: start; }
-.others-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 2px; }
-/* cards, or everyone in a room */
-.view-switch { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); margin-left: auto; }
-.view-switch[hidden] { display: none; }
-.view-switch input { position: absolute; opacity: 0; pointer-events: none; }
-.view-switch span { display: inline-block; padding: 5px 14px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; color: var(--muted); cursor: pointer; transition: background 0.2s, color 0.2s; }
-.view-switch span:hover { color: var(--ink); }
-.view-switch input:checked + span { background: var(--ink); color: var(--bg); }
-.view-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* The room: one scene, as wide as the room's column and most of the
-   screen's height, with names and words over the heads. The cards are still
-   there, out of sight, for a screen reader. */
-.room3d { position: relative; height: min(68vh, 720px); min-height: 360px; border-radius: calc(var(--radius) + 4px); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow), 0 30px 80px -40px rgb(0 0 0 / 0.8); background: #141824; animation: room-in 0.6s var(--ease) both; }
-@keyframes room-in { from { opacity: 0; scale: 0.99; } }
-.room3d[hidden] { display: none; }
-@media (max-width: 899px) { .room3d { height: min(62vh, 112vw, 640px); } }
-.room3d canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
-.room3d.full canvas { touch-action: none; }
-/* (faded up once it's drawn, rather than a moment of empty box first) */
-.room3d canvas:not([data-drawn]) { opacity: 0; }
-/* (and meanwhile, the room's own dusk colours, slowly moving, so the box
-   is the room on its way rather than empty) */
-.room3d:has(canvas:not([data-drawn])) { background: linear-gradient(110deg, #141824 30%, #2a2433 45%, #3a2a2a 50%, #2a2433 55%, #141824 70%) 0 0 / 300% 100%; animation: room-in 0.6s var(--ease) both, waiting 1.6s linear infinite; }
-@keyframes waiting { from { background-position: 100% 0; } to { background-position: -50% 0; } }
-@media (prefers-reduced-motion: reduce) { .room3d:has(canvas:not([data-drawn])) { animation: none; } }
-.room3d canvas[data-drawn] { animation: drawn-in 0.5s var(--ease) both; }
-@keyframes drawn-in { from { opacity: 0; filter: blur(6px); } }
-.room3d.dragging canvas { cursor: grabbing; }
-.room3d:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-/* how to look at it: a bar of views along the bottom, over the scene, in
-   frosted glass; the hint fades once it's been turned */
-.room-bar { position: absolute; left: 50%; bottom: 14px; translate: -50% 0; display: flex; align-items: center; gap: 6px; padding: 4px; border-radius: 999px; background: rgb(12 15 24 / 0.55); border: 1px solid rgb(255 255 255 / 0.1); backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.6); z-index: 3; }
-.room-views { display: flex; gap: 2px; }
-.room-views input { position: absolute; opacity: 0; pointer-events: none; }
-.room-views span { display: inline-block; padding: 6px 13px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; color: rgb(255 255 255 / 0.72); cursor: pointer; transition: background 0.2s, color 0.2s; white-space: nowrap; }
-.room-views span:hover { color: #fff; }
-.room-views input:checked + span { background: rgb(255 255 255 / 0.92); color: #10131c; }
-.room-views input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-.room-reset { min-height: 0; padding: 6px 12px; border-radius: 999px; border: 0; background: transparent; color: rgb(255 255 255 / 0.72); font-size: 0.8125rem; display: none; }
-.room-reset:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 0.1); }
-.room3d[data-turned] .room-reset { display: inline-block; }
-.room-hint { position: absolute; top: 12px; left: 50%; translate: -50% 0; margin: 0; padding: 4px 12px; border-radius: 999px; background: rgb(12 15 24 / 0.45); color: rgb(255 255 255 / 0.75); font-size: 0.75rem; pointer-events: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: opacity 0.6s; animation: hint-out 0.6s 6s forwards; z-index: 3; }
-@keyframes hint-out { to { opacity: 0; } }
-.room3d[data-turned] .room-hint { opacity: 0; }
-/* up and walking: the "Me" view (over your shoulder) and the way back to
-   your chair, shown only then */
-.room-me, .room-sit { display: none; }
-.room3d[data-up] .room-me { display: inline-block; }
-.room3d[data-up] .room-sit { display: inline-block; }
-.room-sit { min-height: 0; padding: 6px 12px; border-radius: 999px; border: 0; background: rgb(255 255 255 / 0.14); color: #fff; font-size: 0.8125rem; font-weight: 600; }
-.room-sit:hover:not(:disabled) { background: rgb(255 255 255 / 0.24); }
-/* the full screen button, top right */
-.room-full { position: absolute; top: 10px; right: 10px; z-index: 3; display: grid; place-items: center; width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: 12px; border: 1px solid rgb(255 255 255 / 0.12); background: rgb(12 15 24 / 0.5); color: rgb(255 255 255 / 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: background 0.2s, color 0.2s, transform 0.15s var(--ease); }
-.room-full:hover:not(:disabled) { background: rgb(12 15 24 / 0.75); color: #fff; }
-.room-full:active { transform: scale(0.94); }
-.room-full svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.room-full .shrink, .room3d.full .room-full .grow { display: none; }
-.room3d.full .room-full .shrink { display: inline; }
-/* full screen: the room alone, edge to edge (the browser's own full screen,
-   or, where there's none, the whole window) */
-.room3d.full { position: fixed; inset: 0; z-index: 50; height: 100dvh; min-height: 0; width: 100vw; border-radius: 0; border: 0; animation: none; }
-.room3d:fullscreen { height: 100%; width: 100%; border-radius: 0; border: 0; }
-.room3d.full .room-bar { bottom: max(18px, env(safe-area-inset-bottom)); }
-.room3d.full .room-full { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
-:root:has(.room3d.full) { overflow: hidden; }
-/* the stick, on a touch screen: bottom left, a ring and a knob */
-.room-stick { display: none; position: absolute; left: 14px; bottom: 62px; z-index: 3; width: 88px; height: 88px; opacity: 0.55; transition: opacity 0.2s; border-radius: 50%; background: radial-gradient(circle, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.14)); border: 1px solid rgb(255 255 255 / 0.22); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); touch-action: none; }
-.room-stick:active, .room3d[data-up] .room-stick { opacity: 1; }
-.room-knob { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: rgb(255 255 255 / 0.9); box-shadow: 0 4px 14px rgb(0 0 0 / 0.35); transition: transform 0.12s var(--ease); pointer-events: none; }
-.room-stick:active .room-knob { transition: none; }
-@media (pointer: coarse) { .room-stick { display: block; } }
-/* up, on a phone: six in the bar, so each a little narrower */
-@media (max-width: 600px) {
-  .room3d[data-up] .room-views span { padding: 6px 7px; font-size: 0.75rem; }
-  .room3d[data-up] .room-sit { padding: 6px 9px; font-size: 0.75rem; }
-}
-/* full screen: a few of your controls, in the room, bottom right */
-.room-dock { display: none; position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); z-index: 3; align-items: center; gap: 6px; padding: 5px; border-radius: 999px; background: rgb(12 15 24 / 0.55); border: 1px solid rgb(255 255 255 / 0.1); backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.6); }
-.room3d.full .room-dock { display: flex; }
-.room3d.full .room-bar { left: max(14px, env(safe-area-inset-left)); translate: 0 0; }
-.dock-talk { width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgb(255 255 255 / 0.92); }
-.dock-talk .dot { width: 12px; height: 12px; border-radius: 50%; background: #6b7280; transition: background 0.2s, box-shadow 0.2s; }
-.dock-talk[aria-pressed="true"] .dot { background: #ef4444; box-shadow: 0 0 0 4px rgb(239 68 68 / 0.25); animation: pulse 1.4s ease-in-out infinite; }
-.dock-type input { width: min(36vw, 280px); min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.14); background: rgb(255 255 255 / 0.08); color: #fff; font: inherit; font-size: 0.875rem; }
-.dock-type input::placeholder { color: rgb(255 255 255 / 0.55); }
-.dock-type input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.dock-emotes { display: flex; gap: 2px; }
-.dock-emotes button { width: 38px; height: 38px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: transparent; font-size: 1.15rem; transition: background 0.15s, transform 0.12s var(--ease); }
-.dock-emotes button:hover:not(:disabled) { background: rgb(255 255 255 / 0.12); }
-.dock-emotes button:active { transform: scale(0.9); }
-/* a phone, full screen: the bar along the top, the dock along the bottom */
-@media (max-width: 600px) {
-  .room3d.full .room-bar { top: max(12px, env(safe-area-inset-top)); bottom: auto; left: 12px; right: 64px; translate: 0 0; overflow-x: auto; scrollbar-width: none; }
-  .room3d.full .room-dock { left: 12px; right: 12px; justify-content: space-between; }
-  .dock-type { flex: 1; min-width: 0; }
-  .dock-type input { width: 100%; }
-  .dock-emotes button { width: 32px; height: 32px; font-size: 1rem; }
-  .room3d.full .room-stick { bottom: max(84px, calc(env(safe-area-inset-bottom) + 72px)); }
-}
-.room3d.full .room-stick { bottom: max(84px, calc(env(safe-area-inset-bottom) + 70px)); left: max(18px, env(safe-area-inset-left)); }
-@media (max-width: 600px) {
-  .room-bar { bottom: 10px; }
-  .room-views span { padding: 6px 10px; }
-  .room-reset { padding: 6px 10px; }
-  .room-hint { display: none; }
-}
-.room-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.room-label { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px; max-width: 46%; will-change: transform;
-  --person: oklch(var(--person-l) var(--person-c) var(--hue)); }
-.room-name { padding: 2px 9px; border-radius: 999px; background: rgb(12 15 22 / 0.62); border: 1px solid rgb(255 255 255 / 0.08); color: var(--person); font-size: 0.75rem; font-weight: 650; white-space: nowrap; max-width: 10em; overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-.room-label.speaking, .room-label:has(.room-word:not(:empty)) { z-index: 2; }
-.room-label.quiet { opacity: 0; }
-.room-label { transition: opacity 0.3s; }
-.room-label.speaking .room-name { box-shadow: 0 0 0 2px var(--person); }
-.room-name[data-hand]::after { content: " ✋ " attr(data-hand); color: var(--hand); }
-.room-word { color: var(--person); font-size: clamp(1.25rem, 0.9rem + 1.6vw, 2.25rem); line-height: 1.1; text-align: center; text-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 18px rgb(0 0 0 / 0.55); }
-.room-word:empty { display: none; }
-/* each word over a head comes up as it does on the card: from a little
-   below, faded in, with the spring its style gives it (each is a new
-   element, so it plays for each) */
-.room-word .w { animation: arrive calc(0.2s + var(--style-motion, 0) * 0.2s) cubic-bezier(0.2, calc(1.2 + var(--style-motion, 0) * 0.8), 0.4, 1) both; }
-.room-label:not(.mine) .room-word[data-id] { pointer-events: auto; cursor: pointer; }
-/* Joined, the page is one shape in either view: the room (or everyone, as
-   cards) takes the wide side, and you the narrow one, your card short, then
-   a panel to say something, then the rest in tabs. In the room, on a wide
-   screen, the room is as tall as the screen allows. */
-@media (min-width: 900px) {
-  main.room.joined { grid-template-columns: minmax(0, 1fr) minmax(330px, 400px); grid-template-areas: "others me" "record me"; }
-  main.room.joined .me { position: sticky; top: 12px; }
-  main.room.joined .mine-card .spot { --card-h: 240px; padding: 16px 18px 0 20px; }
-  main.room.joined .mine-card .spot:not(:has(.bubble)) { --card-h: 200px; }
-  main.room.joined .mine-card .spot-word { font-size: clamp(1.75rem, 1.2rem + 1.4vw, 2.5rem); }
-  main.in-room .room3d { height: min(78vh, 860px); }
-}
-/* On a phone, in the room, the room first, where the page opens, with your
-   controls straight under it, and your own card gone (you're sitting in
-   the room, and it was a screen of scrolling before it); as cards, you
-   first, then everyone else. */
-@media (max-width: 899px) {
-  main.room.joined.in-room { grid-template-areas: "others" "me" "record"; }
-  main.room.joined.in-room .mine-card { display: none; }
-}
-main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.live { margin: 0; font-size: 0.8125rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+/* ---- a room ---- */
+
+main.room { max-width: 1180px; margin: 0 auto; padding: 8px 20px 0; display: flex; flex-direction: column; min-height: calc(100vh - 66px); }
+.room-head { display: grid; gap: 4px; }
+.room-title-row { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.room-name { margin: 0; font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem); font-weight: 720; letter-spacing: -0.025em; line-height: 1.15; overflow-wrap: anywhere; }
+.room-about { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.room-meta { margin: 0; font-size: 0.8125rem; color: var(--faint); }
+.room-meta a { color: var(--muted); }
+.live { margin: 0; flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem; font-weight: 600; color: var(--faint); }
 .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.live.on::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.live.on { color: var(--ok); }
+.live.on::before { background: var(--ok); }
+.room-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
+.room-tools .ghost { min-height: 40px; font-size: 0.875rem; padding: 0 14px; }
+.room-tools .reading { margin-left: auto; }
+.queue { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--hand) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--hand) 35%, var(--line)); font-size: 0.9375rem; }
 
-/* ---- changing your words, live ---- */
-
-.edit-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.edit-hint { flex-basis: 100%; margin: 0 0 2px; color: var(--muted); font-size: 0.8125rem; }
-/* (no arrow keys to press on a touch screen) */
-@media (hover: none) { .edit-hint .keys { display: none; } }
-.edit-tools button { display: flex; align-items: center; gap: 6px; padding: 6px 10px; min-height: 38px; font-size: 0.8125rem; }
-/* on a phone, the effects three to a row, all one width */
-@media (max-width: 600px) {
-  .edit-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .edit-hint { grid-column: 1 / -1; }
-  .edit-tools button { min-height: 44px; padding: 6px 8px; }
+.room-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px 32px; align-content: start; padding-top: 8px; border-top: 1px solid var(--line); }
+@media (min-width: 960px) { .room-body { grid-template-columns: minmax(0, 1fr) 200px; } }
+.transcript-wrap { position: relative; min-width: 0; padding: 16px 0 24px; }
+.here { position: sticky; top: 16px; padding: 16px 0 0; align-self: start; }
+.here h2 { margin: 0 0 10px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.here ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.here li { display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; min-width: 0; }
+.here li .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.here li::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: oklch(var(--person-l) var(--person-c) var(--hue, 250)); }
+.here li.nobody { color: var(--faint); }
+.here li.nobody::before { display: none; }
+.you-tag { font-size: 0.75rem; color: var(--faint); }
+/* on a narrow screen, who's here is a line above the transcript */
+@media (max-width: 959px) {
+  .here { position: static; order: -1; padding: 12px 0 0; }
+  .here h2 { display: none; }
+  .here ul { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .here li { font-size: 0.8125rem; }
+  .transcript-wrap { padding-top: 4px; }
 }
 
-/* ---- your avatar's look ---- */
+/* the transcript: one turn after another, a name and time over each */
+.transcript { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(24px * min(var(--size), 1.4)); }
+.turn { display: grid; gap: 2px; animation: turn-in 0.35s var(--ease) both; }
+@keyframes turn-in { from { opacity: 0; translate: 0 6px; } }
+.turn-head { margin: 0; display: flex; align-items: baseline; gap: 10px; font-size: calc(0.875rem * min(var(--size), 1.3)); }
+.turn-head time { color: var(--faint); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.turn-words { margin: 0; font-family: var(--read); font-size: calc(clamp(1.25rem, 1.1rem + 0.5vw, 1.5rem) * var(--size)); line-height: 1.55; overflow-wrap: anywhere; color: var(--ink); max-width: 46ch; }
+html[data-size="xl"] .turn-words, html[data-size="l"] .turn-words { max-width: none; }
+.phrase { animation: phrase-in 0.3s var(--ease) both; }
+@keyframes phrase-in { from { opacity: 0; } }
+/* a typed phrase is marked, and read in the interface face's italic-free
+   upright so it reads as written, not heard */
+.phrase.typed { color: color-mix(in oklab, var(--ink) 88%, var(--muted)); }
+.phrase.typed::before { content: "typed"; font-family: var(--font); font-size: 0.55em; font-weight: 600; letter-spacing: 0.02em; vertical-align: 0.3em; margin-right: 0.45em; padding: 0.1em 0.5em; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.empty { margin: 8px 0 24px; color: var(--muted); font-size: 1.0625rem; max-width: 52ch; }
+.drafts { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+.draft { font-family: var(--read); font-size: calc(clamp(1.25rem, 1.1rem + 0.5vw, 1.5rem) * var(--size)); line-height: 1.55; color: var(--muted); }
+.draft .who { font-family: var(--font); font-size: 0.6em; margin-right: 0.4em; }
+.draft .w { font-weight: 400; opacity: 0.8; transform: none; }
+.draft::after { content: ""; display: inline-block; width: 0.5em; height: 0.12em; margin-left: 0.2em; background: currentColor; border-radius: 2px; animation: blink 1s ease-in-out infinite; vertical-align: middle; }
+@keyframes blink { 50% { opacity: 0.2; } }
+.jump { position: sticky; bottom: 150px; display: block; margin: 8px auto 0; min-height: 36px; padding: 0 16px; border-radius: 999px; border: 0; background: var(--ink); color: var(--bg); font-size: 0.875rem; font-weight: 600; box-shadow: var(--shadow); }
 
-.customise { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; }
-.customise summary { cursor: pointer; font-weight: 600; font-size: 0.9375rem; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 8px; }
-.customise summary::-webkit-details-marker { display: none; }
-.customise summary::after { content: "▸"; transition: rotate 0.2s; }
-.customise[open] summary::after { rotate: 90deg; }
-.customise[open] summary { color: var(--ink); margin-bottom: 8px; }
-.look-form { display: grid; gap: 10px; }
-.pick { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.pick legend { float: left; width: 64px; padding: 0; font-size: 0.8125rem; color: var(--muted); }
-.pick label { cursor: pointer; }
-.pick input { position: absolute; opacity: 0; pointer-events: none; }
-.pick label > span { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; min-width: 34px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); font-size: 0.8125rem; text-transform: capitalize; }
-.pick input:checked + span { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-.pick label > span { transition: border-color 0.15s, background-color 0.15s, transform 0.15s; }
-.pick label:hover > span { border-color: color-mix(in oklab, var(--accent) 45%, var(--line)); }
-.pick label:active > span { transform: scale(0.97); }
-.pick .swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgb(0 0 0 / 0.3); }
-.pick label > span:has(.swatch) { padding: 6px; }
-/* any colour at all: the browser's colour picker, as a swatch */
-.any-colour input[type="color"] { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
-.any-colour input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-.any-colour input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 50%; }
-/* a rainbow ring round it, so it reads as "any colour" */
-.any-colour > span { position: relative; background: conic-gradient(#f55, #fb3, #5d5, #3bf, #a6f, #f55) !important; }
-.any-colour input[type="color"] { box-shadow: 0 0 0 2px var(--surface-2); }
-.any-colour > span { padding: 5px !important; }
-/* a tab for each group of parts; only the chosen one's rows show */
-.look-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; padding: 4px; border-radius: 16px; background: color-mix(in oklab, var(--bg) 60%, var(--surface)); border: 1px solid var(--line); }
-.look-tab span { display: block; text-align: center; }
-.look-tab input { position: absolute; opacity: 0; pointer-events: none; }
-.look-tab span { display: inline-block; padding: 6px 12px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; color: var(--muted); cursor: pointer; }
-.look-tab span { transition: background 0.18s, color 0.18s; }
-.look-tab span:hover { color: var(--ink); }
-.look-tab input:checked + span { background: var(--ink); color: var(--bg); box-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.4); }
-.look-tab input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-.surprise { margin-left: auto; padding: 6px 12px; border-radius: 999px; font-size: 0.8125rem; }
-.look-section { display: grid; gap: 10px; }
-.look-form:has(.look-tab input[value="0"]:checked) .look-section:not([data-section="0"]),
-.look-form:has(.look-tab input[value="1"]:checked) .look-section:not([data-section="1"]),
-.look-form:has(.look-tab input[value="2"]:checked) .look-section:not([data-section="2"]),
-.look-form:has(.look-tab input[value="3"]:checked) .look-section:not([data-section="3"]),
-.look-form:has(.look-tab input[value="4"]:checked) .look-section:not([data-section="4"]),
-.look-form:has(.look-tab input[value="5"]:checked) .look-section:not([data-section="5"]),
-.look-form:has(.look-tab input[value="6"]:checked) .look-section:not([data-section="6"]),
-.look-form:has(.look-tab input[value="7"]:checked) .look-section:not([data-section="7"]) { display: none; }
-.voice-try { display: grid; gap: 6px; padding-top: 6px; }
-.voice-try button { justify-self: start; padding: 8px 16px; border-radius: 999px; }
-.voice-try .hint { margin: 0; font-size: 0.75rem; color: var(--faint); }
-/* voices, each with how it sounds under its name */
-.pick.voices { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); grid-auto-rows: 1fr; align-items: stretch; gap: 6px; }
-.pick.voices legend { grid-column: 1 / -1; float: none; width: auto; margin-bottom: 2px; }
-.pick.voices legend small { color: var(--faint); font-size: inherit; }
-.pick.voices label { display: flex; align-self: stretch; }
-.pick.voices label > span { display: grid; justify-items: start; justify-content: start; gap: 1px; width: 100%; min-height: 46px; padding: 6px 12px; border-radius: 12px; text-transform: none; text-align: left; align-content: center; }
-.natural-toggle small { font-weight: 500; color: var(--muted); }
-.pick.blends legend { float: none; width: 100%; margin-bottom: 4px; }
-.pick.blends legend small { font-weight: 400; color: var(--faint); }
-.pick.voices b { font-weight: 700; font-size: 0.8125rem; }
-.pick.voices small { font-size: 0.6875rem; color: var(--muted); line-height: 1.2; }
-.natural-pick { display: flex; align-items: flex-start; gap: 8px; font-size: 0.8125rem; color: var(--ink); cursor: pointer; }
-.natural-pick[hidden] { display: none; }
-.natural-pick input { accent-color: var(--accent); margin-top: 2px; }
-.fast-pick { color: var(--muted); padding-left: 22px; }
-/* natural voices downloading: the switch breathes */
-.natural-toggle.loading span { animation: pulse 1.6s ease-in-out infinite; }
-
-/* ---- the brief record of what's been said lately ---- */
-
-.record-wrap { padding: 14px 20px; transition: background-color 0.2s; }
-.record-wrap summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; margin: -14px -20px; padding: 14px 20px; border-radius: var(--radius); }
-.record-wrap summary:hover h2 { color: var(--ink); }
-.record-wrap summary::-webkit-details-marker { display: none; }
-.record-wrap summary::after { content: "▸"; color: var(--muted); transition: rotate 0.2s var(--ease); }
-.record-wrap[open] summary::after { rotate: 90deg; }
-.record-wrap[open] summary { margin-bottom: 0; }
-/* a timeline: a mark in their colour, their name in a column, what they
-   said, and when, at the end of the line */
-.record { list-style: none; margin: 8px 0 2px; padding: 0; display: grid; gap: 2px; font-size: 0.9375rem; max-height: 22rem; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.record li { --person: oklch(var(--person-l) var(--person-c) var(--hue)); display: grid; grid-template-columns: minmax(6rem, 10rem) minmax(0, max-content) auto; justify-content: start; align-items: baseline; gap: 12px; padding: 6px 10px 6px 14px; border-radius: 10px; position: relative; animation: card-in 0.4s var(--ease) both; }
-.record li::before { content: ""; position: absolute; left: 2px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--person); opacity: 0.7; }
-.record li:hover { background: color-mix(in oklab, var(--surface-2) 70%, transparent); }
-.record strong { color: var(--person); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.record .said-text { color: color-mix(in oklab, var(--ink) 90%, var(--muted)); overflow-wrap: anywhere; }
-.record time { color: var(--faint); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-@media (max-width: 600px) {
-  .record li { grid-template-columns: minmax(0, 1fr) auto; justify-content: stretch; row-gap: 0; }
-  .record .said-text { grid-column: 1 / -1; grid-row: 2; }
-}
-
-/* ---- how it works, behind a "?" in the header ---- */
-
-.top nav { align-items: center; }
-.help { position: relative; }
-.help summary { list-style: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); font-weight: 700; font-size: 0.875rem; cursor: pointer; transition: color 0.15s, border-color 0.15s, background-color 0.15s, transform 0.15s; }
-.help summary:hover { color: var(--ink); border-color: var(--faint); }
-.help summary:active { transform: scale(0.94); }
-.help summary::-webkit-details-marker { display: none; }
-.help[open] summary { color: var(--bg); background: var(--ink); border-color: var(--ink); }
-/* a panel of glass under the "?", each paragraph a step with its own mark */
-.help-body { position: absolute; right: 0; top: 44px; z-index: 20; width: min(400px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px; display: grid; gap: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow), 0 24px 60px -20px rgb(0 0 0 / 0.55); font-size: 0.875rem; line-height: 1.55; color: var(--ink); transform-origin: calc(100% - 17px) -8px; animation: pop-in 0.22s var(--ease) both; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-@keyframes pop-in { from { opacity: 0; scale: 0.96; translate: 0 -4px; } }
-.help-body p { margin: 0; padding-left: 30px; position: relative; color: color-mix(in oklab, var(--ink) 85%, var(--muted)); }
-.help-body p::before { position: absolute; left: 0; top: 0; width: 22px; text-align: center; font-size: 0.9375rem; }
-.help-body p:nth-child(1)::before { content: "🎙️" / ""; }
-.help-body p:nth-child(2)::before { content: "✏️" / ""; }
-.help-body p:nth-child(3)::before { content: "🙂" / ""; }
-.help-body p:nth-child(4)::before { content: "✋" / ""; }
-.help-body p:nth-child(5)::before { content: "🔊" / ""; }
-.help-body p:nth-child(6)::before { content: "⌨️" / ""; }
-.help-body kbd { font-size: 0.6875rem; padding: 0 5px; }
+/* correcting your own words */
+.turn.mine .tw { cursor: text; border-radius: 4px; }
+.turn.mine .tw:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.editing .tw.chosen { background: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.caret { display: inline-block; width: 2px; height: 1em; margin-left: 1px; background: var(--accent); vertical-align: -0.12em; animation: blink 1s steps(1) infinite; }
 
 /* ---- how each word was said ----
 
-   From the numbers voice.ts attaches to it (all relative to the speaker's own
-   voice in that phrase):
-     --loud     dB above or below their typical word: heavier, bigger, fainter
-     --pitch    semitones above or below their typical pitch: sits higher or lower
-     --gap      seconds of pause after it: more space
-   A drawn-out word isn't styled here: voice.ts repeats one of its letters.
-   How the whole phrase compared with how its speaker usually sounds (--u-loud,
-   --u-range, each -1 to 1, unset until they've said a few things) scales the
-   lot: louder than usual is bigger, more animated spreads weights apart. */
-.words { font-size: calc(clamp(1.25rem, 1rem + 1vw, 1.75rem) * (1 + var(--u-loud, 0) * 0.18)); line-height: 2.4; margin: 0; overflow-wrap: anywhere; }
+   From the numbers voice.ts puts on it, all relative to the speaker's own
+   voice in that phrase:
+     --loud   dB above or below their typical word: heavier, a little bigger
+     --pitch  semitones above or below their typical pitch: sits higher or lower
+     --gap    seconds of pause after it: a little more space
+   A drawn-out word repeats one of its letters (voice.ts). How strongly it
+   all shows is the reader's own choice (--feeling: 0 is plain captions). */
 .w {
-  --spread: calc(1 + var(--u-range, 0) * 0.5);
-  /* how strongly loud and high show, from the speaker's word style (packs.ts
-     STYLES, set on their card): 1 as standard */
-  --L: calc(var(--loud) * var(--style-loud, 1));
-  --P: calc(var(--pitch) * var(--style-pitch, 1));
+  --L: calc(var(--loud, 0) * var(--feeling));
+  --P: calc(var(--pitch, 0) * var(--feeling));
   display: inline-block;
-  font-weight: clamp(250, calc(500 + var(--L) * 40 * var(--spread)), 900);
-  font-size: clamp(0.8em, calc(1em + var(--L) * 0.025em), 1.7em);
-  /* no fainter than 0.6, which still reads at about 4.5:1 in both themes */
-  opacity: clamp(0.6, calc(1 + var(--L) * 0.05), 1);
-  margin-right: min(calc(var(--gap) * 0.6em), 2em);
-  transform: translateY(calc(var(--P) * -0.07em)) rotate(calc(var(--P) * var(--style-motion, 0) * -0.6deg));
+  font-weight: clamp(300, calc(430 + var(--L) * 32), 900);
+  font-size: clamp(0.85em, calc(1em + var(--L) * 0.02em), 1.45em);
+  /* never fainter than reads at 4.5:1 */
+  opacity: clamp(0.62, calc(1 + var(--L) * 0.04), 1);
+  /* a pause shows as a little more space, past the gaps between any words */
+  margin-right: clamp(0em, calc((var(--gap, 0) - 0.4) * 0.35em * var(--feeling)), 1.2em);
+  transform: translateY(calc(var(--P) * -0.055em));
 }
-/* the lettering of each word style */
-[data-font="system"] .w { font-family: inherit; }
-[data-font="comic"] .w { font-family: "Comic Sans MS", "Chalkboard SE", "Comic Neue", "Marker Felt", cursive; letter-spacing: 0.01em; }
-[data-font="rounded"] .w { font-family: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Arial Rounded MT Bold", system-ui, sans-serif; }
-[data-font="hand"] .w { font-family: "Bradley Hand", "Segoe Print", "Noteworthy", "Patrick Hand", cursive; }
-[data-font="mono"] .w { font-family: ui-monospace, "SF Mono", "Courier New", monospace; letter-spacing: -0.02em; }
-[data-font="serif"] .w { font-family: "Iowan Old Style", "Palatino", "Georgia", ui-serif, serif; }
-/* neon: every word glows a little, louder ones more */
-.spot[data-glow] .w, .room-label[data-glow] .w { text-shadow: 0 0 calc(0.12em + max(0em, var(--L) * 0.03em)) var(--person); }
-/* the word being said, for a style with motion, springs in; a loud one bigger */
-.spot-word.arrive .w { animation: arrive calc(0.18s + var(--style-motion, 0) * 0.2s) cubic-bezier(0.2, calc(1 + var(--style-motion, 0) * 0.8), 0.4, 1); }
-.spot-word .w { margin: 0; white-space: nowrap; scale: var(--fit, 1); transform-origin: 0 50%; }
+html[data-feeling="none"] .w .held { display: none; }
+/* typed in the Whisper tone */
+.w.hushed { font-style: italic; }
 
-/* Effects a speaker puts on one of their words (voice.ts EFFECTS). Each
-   builds on how the word was said rather than replacing it. */
-.w.fx-impact { font-weight: 900; font-size: 1.5em; letter-spacing: -0.01em; animation: impact 0.45s cubic-bezier(0.2, 1.6, 0.4, 1); }
-@keyframes impact {
-  0% { transform: scale(2.2); opacity: 0; }
-  45% { transform: scale(0.94) translateX(-3px); opacity: 1; }
-  60% { transform: scale(1.02) translateX(3px); }
-  75% { transform: translateX(-2px); }
-  100% { transform: none; }
+/* ---- saying something: docked at the bottom of the room ---- */
+
+.composer { position: sticky; bottom: 0; z-index: 20; margin: 0 -20px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.composer.join-card { position: static; margin: 8px 0 32px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); padding: 22px; }
+.composer-row { display: flex; gap: 8px; align-items: center; }
+.talk { flex: none; background: var(--ink); color: var(--bg); min-height: 48px; padding: 0 20px; }
+.talk .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+.talk.recording { background: var(--live); color: #fff; box-shadow: 0 0 0 calc(var(--level, 0) * 10px) color-mix(in srgb, var(--live) 25%, transparent); }
+.talk.recording .dot { opacity: 1; animation: blink 1.4s ease-in-out infinite; }
+.type-box { flex: 1; min-width: 0; display: flex; gap: 6px; margin: 0; }
+.type-box input { flex: 1; min-width: 0; min-height: 48px; border-radius: 999px; padding: 0 18px; }
+.send { background: var(--surface-2); border-color: var(--line); min-height: 48px; }
+.send:not(:disabled) { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.composer-more { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.composer-more .tones { flex: 1; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: -2px; }
+.composer-more .tones::-webkit-scrollbar { display: none; }
+.tones label { flex: none; }
+.tones span { min-height: 32px; padding: 0 12px; font-size: 0.8125rem; }
+.hand { min-height: 36px; font-size: 0.875rem; padding: 0 14px; }
+.hand.up { background: var(--hand); border-color: var(--hand); color: #1a1205; }
+.hand-form { margin: 0; flex: none; }
+.your-voice { flex: none; }
+.your-voice summary { min-height: 36px; }
+.your-voice .menu-body { top: auto; bottom: calc(100% + 8px); }
+.your-voice .ghost { margin-top: 14px; }
+.status { margin: 0; font-size: 0.8125rem; color: var(--muted); }
+.status:empty { display: none; }
+/* on a phone: the microphone a round button beside the box, tones scrolling
+   under them */
+@media (max-width: 640px) {
+  .top { padding: 12px 16px; }
+  main.home, main.room { padding-inline: 16px; }
+  .composer { margin: 0 -16px; padding-inline: 16px; }
+  .talk { width: 48px; padding: 0; }
+  .talk .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .talk .dot { width: 14px; height: 14px; opacity: 1; }
+  .send { padding: 0 14px; }
+  .composer-more .tones { mask-image: linear-gradient(90deg, #000 80%, transparent); }
+  .hand .hand-label { display: none; }
+  .room-tools { gap: 6px; }
+  .room-tools .reading { margin-left: 0; }
+  .menu-body, .your-voice .menu-body { position: fixed; left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; max-height: 80vh; overflow-y: auto; }
+  .jump { bottom: 140px; }
 }
-.w.fx-whisper { font-weight: 300; font-size: 0.75em; font-style: italic; opacity: 0.6; letter-spacing: 0.04em; }
-.w.fx-glow { text-shadow: 0 0 0.25em var(--person, currentColor), 0 0 0.6em var(--person, currentColor); animation: glow 2.4s ease-in-out infinite alternate; }
-@keyframes glow {
-  from { text-shadow: 0 0 0.15em var(--person, currentColor), 0 0 0.4em var(--person, currentColor); }
-  to { text-shadow: 0 0 0.3em var(--person, currentColor), 0 0 0.9em var(--person, currentColor); }
-}
-.w.fx-shake { animation: shake 0.35s linear infinite; font-weight: 800; }
-@keyframes shake {
-  0%, 100% { translate: 0 0; rotate: 0deg; }
-  25% { translate: -0.04em 0.02em; rotate: -2deg; }
-  50% { translate: 0.03em -0.03em; rotate: 1.5deg; }
-  75% { translate: -0.02em 0.03em; rotate: -1deg; }
-}
-.w.fx-wave { animation: wave 1.6s ease-in-out infinite; font-style: italic; }
-@keyframes wave { 0%, 100% { translate: 0 0; } 25% { translate: 0 -0.15em; } 75% { translate: 0 0.1em; } }
-.w.fx-rainbow { background: linear-gradient(90deg, #ff5e5e, #ffb84d, #f7e463, #5ee08a, #4db8ff, #a77bff, #ff5e5e); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: rainbow 2.5s linear infinite; font-weight: 800; }
-@keyframes rainbow { to { background-position: -200% 0; } }
-.w.fx-spooky { font-family: "Chiller", "Papyrus", "Herculanum", fantasy; color: #9cff9c; text-shadow: 0 0.06em 0.12em #0a3d0a, 0 0 0.4em #3cff3c88; animation: spooky 2.2s ease-in-out infinite; letter-spacing: 0.06em; }
-@keyframes spooky { 50% { opacity: 0.55; translate: 0 0.06em; filter: blur(0.4px); } }
-.w.fx-sparkle { position: relative; color: #fff3b0; text-shadow: 0 0 0.25em #ffd84d; font-weight: 700; }
-/* a glint at its corner, twinkling */
-.w.fx-sparkle::after { content: "✦"; position: absolute; top: -0.45em; right: -0.5em; font-size: 0.55em; color: #fff; text-shadow: 0 0 0.4em #ffd84d; animation: sparkle 1.2s ease-in-out infinite; }
-@keyframes sparkle { 0%, 100% { opacity: 0.2; scale: 0.6; rotate: 0deg; } 50% { opacity: 1; scale: 1.1; rotate: 45deg; } }
-/* on a light page: the same effects in deeper colours, so they still read */
-@media (prefers-color-scheme: light) {
-  .w.fx-rainbow { background-image: linear-gradient(90deg, #e03131, #e8590c, #d9a400, #2f9e44, #1971c2, #7048e8, #e03131); }
-  .w.fx-spooky { color: #2b8a3e; text-shadow: 0 0 0.35em #8ce99a; }
-  .w.fx-sparkle { color: #b07d00; text-shadow: 0 0 0.3em #ffe066; }
-  .w.fx-sparkle::after { color: #f08c00; }
-  .w.fx-glow { animation-name: glow-light; }
-}
-/* (the room is dusk whatever the page is: what's over it keeps the dark
-   page's colours and effects, light on dark) */
-@media (prefers-color-scheme: light) {
-  .room-labels { --person-l: 0.8; --person-c: 0.13; }
-  .room-labels .w.fx-rainbow { background-image: linear-gradient(90deg, #ff5e5e, #ffb84d, #f7e463, #5ee08a, #4db8ff, #a77bff, #ff5e5e); }
-  .room-labels .w.fx-spooky { color: #9cff9c; text-shadow: 0 0.06em 0.12em #0a3d0a, 0 0 0.4em #3cff3c88; }
-  .room-labels .w.fx-sparkle { color: #fff3b0; text-shadow: 0 0 0.25em #ffd84d; }
-  .room-labels .w.fx-sparkle::after { color: #fff; }
-  .room-labels .w.fx-glow { animation-name: glow; }
-}
-@keyframes glow-light {
-  from { text-shadow: 0 0 0.12em color-mix(in srgb, var(--person, currentColor) 45%, transparent); }
-  to { text-shadow: 0 0 0.3em color-mix(in srgb, var(--person, currentColor) 70%, transparent); }
-}
-/* the effect buttons show what they do */
-.fx-button .w { font-size: inherit; transform: none; opacity: 1; margin: 0; display: inline; }
-@media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .room-word .w, .talk.recording .dot, .caret, .bubble.draft, .phrase.settled, .spot, .spot.speaking, .queue, .room3d, .hero-words .w, .room-hint, .help-body { animation: none; }
-}
+.settings-status { margin: 12px 0 0; min-height: 1.2em; font-size: 0.8125rem; color: var(--muted); }
+.room-settings .danger { margin-top: 8px; width: 100%; }
+
+/* ---- presenting: the transcript alone, large, for a projector ---- */
+
+body.presenting { overflow: hidden; }
+body.presenting :is(.top, .room-head, .room-tools, .here, .composer, .notice, .skip) { display: none; }
+body.presenting main.room { max-width: none; height: 100vh; min-height: 0; padding: 0; }
+body.presenting .room-body { display: block; height: 100vh; border: 0; padding: 0; }
+body.presenting .transcript-wrap { height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; padding: 6vh 6vw; }
+body.presenting .transcript { overflow-y: auto; scrollbar-width: none; gap: 3vh; max-height: 100%; mask-image: linear-gradient(transparent, #000 30%); }
+body.presenting .turn-words, body.presenting .draft { font-size: calc(clamp(2rem, 1rem + 3vw, 4.5rem) * var(--size)); max-width: none; line-height: 1.35; }
+body.presenting .turn-head { font-size: clamp(1rem, 0.6rem + 1vw, 1.75rem); }
+body.presenting .queue { position: fixed; top: 3vh; left: 6vw; right: 6vw; font-size: 1.25rem; z-index: 5; }
+body.presenting:has(.queue:not([hidden])) .transcript-wrap { padding-top: calc(6vh + 64px); }
 
 /* ---- the README page ---- */
 
 main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size: 1.0625rem; line-height: 1.7; color: color-mix(in oklab, var(--ink) 88%, var(--muted)); }
-/* the name, big and in the display face, with the line under it as a lede */
-.prose h1 { font-family: var(--display); font-size: clamp(3rem, 2rem + 4vw, 4.5rem); font-weight: 780; letter-spacing: -0.045em; line-height: 1; margin: 0.4em 0 0.25em; color: var(--ink); }
-.prose h1 + p { font-size: clamp(1.25rem, 1rem + 0.8vw, 1.5rem); line-height: 1.45; letter-spacing: -0.01em; color: var(--ink); margin: 0 0 1.4em; text-wrap: balance; }
-.prose h2 { font-family: var(--display); font-size: 1.625rem; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; text-transform: none; color: var(--ink); margin: 2.4em 0 0.6em; padding-top: 1.2em; border-top: 1px solid var(--line); }
-.prose h3 { font-size: 1.125rem; letter-spacing: -0.01em; color: var(--ink); margin: 1.8em 0 0.4em; }
+.prose h1 { font-family: var(--read); font-size: clamp(2.75rem, 2rem + 3vw, 4rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1; margin: 0.4em 0 0.25em; color: var(--ink); }
+.prose h1 + p { font-family: var(--read); font-size: clamp(1.25rem, 1rem + 0.8vw, 1.5rem); line-height: 1.45; color: var(--ink); margin: 0 0 1.4em; text-wrap: balance; }
+.prose h2 { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; color: var(--ink); margin: 2.4em 0 0.6em; padding-top: 1.2em; border-top: 1px solid var(--line); }
+.prose h3 { font-size: 1.125rem; color: var(--ink); margin: 1.8em 0 0.4em; }
 .prose p, .prose ul, .prose ol { margin: 0 0 1em; }
 .prose ul, .prose ol { padding-left: 1.25em; }
 .prose li { margin: 0 0 0.55em; padding-left: 0.2em; }
-.prose li::marker { color: var(--accent); }
 .prose strong { color: var(--ink); font-weight: 650; }
-.prose a { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 3px; transition: text-decoration-color 0.15s; }
-.prose a:hover { text-decoration-color: var(--accent); }
-.prose img { max-width: 100%; border-radius: 12px; }
-.prose blockquote { margin: 1.2em 0; padding: 14px 18px; border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--surface); border-radius: 4px 14px 14px 4px; color: var(--muted); font-size: 0.9375rem; line-height: 1.6; }
+.prose a { color: var(--accent); text-underline-offset: 3px; overflow-wrap: anywhere; }
+.prose blockquote { margin: 1.2em 0; padding: 14px 18px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 4px 14px 14px 4px; color: var(--muted); font-size: 0.9375rem; }
 .prose blockquote p { margin: 0; }
-.prose code { font: 0.85em ui-monospace, "SF Mono", Menlo, monospace; background: var(--surface-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; color: var(--ink); }
+.prose code { font: 0.85em ui-monospace, "SF Mono", Menlo, monospace; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; color: var(--ink); overflow-wrap: anywhere; }
 .prose pre { overflow-x: auto; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
-.prose pre code { background: none; border: 0; padding: 0; }
+.prose pre code { background: none; padding: 0; }
 .prose hr { border: 0; border-top: 1px solid var(--line); margin: 2.4em 0; }
-
-/* ---- emotes and reactions ---- */
-
-/* what rises from someone's head when they emote */
-.spot-avatar { position: relative; }
-.burst { position: absolute; left: 50%; top: 10%; font-size: 1.6em; pointer-events: none; animation: burst 1.5s ease-out forwards; z-index: 2; }
-.mine-card .burst { font-size: 2.2em; }
-.room-label .burst { top: auto; bottom: 100%; font-size: 1.8rem; }
-@keyframes burst {
-  0% { transform: translate(-50%, 0) scale(0.4); opacity: 0; }
-  15% { transform: translate(calc(-50% + var(--dx) * 0.3), -10px) scale(1.15); opacity: 1; }
-  100% { transform: translate(calc(-50% + var(--dx)), -80px) scale(0.9); opacity: 0; }
-}
-/* typing instead: a box and Say it, how it's said under it, your voice
-   folded away below */
-.type-box { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
-.type-box[hidden] { display: none; }
-.type-row { display: flex; gap: 8px; }
-.type-row input { flex: 1; min-width: 0; font: inherit; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); min-height: 44px; }
-.type-row input::placeholder { color: var(--faint); }
-@media (max-width: 600px) { .type-row input { padding-inline: 12px; } .type-row input::placeholder { font-size: 0.9375rem; } }
-.type-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.type-send { flex: none; }
-.type-send:not(:disabled) { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.tones { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: 0; min-inline-size: 0; }
-/* (a fieldset is otherwise as wide as everything in it: on a phone, its row
-   of tones pushed the whole page sideways instead of sliding) */
-.tones label { cursor: pointer; position: relative; }
-.tones input { position: absolute; opacity: 0; pointer-events: none; }
-.tones label > span { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 0.8125rem; color: var(--muted); }
-.tones input:checked + span { border-color: var(--accent); color: var(--accent); }
-.tones input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-.tones label > span { transition: border-color 0.15s, color 0.15s, background-color 0.15s, transform 0.12s var(--ease); }
-.tones label:hover > span { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); color: var(--ink); }
-.tones label:active > span { transform: scale(0.96); }
-.tones input:checked + span { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
-/* on a phone, one row that slides sideways under a finger, fading out
-   at the edge to show there's more */
-@media (max-width: 600px) {
-  .tones { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -12px; padding: 2px 12px; scroll-padding: 0 12px; scroll-snap-type: x proximity; mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 28px), transparent); }
-  .tones::-webkit-scrollbar { display: none; }
-  .tones label { flex: none; scroll-snap-align: start; }
-  .tones label > span { min-height: 40px; padding: 4px 12px; white-space: nowrap; }
-}
-.type-voice summary { cursor: pointer; font-size: 0.8125rem; color: var(--muted); width: fit-content; }
-.type-voice-body { display: grid; gap: 8px; margin-top: 8px; max-width: 420px; }
-.type-voice .slider { grid-template-columns: 60px minmax(0, 1fr); }
-.voice-pick { display: grid; grid-template-columns: 60px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 0.8125rem; }
-.voice-pick select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--ink); min-height: 40px; }
-.type-hear { justify-self: start; min-height: 36px; padding: 6px 12px; font-size: 0.8125rem; }
-.type-voice .hint { margin: 0; font-size: 0.75rem; color: var(--muted); }
-/* a phrase typed rather than said: a small keyboard after it */
-.phrase.typed::after { content: "⌨"; margin-left: 3px; font-size: 0.75em; opacity: 0.6; vertical-align: 0.05em; }
-
-.emotes { display: flex; flex-wrap: wrap; gap: 6px; }
-.emotes button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 0.8125rem; }
-.emotes button span:first-child { font-size: 1.1em; }
-/* on a phone, the faces alone, in two even rows */
-@media (max-width: 600px) {
-  .emote-label { display: none; }
-  .emotes { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
-  .emotes button { justify-content: center; padding: 0; aspect-ratio: 1; min-height: 0; }
-}
-
-/* reactions on a word: a little row of emoji just under it */
-.tw { position: relative; }
-.reacts { position: absolute; left: 50%; bottom: -1.05em; translate: -50% 0; display: inline-flex; gap: 2px; padding: 1px 5px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 0.78rem; line-height: 1.3; white-space: nowrap; pointer-events: none; z-index: 1; box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); }
-.reacts b { font-size: 0.9em; margin-left: 1px; color: var(--muted); }
-.reacts.pop { animation: pop 0.35s cubic-bezier(0.2, 1.8, 0.4, 1); }
-@keyframes pop { from { scale: 0.3; opacity: 0; } }
-/* a bubble with reactions in it leaves room for them */
-.bubble:has(.reacts) { padding-bottom: 14px; line-height: 2; }
-/* someone else's words can be tapped to react */
-.spot:not(.mine) .tw { cursor: pointer; border-radius: 4px; }
-.spot:not(.mine) .tw:hover { background: color-mix(in srgb, var(--person) 14%, transparent); }
-.react-picker { position: absolute; z-index: 20; display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
-.react-picker[hidden] { display: none; }
-.react-picker button { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; font-size: 1.25rem; cursor: pointer; transition: scale 0.12s; }
-.react-picker button:hover, .react-picker button:focus-visible { scale: 1.25; background: var(--surface-2); }
-@media (prefers-reduced-motion: reduce) { .burst, .reacts.pop { animation: none; } .burst { display: none; } }
-
-/* looks someone has saved, to wear again in a tap */
-/* saved looks: a row of four, each a face to wear (or its number, empty)
-   with a small Save tucked under it */
-.saved-looks { display: grid; grid-template-columns: repeat(4, minmax(0, 64px)); gap: 10px; margin: 0; }
-.saved-look { display: grid; justify-items: center; gap: 0; }
-.saved-look .wear { width: 100%; aspect-ratio: 1; padding: 6px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); transition: border-color 0.18s, transform 0.18s var(--ease); }
-.saved-look .wear:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-2px); }
-.saved-look .wear:disabled { opacity: 1; cursor: default; background: transparent; border-style: dashed; }
-.saved-look .wear .avatar { width: 100%; height: 100%; }
-.saved-look .wear .empty { color: var(--faint); font-weight: 600; font-size: 0.875rem; }
-.saved-look .keep { margin-top: -10px; padding: 2px 9px; min-height: 0; font-size: 0.6875rem; font-weight: 600; border-radius: 999px; background: var(--surface); position: relative; }
-
-/* ---- the studio: making your avatar, on a screen of its own ---- */
-
-/* your head on one side, large, staying in view however far down the
-   choices you go; the choices on the other. On a phone the head sits at
-   the top of the screen, smaller, and stays there as you scroll. */
-main.studio { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 480px); gap: 24px; align-items: start; max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
-.stage-3d { position: sticky; top: 12px; display: grid; gap: 10px; justify-items: center; padding: 16px; background: radial-gradient(ellipse 60% 50% at 50% 38%, color-mix(in srgb, oklch(var(--person-l) var(--person-c) var(--hue, 260)) 14%, transparent), transparent 70%), radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--surface-2) 70%, transparent), transparent 60%), var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
-/* a soft floor under the head: a shadow it stands over */
-.stage-3d .preview-head { position: relative; }
-.stage-3d .preview-head::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 1%; height: 6%; border-radius: 50%; background: radial-gradient(closest-side, rgb(0 0 0 / 0.35), transparent); z-index: -1; }
-/* the preview is a card (.spot, for its colour and word style) but none of
-   a room card's layout: scoped so it outranks .spot:has(.head3d) */
-.stage-3d .preview { all: unset; display: grid; justify-items: center; gap: 4px; width: 100%; }
-.stage-3d .preview::before { display: none; }
-.stage-3d .preview .preview-head { width: min(100%, calc(100svh - 300px), 640px); height: auto; aspect-ratio: 1; margin: 0; cursor: grab; touch-action: none; display: block; }
-.preview-head:active { cursor: grabbing; }
-/* (the body fading out at the bottom of the frame, a portrait's, rather
-   than cut off along it) */
-.stage-3d .preview-head .head3d { -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent 99%); mask-image: linear-gradient(to bottom, #000 82%, transparent 99%); }
-.preview-head .avatar { width: 100%; height: 100%; }
-.preview-name { margin: 0; font-weight: 700; color: var(--person); }
-.preview-words { margin: 0; min-height: 2.4em; text-align: center; color: var(--person); font-size: clamp(1.25rem, 1rem + 1vw, 1.75rem); }
-.preview-help { margin: 0; font-size: 0.8125rem; color: var(--muted); }
-.preview-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-.preview-tools button, .preview-tools select { padding: 8px 14px; border-radius: 999px; font: inherit; font-size: 0.875rem; }
-.preview-tools select { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
-#studio-hands[aria-pressed="true"], #studio-face[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-.editor { display: grid; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
-.editor-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.editor-head .done { padding: 8px 18px; border-radius: 999px; background: var(--ink); color: var(--bg); font-weight: 700; text-decoration: none; }
-.editor-head .history { display: flex; gap: 4px; }
-.editor-head .history button { padding: 8px 12px; border-radius: 999px; font-size: 0.8125rem; }
-.editor-head .history button:disabled { opacity: 0.4; }
-.editor .surprise { margin-left: auto; }
-.editor .status { margin: 0; min-height: 1.2em; font-size: 0.8125rem; color: var(--muted); }
-/* (no line kept for a status until there is one) */
-.editor .status:empty { display: none; }
-/* on a phone the choices start sooner: one row of Done, undo, redo and a
-   surprise, and no line kept for a status until there is one */
-@media (max-width: 600px) {
-  .editor-head { flex-wrap: nowrap; gap: 6px; }
-  .editor-head .done { padding: 8px 14px; }
-  .editor-head .history button { padding: 8px 10px; }
-  .editor .surprise { padding: 8px 12px; font-size: 0.8125rem; white-space: nowrap; }
-
-  .saved-looks { margin: 0; }
-}
-/* the sliders: a label, the track, and a way back to the middle */
-.sliders { border: 0; margin: 0; padding: 10px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 6px; }
-.sliders legend { padding: 0; font-size: 0.8125rem; color: var(--muted); }
-.slider { display: grid; grid-template-columns: 110px minmax(0, 1fr) 28px; align-items: center; gap: 8px; font-size: 0.8125rem; }
-.slider input[type="range"] { width: 100%; accent-color: var(--accent); }
-/* a slider: a thin track with a mark at the middle (where each starts), and
-   a round thumb that grows a little as it's held */
-input[type="range"] { -webkit-appearance: none; appearance: none; height: 24px; background: transparent; cursor: pointer; }
-input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: linear-gradient(90deg, transparent calc(50% - 1px), var(--faint) calc(50% - 1px), var(--faint) calc(50% + 1px), transparent calc(50% + 1px)), var(--line); }
-input[type="range"]::-moz-range-track { height: 4px; border-radius: 999px; background: var(--line); }
-input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; border-radius: 50%; background: var(--ink); border: 3px solid var(--accent); box-shadow: 0 2px 6px rgb(0 0 0 / 0.35); transition: transform 0.15s var(--ease); }
-input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); border: 3px solid var(--accent); box-shadow: 0 2px 6px rgb(0 0 0 / 0.35); }
-input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.2); }
-input[type="range"]:focus-visible { outline: none; }
-input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
-.slider .reset { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 0.875rem; color: var(--muted); }
-.pick.more .hint { width: 100%; margin: 2px 0 0; font-size: 0.75rem; color: var(--faint); }
-.pick input[type="checkbox"] { position: absolute; opacity: 0; pointer-events: none; }
-.pick input[type="checkbox"]:checked + span { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.pick input[type="checkbox"]:disabled + span { opacity: 0.4; cursor: not-allowed; }
-.pick input[type="checkbox"]:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* the way there, from the room */
-.customise-link { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 12px 20px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font-weight: 600; text-decoration: none; }
-.customise-link:hover { border-color: var(--accent); color: var(--accent); }
-/* What you can do, in two panels: saying something (the microphone, your
-   hand, typing), and the rest in tabs under it, one at a time. */
-.say-panel, .me-tabs { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); display: grid; gap: 10px; }
-.say-panel .controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-.say-panel .talk { min-height: 48px; white-space: nowrap; }
-/* (on a phone, a little smaller, so "Turn on microphone" stays on one line
-   beside the hand) */
-@media (max-width: 600px) {
-  .say-panel .controls .talk { min-height: 48px; font-size: 1rem; padding-inline: 14px; gap: 8px; }
-  .say-panel .controls .hand-toggle { padding-inline: 12px; white-space: nowrap; }
-}
-.say-panel .hand-form { display: contents; }
-.say-panel .type-box { padding: 0; border: 0; background: none; }
-.me .edit-hint { margin-left: 2px; }
-.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 3px; border-radius: 999px; background: color-mix(in oklab, var(--bg) 60%, var(--surface)); border: 1px solid var(--line); }
-.tabs [role="tab"] { min-height: 36px; padding: 6px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.875rem; }
-.tabs [role="tab"]:hover:not([aria-selected="true"]) { color: var(--ink); background: transparent; }
-.tabs [role="tab"][aria-selected="true"] { background: var(--surface-2); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 0 0 1px var(--line); }
-.tab-panel { animation: card-in 0.25s var(--ease) both; }
-.tab-panel[hidden] { display: none; }
-/* the emotes as faces alone, in rows of eight, their names on hover */
-.me .emotes { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
-.me .emotes button { justify-content: center; padding: 0; aspect-ratio: 1; min-height: 0; border-radius: 50%; }
-.me .emote-label { display: none; }
-.you-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
-.you-tools :is(.face-toggle, .voices-toggle) { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 16px; border-radius: 999px; font-size: 0.9375rem; font-weight: 600; background: var(--surface-2); border: 1px solid var(--line); }
-.you-tools .voices-toggle[hidden], .you-tools .face-toggle[hidden] { display: none; }
-.you-tools:has(.face-toggle[aria-pressed="true"]) .hands-toggle { display: inline-flex; }
-
-/* ---- rooms: which one you're in, every room, and a room's settings ---- */
-
-.top { gap: 12px; }
-.top .name { flex: none; }
-.room-switch { position: relative; margin-right: auto; min-width: 0; }
-.room-switch summary { list-style: none; display: inline-flex; align-items: center; gap: 8px; max-width: min(46vw, 320px); padding: 7px 12px 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 0.9375rem; transition: border-color 0.18s; }
-.room-switch summary::-webkit-details-marker { display: none; }
-.room-switch summary:hover { border-color: var(--faint); }
-.room-switch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room-switch-caret { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); rotate: 45deg; translate: 0 -2px; flex: none; transition: rotate 0.2s var(--ease); }
-.room-switch[open] .room-switch-caret { rotate: 225deg; translate: 0 2px; }
-.room-switch:not([open]) .room-switch-menu { display: none; }
-.room-switch-menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 240px; max-width: min(calc(100vw - 32px), 340px); padding: 6px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: 0 18px 48px -16px rgb(0 0 0 / 0.6); display: grid; gap: 2px; animation: card-in 0.18s var(--ease) both; }
-.room-switch-menu a { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 12px; border-radius: 10px; color: var(--ink); text-decoration: none; font-size: 0.9375rem; }
-.room-switch-menu a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room-switch-menu a small { color: var(--muted); flex: none; }
-.room-switch-menu a:hover { background: var(--surface-2); }
-.room-switch-menu a.all { color: var(--accent); border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; margin-top: 4px; }
-.others-head h2 { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1 1 auto; }
-/* (the room's name gives way first; on a phone, the switch under it if it
-   must) */
-.others-head { flex-wrap: wrap; row-gap: 8px; }
-.room-title { font-family: var(--display); font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; text-transform: none; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room-count { font-size: 0.75rem; letter-spacing: 0.08em; color: var(--muted); white-space: nowrap; }
-.room-settings { margin: 10px 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
-.room-settings summary { cursor: pointer; list-style: none; padding: 10px 16px; font-weight: 600; font-size: 0.875rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
-.room-settings summary::-webkit-details-marker { display: none; }
-.room-settings summary::before { content: "⚙"; font-size: 1rem; }
-.room-settings[open] summary { color: var(--ink); border-bottom: 1px solid var(--line); }
-.room-settings-body { padding: 12px 16px 16px; display: grid; gap: 12px; }
-.field { display: grid; gap: 6px; font-size: 0.8125rem; color: var(--muted); }
-.field input { font: inherit; font-size: 1rem; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink); min-height: 44px; }
-.field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
-.scene-pick legend { width: 72px; }
-.pick label > span.tint { gap: 7px; }
-.pick label > span.tint::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(135deg, var(--c) 50%, var(--c2, var(--c)) 50%); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.25) inset, 0 0 0 1px rgb(0 0 0 / 0.25); flex: none; }
-.scene-pick label > span, .make-room .pick label > span { text-transform: none; gap: 6px; }
-/* the settings over the top of the room, so a change shows behind them */
-.others { position: relative; }
-.room-settings[open] { position: absolute; z-index: 6; left: 0; right: 0; top: 44px; max-height: min(70vh, 640px); overflow: auto; box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.7); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-.room-settings summary { position: sticky; top: 0; background: inherit; z-index: 1; }
-.room-settings[open] summary::after { content: "Done"; margin-left: auto; color: var(--accent); font-size: 0.8125rem; }
-/* on a phone: the switcher and the way round on one line, the switcher
-   giving way first */
-@media (max-width: 600px) {
-  .room-switch-menu { position: fixed; left: 12px; right: 12px; top: 58px; max-width: none; }
-  .top { padding: 12px 14px 10px; gap: 8px; }
-  .top .name { font-size: 1.25rem; }
-  .top .name::before { width: 12px; height: 12px; }
-  .room-switch summary { max-width: 34vw; padding: 6px 10px 6px 12px; font-size: 0.875rem; }
-  .top nav { gap: 0; font-size: 0.875rem; }
-  .top nav a { padding: 6px 8px; }
-  .room-title { font-size: 1.0625rem; }
-}
-.check { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--ink); cursor: pointer; }
-.check input { accent-color: var(--accent); width: 18px; height: 18px; }
-.room-link { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
-.room-link code { padding: 2px 8px; border-radius: 6px; background: var(--surface-2); font-size: 0.8125rem; }
-.copy-link { min-height: 34px; padding: 4px 12px; font-size: 0.8125rem; border-radius: 999px; }
-/* every room */
-main.rooms-page { max-width: 1100px; margin: 0 auto; padding: 4px 20px 48px; display: grid; gap: 20px; }
-main.rooms-page h1 { margin: 6px 0 0; font-family: var(--display); font-size: clamp(2rem, 1.4rem + 2vw, 2.75rem); letter-spacing: -0.03em; }
-.lede { margin: 0; color: var(--muted); max-width: 60ch; }
-.room-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 14px; }
-.room-card { display: grid; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; color: var(--ink); text-decoration: none; transition: transform 0.2s var(--ease), border-color 0.2s; }
-.room-card:hover { transform: translateY(-2px); border-color: var(--faint); }
-.room-card-art { position: relative; height: 120px; background: linear-gradient(to bottom, var(--wall) 0 62%, var(--floor) 62%); }
-.room-card-art .win { position: absolute; left: 18%; top: 14%; width: 44%; height: 34%; border-radius: 4px; border: 3px solid rgb(241 230 210 / 0.9); background: linear-gradient(#3d5f9e, #f3c48a); }
-.room-card[data-sky="day"] .win { background: linear-gradient(#3f86d6, #cfe6f7); }
-.room-card[data-sky="night"] .win { background: linear-gradient(#070b1d, #2b3a6b); }
-.room-card[data-sky="snow"] .win { background: linear-gradient(#9fb0c4, #eef2f6); }
-.room-card[data-sky="sea"] .win { background: linear-gradient(#2f7cc4 0 55%, #2a7fae 55% 80%, #e9d7a8 80%); }
-.room-card-art .rugdot { position: absolute; left: 50%; bottom: 8px; width: 46%; height: 26px; translate: -50% 0; border-radius: 50%; background: var(--rug); opacity: 0.9; }
-.room-card-art .sky-emoji { position: absolute; right: 12px; top: 10px; font-size: 1.25rem; }
-.room-card-text { display: grid; gap: 2px; padding: 12px 14px 14px; }
-.room-card-text strong { font-size: 1.0625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room-card-text small { color: var(--muted); }
-.make-room { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); display: grid; gap: 14px; max-width: 640px; }
-.make-room h2 { font-size: 0.75rem; }
-.make-room .pick { gap: 6px; }
-.make-room .pick legend { width: auto; float: none; margin-bottom: 6px; }
-button.primary { justify-self: start; background: var(--accent); border-color: var(--accent); color: #0b1020; border-radius: 999px; padding: 12px 24px; }
-@media (prefers-color-scheme: light) { button.primary { color: #fff; } }
-@media (max-width: 860px) {
-  main.studio { grid-template-columns: minmax(0, 1fr); padding: 0 12px 32px; gap: 12px; }
-  .stage-3d { top: 0; z-index: 5; padding: 8px; border-radius: 0 0 var(--radius) var(--radius); }
-  /* head beside the name and words, so the part that stays put is short */
-  .stage-3d .preview { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; justify-items: start; align-items: center; column-gap: 12px; row-gap: 2px; }
-  .stage-3d .preview .preview-head { width: min(38vw, 22vh); grid-row: 1 / 3; }
-  .preview-name { align-self: end; }
-  .preview-words { align-self: start; text-align: left; min-height: 1.6em; font-size: 1.125rem; }
-  .preview-help { display: none; }
-  .preview-tools button, .preview-tools select { padding: 6px 10px; font-size: 0.8125rem; }
-}
+.prose table { display: block; overflow-x: auto; border-collapse: collapse; }
+.prose th, .prose td { border: 1px solid var(--line); padding: 6px 10px; }

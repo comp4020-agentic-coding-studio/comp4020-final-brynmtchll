@@ -7,7 +7,7 @@ import { expect, inject, it } from "vitest";
 // /readme/, so this also catches a README that grows a second one.
 const baseUrl = inject("baseUrl");
 
-for (const path of ["/", "/readme/"]) {
+for (const path of ["/", "/r/main/", "/readme/"]) {
   it(`${path} has the basics`, async () => {
     const doc = new JSDOM(await (await fetch(new URL(path, baseUrl))).text()).window.document;
     expect(doc.documentElement.lang).not.toBe("");

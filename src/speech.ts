@@ -18,12 +18,14 @@
 // reading its punctuation for how it goes, and a word that stood out is
 // made to stand out in what it said: louder, higher, or drawn out, where
 // that word is.
-import { voiceOf, type Look } from "./packs.ts";
+import { voiceOf } from "./packs.ts";
 import { stretch } from "./kokoro-text.ts";
 
-// what's needed of someone's look to say their words: their voice, its
-// sliders, and any voice mixed into it
-export type Voiced = Pick<Look, "voice" | "tune"> & { blend?: string };
+// what's needed to say someone's words: their voice, how much higher or
+// faster than it is (-1 to 1 each), and any voice mixed into it
+export type Tune = { voicePitch?: number; voiceSpeed?: number; voiceBlend?: number };
+export type Voiced = { voice: string; tune?: Tune; blend?: string };
+type Look = Voiced;
 import type { Build, FromKokoro, Phrase as KokoroPhrase, ToKokoro } from "./kokoro.ts";
 
 // a word as it comes in a phrase: the word, and how it was said (dB louder

@@ -1,32 +1,12 @@
-import type { Message, Person, RoomInfo } from "./db.ts";
-import { ago, esc, handBadge, hueOf, queueHtml, reactionsHtml, wordHtml, type Word } from "./voice.ts";
-import { avatarSvg, REST, type Expression } from "./avatar.ts";
-import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SCENE_PARTS, SCENES, SLIDERS, STYLES, VOICES_IN_ORDER, type ColourPart, type Look, type Part, type Scene } from "./packs.ts";
+import type { Message, RoomInfo } from "./db.ts";
+import { ago, esc, wordHtml, type Word } from "./voice.ts";
+import { KEEPS, READING, VOICES_IN_ORDER, type Keep, type VoiceId } from "./packs.ts";
 import { TONES } from "./typed.ts";
 
 // a working title, here so it changes in one place
 export const APP = "Said";
 
-// three.js, one copy for the page and its add-ons (the room's lighting and
-// camera), which ask for it as "three"
-export const THREE = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
-const THREE_ADDONS = "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/";
-
-// How it works, behind a "?" in the header: everything a newcomer needs,
-// out of the way of everyone who doesn't.
-const HELP = `<details class="help">
-  <summary aria-label="How it works">?</summary>
-  <div class="help-body">
-    <p>Turn your microphone on and talk. Your words appear for everyone as you say them: louder is heavier, higher sits higher, drawn-out sounds repeat (sooo).</p>
-    <p>Tap any of your words (your latest is chosen already) to type over it, delete it, or press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for Impact, Whisper or Glow, live, for everyone.</p>
-    <p>Show your face and your avatar pulls the faces you pull and turns as you turn. Your voice and face are read in this browser; only words, how they were said, and a handful of numbers about your face leave it. No recording or picture is kept anywhere.</p>
-    <p>Hands too, and your avatar's arms and hands follow yours: a thumbs up, a wave or a peace sign sets off its emote. Raise your hand (<kbd>Shift</kbd> <kbd>R</kbd>) to take a place in the queue to speak.</p>
-    <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. ✨ Natural voices sound like people and the same on every device (a download, once, made and played in this browser). Pick yours in Customise. Headphones stop it coming back through your microphone.</p>
-    <p>Or type it instead: pick how it's said (excited, calm, asking, sarcastic…) and it goes up like anything said, spoken in your voice. <kbd>*stars*</kbd> or CAPS make a word stand out. Typed messages are marked ⌨.</p>
-  </div>
-</details>`;
-
-export function layout(title: string, body: string, script = "", help = HELP, middle = ""): string {
+export function layout(title: string, body: string, opts: { script?: string; bodyClass?: string; nav?: string } = {}): string {
   return `<!doctype html>
 <html lang="en-AU">
 <head>
@@ -34,12 +14,13 @@ export function layout(title: string, body: string, script = "", help = HELP, mi
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <link rel="stylesheet" href="/style.css">
-<link rel="icon" href="data:,">
-<script type="importmap">{"imports":{"three":"${THREE}","three/addons/":"${THREE_ADDONS}"}}</script>
-${script}
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23101114'/%3E%3Cpath d='M9 12h14M9 17h9M9 22h12' stroke='%23f4f1ea' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<script>try{const r=JSON.parse(localStorage.getItem("said-reading")||"{}");for(const k of ["size","feeling","contrast"])if(r[k])document.documentElement.dataset[k]=r[k]}catch{}</script>
+${opts.script ?? ""}
 </head>
-<body>
-<header class="top"><a href="/" class="name">${APP}</a>${middle}<nav><a href="/rooms">Rooms</a><a href="/readme/">About</a>${help}</nav></header>
+<body${opts.bodyClass ? ` class="${opts.bodyClass}"` : ""}>
+<a class="skip" href="#main">Skip to the conversation</a>
+<header class="top"><a href="/" class="brand"><span class="mark" aria-hidden="true"></span>${APP}</a>${opts.nav ?? ""}<nav class="site-nav"><a href="/">Rooms</a><a href="/readme/">About</a></nav></header>
 ${body}
 </body>
 </html>`;
@@ -47,413 +28,226 @@ ${body}
 
 const MESSAGES: Record<string, string> = {
   "name-bad": "Pick a name between 1 and 20 characters.",
-  "name-taken": "Someone here already goes by that name.",
+  "name-taken": "Someone already goes by that name.",
   "no-person": "Pick a name first.",
   "too-many-joins": "That's a lot of new names from here at once. Try again in a few minutes.",
   "room-name-bad": "Give the room a name between 1 and 40 characters.",
-  "too-many-rooms": "You've made a lot of rooms. Use one of yours, or try again later.",
-  "not-a-scene": "That's not one of the looks on offer.",
+  "about-too-long": "Keep what it's about to a line (140 characters).",
+  "too-many-rooms": "You've opened a lot of rooms. Use one of yours, or close one.",
+  "not-a-keep": "That's not one of the choices for how long it keeps things.",
 };
+const notice = (m?: string): string => (m && MESSAGES[m] ? `<p class="notice" role="alert">${MESSAGES[m]}</p>` : "");
 
-// A person's thread: what they've said lately as text messages, oldest at
-// the top, a new bubble after a long silence, a new line inside one at each
-// pause. Each word keeps how it was said, and carries where it lives (the
-// message and its place in it) so its speaker can change it, live.
-const NEW_BUBBLE = 4000; // ms of silence between phrases that starts a new bubble
+// The join form: a name, and you're someone on this browser, in every room.
+const joinForm = (action: string, label = "Join"): string => `<form class="join" method="post" action="${action}">
+  <label class="field-label" for="name">Your name</label>
+  <div class="join-row"><input id="name" name="name" maxlength="20" autocomplete="nickname" required placeholder="What people call you"><button type="submit" class="primary">${label}</button></div>
+</form>`;
+
+const keepLabel = (k: Keep): string => (k === "always" ? "Kept until it's closed" : `Kept for ${KEEPS.find((x) => x.id === k)!.label.toLowerCase().replace(/^an? /, "a ")}`.replace("a hour", "an hour"));
+const lastTalked = (last: number | null): string => (last === null ? "Nothing said yet" : `Last talked in ${ago(last)}`);
+
+// ---- the front page: what it is, every room, and opening one ----
+
+type Listed = Omit<RoomInfo, "maker"> & { here: number; mine: boolean; lately: number; last: number | null };
+export function homePage(me: { name: string; hue: number } | undefined, rooms: Listed[], msg?: string): string {
+  const card = (r: Listed): string => `<li><a class="room-card" href="/r/${esc(r.slug)}/">
+    <span class="room-card-head"><span class="room-card-name">${esc(r.name)}</span>${r.here ? `<span class="live-dot" aria-label="${r.here} here now"><span aria-hidden="true"></span>${r.here} here</span>` : ""}</span>
+    ${r.about ? `<span class="room-card-about">${esc(r.about)}</span>` : ""}
+    <span class="room-card-meta">${lastTalked(r.last)} · ${keepLabel(r.keep)}${r.listed ? "" : " · Link only"}${r.mine ? " · Yours" : ""}</span>
+  </a></li>`;
+  const open = me
+    ? `<form class="open-room" method="post" action="/rooms">
+    <h2 id="open-h">Open a room</h2>
+    <p class="hint">For a tutorial, a meeting, a table at dinner: everyone in it talks into their own phone or laptop, and everyone reads one transcript.</p>
+    <label class="field-label" for="room-name">Name</label>
+    <input id="room-name" name="name" maxlength="40" required placeholder="COMP4020 tutorial, Thursday stand-up…">
+    <label class="field-label" for="room-about">What it's about <span class="optional">(optional)</span></label>
+    <input id="room-about" name="about" maxlength="140" placeholder="One line, so people know they're in the right place">
+    <fieldset class="choices"><legend class="field-label">Keep what's said for</legend>
+      ${KEEPS.map((k) => `<label><input type="radio" name="keep" value="${k.id}"${k.id === "week" ? " checked" : ""}><span>${k.label}</span></label>`).join("")}
+    </fieldset>
+    <p class="hint">After that it's deleted, not hidden.</p>
+    <fieldset class="choices"><legend class="field-label">Who can find it</legend>
+      <label><input type="radio" name="listed" value="yes" checked><span>Anyone, listed here</span></label>
+      <label><input type="radio" name="listed" value="no"><span>Only people with the link</span></label>
+    </fieldset>
+    <button type="submit" class="primary">Open it</button>
+  </form>`
+    : `<section class="join-card" aria-labelledby="join-h"><h2 id="join-h">Join to talk or open a room</h2><p class="hint">Just a name. No account, no email. Anyone can read without one.</p>${joinForm("/join")}</section>`;
+  return layout(
+    APP,
+    `<main id="main" class="home">
+  <section class="intro">
+    <h1>Live captions for a room, that keep <em>how</em> it was said.</h1>
+    <p class="lede">Everyone talks into their own phone or laptop. Everyone reads one transcript, as it's said: <span class="demo"><span class="w" style="--loud:9;--pitch:0">louder</span> words heavier, <span class="w" style="--loud:0;--pitch:7">higher</span> ones raised, drawn-out ones <span class="w" style="--loud:0;--pitch:0">sooo<span class="held">ooo</span></span> drawn out.</span> Type instead and it's read aloud in your voice. Your speech is heard in your own browser: no audio leaves it.</p>
+    ${me ? `<p class="you">You're <strong style="--hue:${me.hue}" class="who">${esc(me.name)}</strong> on this browser.</p>` : ""}
+  </section>
+  ${notice(msg)}
+  <section class="rooms" aria-labelledby="rooms-h">
+    <h2 id="rooms-h">Rooms</h2>
+    <ul class="room-list">${rooms.map(card).join("")}</ul>
+  </section>
+  ${open}
+</main>`,
+  );
+}
+
+// ---- a room: its transcript, and saying something ----
+
+// One entry in the transcript: a run of what one person said, one after
+// another, with no long gap and nobody else between. Each phrase in it keeps
+// its id (so its speaker can correct a word in it, live) and each word how
+// it was said.
+const NEW_TURN = 20_000; // ms: a gap this long starts a new turn, even from the same person
 const NEW_LINE = 0.7; // seconds of pause inside a phrase that starts a new line
-// (one typed rather than said is marked as typed: style.css)
-type Said = { id: number; words: Word[]; at: number; reactions?: Record<number, Record<string, number>>; typed?: true };
+type Said = { id: number; words: Word[]; at: number; typed?: true };
 export function phraseHtml(m: Said): string {
-  return `<span class="phrase${m.typed ? " typed" : ""}" data-id="${m.id}"${m.typed ? ' title="Typed"' : ""}>${m.words
+  return `<span class="phrase${m.typed ? " typed" : ""}" data-id="${m.id}" data-at="${m.at}">${m.words
     .map((w, i) => {
       const gap = i + 1 < m.words.length ? m.words[i + 1].start - w.end : 0;
-      return `<span class="tw" data-i="${i}">${wordHtml(w)}${reactionsHtml(m.reactions?.[i])}</span>${gap > NEW_LINE ? "<br>" : " "}`;
+      return `<span class="tw" data-i="${i}">${wordHtml(w, gap)}</span>${gap > NEW_LINE ? " <br>" : " "}`;
     })
     .join("")}</span>`;
 }
-// Newest first, top down: the latest bubble at the top, and in each bubble
-// the latest phrase at the top, so what was just said is always where the
-// eye lands, under the word being said.
-export function threadHtml(messages: Said[]): string {
-  const bubbles: { at: number; phrases: string[] }[] = [];
+const clock = (at: number): string => new Date(at).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", timeZone: "Australia/Sydney" });
+export function turnsHtml(messages: Message[], hueOf: (name: string) => number, me?: string): string {
+  const turns: { name: string; at: number; until: number; phrases: Message[] }[] = [];
   for (const m of messages) {
-    const last = bubbles.at(-1);
-    if (last && m.at - last.at <= NEW_BUBBLE) {
-      last.phrases.unshift(phraseHtml(m));
-      last.at = m.at;
-    } else bubbles.push({ at: m.at, phrases: [phraseHtml(m)] });
+    const last = turns.at(-1);
+    if (last && last.name === m.name && m.at - last.until < NEW_TURN) {
+      last.phrases.push(m);
+      last.until = m.at;
+    } else turns.push({ name: m.name, at: m.at, until: m.at, phrases: [m] });
   }
-  return bubbles
-    .reverse()
-    .map((b) => `<li class="bubble" data-at="${b.at}">${b.phrases.join("<br>")}</li>`)
-    .join("");
+  return turns.map((t) => turnHtml(t.name, hueOf(t.name), t.at, t.phrases.map(phraseHtml).join(" "), t.name === me, t.until)).join("");
 }
+export const turnHtml = (name: string, hue: number, at: number, phrases: string, mine = false, until?: number): string =>
+  `<li class="turn${mine ? " mine" : ""}" data-name="${esc(name)}" data-at="${at}" data-until="${until ?? at}" style="--hue:${hue}"><p class="turn-head"><span class="who">${esc(name)}</span><time datetime="${new Date(at).toISOString()}">${clock(at)}</time></p><p class="turn-words">${phrases}</p></li>`;
 
-// A person's card: their avatar (pulling the expression they're pulling, if
-// they're showing their face) and name; the word they're saying, large; and
-// their thread underneath, scrolled to the latest. The live word is hidden
-// from screen readers, which hear each whole phrase from the page's one live
-// region instead.
-export function spotHtml(name: string, seat: number, look: Look, mine = false, e: Expression = REST, thread: { id: number; words: Word[]; at: number }[] = [], place = 0, gone = false): string {
-  const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
-  // how their words are drawn: their word style (packs.ts), which the CSS
-  // the server makes from it reads off data-words, and its lettering
-  return `<li class="spot${mine ? " mine" : ""}" data-name="${esc(name)}" style="--hue:${hueOf(seat)}" data-words="${st.id}" data-font="${st.font}"${"glow" in st ? " data-glow" : ""} data-look="${esc(JSON.stringify(look))}"${place ? ` data-hand="${place}"` : ""}${gone ? " data-away" : ""}>
-    <div class="spot-head"><span class="spot-avatar">${avatarSvg(look, e, `${name}'s avatar`)}</span><p class="spot-name"><span class="who">${esc(name)}</span>${handBadge(place)}${mine ? '<span class="you">you</span>' : ""}</p></div>
-    <p class="spot-word" aria-hidden="true"></p>
-    <ol class="thread" aria-label="What ${esc(name)} said lately">${threadHtml(thread)}</ol>
-  </li>`;
-}
+type Here = { name: string; hue: number };
+export const hereHtml = (here: Here[], me?: string): string =>
+  here.length ? here.map((p) => `<li style="--hue:${p.hue}"${p.name === me ? ' class="me"' : ""}><span class="who">${esc(p.name)}</span>${p.name === me ? " <span class='you-tag'>you</span>" : ""}</li>`).join("") : `<li class="nobody">Nobody's here right now</li>`;
+export const queueHtml = (queue: string[], me?: string): string =>
+  queue.length ? `<span aria-hidden="true">✋</span> Next to speak: ${queue.map((n) => (n === me ? "<strong>you</strong>" : esc(n))).join(", then ")}` : "";
 
-// What someone can choose about their avatar, from packs.ts: a row of
-// choices for each part, grouped into tabs, and for each colour a row of
-// swatches and a picker for any colour at all. Plain radio buttons, so it
-// works and reads the same to a screen reader without the page's script.
-const SECTIONS: { label: string; parts: (Part | ColourPart)[]; sliders?: string }[] = [
-  { label: "Face", parts: ["face", "skin", "ears", "nose"], sliders: "Face" },
-  { label: "Hair", parts: ["hair", "hairColour", "brows", "beard"], sliders: "Hair" },
-  { label: "Eyes", parts: ["eyes", "eyeColour"], sliders: "Eyes" },
-  { label: "Mouth", parts: ["mouth"], sliders: "Mouth" },
-  { label: "Wearing", parts: ["extra", "extraColour"] },
-  { label: "Body", parts: ["top", "topColour"], sliders: "Body" },
-  { label: "Words", parts: ["words"] },
-  { label: "Voice", parts: ["voice", "blend"] },
-];
-const PART_LABELS: Record<Part, string> = { words: "Style", face: "Shape", hair: "Style", brows: "Brows", eyes: "Eyes", nose: "Nose", mouth: "Mouth", ears: "Ears", beard: "Beard", extra: "Wearing", top: "Top", voice: "Voice", blend: "Mix in" };
+// The reader's own settings: size, how strongly how it was said shows,
+// contrast, and reading typed messages aloud. Kept in this browser only.
+const readingHtml = (): string => `<details class="menu reading">
+  <summary><span aria-hidden="true">Aa</span> <span class="menu-label">Reading</span></summary>
+  <div class="menu-body" role="group" aria-label="How you read it">
+    <fieldset class="seg"><legend>Text size</legend>${READING.size.map((c) => `<label><input type="radio" name="size" value="${c.id}"><span>${c.label}</span></label>`).join("")}</fieldset>
+    <fieldset class="seg"><legend>How it was said</legend>${READING.feeling.map((c) => `<label><input type="radio" name="feeling" value="${c.id}"><span>${c.label}</span></label>`).join("")}</fieldset>
+    <p class="hint">How strongly loud, high and drawn-out words show. None is plain captions.</p>
+    <fieldset class="seg"><legend>Contrast</legend>${READING.contrast.map((c) => `<label><input type="radio" name="contrast" value="${c.id}"><span>${c.label}</span></label>`).join("")}</fieldset>
+    <label class="switch"><input type="checkbox" name="aloud"><span>Read typed messages aloud</span></label>
+    <label class="switch natural-row" hidden><input type="checkbox" name="natural"><span>Natural voices <span class="hint natural-note"></span></span></label>
+  </div>
+</details>`;
 
-// Everything someone can choose about how they look, in tabs: for each
-// part a row of choices, for each colour a row of swatches and a picker for
-// any colour, the part's sliders, and what else to wear. Plain inputs in a
-// form, so it works and reads the same to a screen reader without script;
-// the studio's script makes it live.
-function lookEditor(look: Look): string {
-  const isColour = (k: string): k is ColourPart => k in COLOURS;
-  const row = (k: Part | ColourPart): string => {
-    if (isColour(k)) {
-      const c = COLOURS[k];
-      const custom = !(c.swatches as readonly string[]).includes(look[k]);
-      return `<fieldset class="pick"><legend>${c.label}</legend>${c.swatches
-        .map((v) => `<label><input type="radio" name="${k}" value="${v}"${look[k] === v ? " checked" : ""}><span><span class="swatch" style="background:${v}"></span><span class="visually-hidden">${v}</span></span></label>`)
-        .join("")}<label class="any-colour" title="Any colour"><input type="radio" name="${k}" value="${esc(look[k])}"${custom ? " checked" : ""} data-custom><span><input type="color" value="${esc(look[k])}" data-for="${k}" aria-label="Any ${c.label.toLowerCase()} colour"></span></label></fieldset>`;
-    }
-    // another voice mixed in, and how much (natural voices only)
-    if (k === "blend")
-      return `<fieldset class="pick blends"><legend>Mixed with another voice <small>(natural voices only)</small></legend>${PARTS.blend.map((c) => `<label><input type="radio" name="blend" value="${c.id}"${look.blend === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`).join("")}</fieldset>${sliders("Blend")}`;
-    // voices, with how each sounds under its name
-    if (k === "voice")
-      return `<fieldset class="pick voices"><legend>Voice <small>(highest first)</small></legend>${VOICES_IN_ORDER.map((v) => `<label><input type="radio" name="voice" value="${v.id}"${look.voice === v.id ? " checked" : ""}><span><b>${esc(v.label)}</b><small>${esc(v.about)}</small></span></label>`).join("")}</fieldset>${sliders("Voice")}`;
-    return `<fieldset class="pick"><legend>${PART_LABELS[k]}</legend>${(PARTS[k] as readonly { id: string; label: string }[])
-      .map((c) => `<label><input type="radio" name="${k}" value="${c.id}"${look[k] === c.id ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
-      .join("")}</fieldset>`;
-  };
-  const tune = (look.tune ?? {}) as Record<string, number>;
-  const sliders = (group: string): string => {
-    const these = SLIDERS.filter((sl) => sl.group === group);
-    return these.length
-      ? `<fieldset class="sliders">${group === "Blend" || group === "Voice" ? "" : "<legend>Shape</legend>"}${these
-          .map((sl) => `<label class="slider"><span>${esc(sl.label)}</span><input type="range" name="tune.${sl.id}" min="-1" max="1" step="0.05" value="${tune[sl.id] ?? 0}"><button type="button" class="reset" data-reset="${sl.id}" aria-label="Reset ${esc(sl.label.toLowerCase())}">↺</button></label>`)
-          .join("")}</fieldset>`
-      : "";
-  };
-  const more = new Set(look.more ?? []);
-  const wearMore = `<fieldset class="pick more"><legend>As well</legend>${PARTS.extra
-    .filter((c) => c.id !== "none")
-    .map((c) => `<label><input type="checkbox" name="more" value="${c.id}"${more.has(c.id) ? " checked" : ""}><span>${esc(c.label)}</span></label>`)
-    .join("")}<p class="hint">Up to ${MORE_EXTRAS} besides the one above.</p></fieldset>`;
-  // how it sounds: tried out here, and said honestly to sound a little
-  // different on each device (each has its own voices)
-  const voiceMore = `<div class="voice-try"><button type="button" id="hear-voice">🔊 Hear it</button>
-        <label class="natural-pick" hidden><input type="checkbox" id="studio-natural"> <span>✨ Natural voices: the same on every device (a download, once)</span></label>
-        <label class="natural-pick fast-pick" hidden><input type="checkbox" id="studio-small"> <span>The smaller download (90 MB instead of 330), slower: for a device short of space</span></label>
-        <p id="voice-status" class="hint" aria-live="polite"></p>
-        <p class="hint">How your words sound to anyone with voices on: loud words louder, high words higher, drawn-out words slower. With natural voices on, they hear this voice; without, their device's nearest, which differs a little on each.</p></div>`;
-  return `<form id="look" class="look-form">
-      <div class="look-tabs" role="tablist">${SECTIONS.map((sec, i) => `<label class="look-tab"><input type="radio" name="look-tab" value="${i}"${i === 0 ? " checked" : ""}><span>${sec.label}</span></label>`).join("")}</div>
-      ${SECTIONS.map((sec, i) => `<div class="look-section" data-section="${i}">${sec.parts.map(row).join("")}${sec.sliders ? sliders(sec.sliders) : ""}${sec.label === "Wearing" ? wearMore : ""}${sec.label === "Voice" ? voiceMore : ""}</div>`).join("")}
-    </form>`;
-}
+// The maker's settings for their room: name, what it's about, how long it
+// keeps what's said, who can find it, and closing it.
+const settingsHtml = (r: Omit<RoomInfo, "maker">): string => `<details class="menu room-settings">
+  <summary><span aria-hidden="true">⚙</span> <span class="menu-label">Room</span></summary>
+  <form class="menu-body" data-room-settings>
+    <label class="field-label" for="set-name">Name</label>
+    <input id="set-name" name="name" maxlength="40" value="${esc(r.name)}" required>
+    <label class="field-label" for="set-about">What it's about</label>
+    <input id="set-about" name="about" maxlength="140" value="${esc(r.about)}" placeholder="One line">
+    <fieldset class="seg"><legend>Keep what's said for</legend>${KEEPS.map((k) => `<label><input type="radio" name="keep" value="${k.id}"${k.id === r.keep ? " checked" : ""}><span>${k.label}</span></label>`).join("")}</fieldset>
+    <p class="hint">Keeping less deletes what's older straight away.</p>
+    <label class="switch"><input type="checkbox" name="listed"${r.listed ? " checked" : ""}><span>Listed for anyone to find</span></label>
+    <p class="settings-status" role="status"></p>
+    <button type="button" class="danger" data-close-room>Close the room</button>
+  </form>
+</details>`;
 
-// looks someone has saved, to wear again in a tap (a flat face of each)
-const savedSlots = (saved: (Look | null)[]): string =>
-  saved
-    .map(
-      (l, i) =>
-        `<div class="saved-look"><button type="button" class="wear" data-slot="${i}"${l ? ` data-look="${esc(JSON.stringify(l))}"` : " disabled"} aria-label="${l ? `Wear saved look ${i + 1}` : `Slot ${i + 1} is empty`}">${l ? avatarSvg(l, REST, "") : `<span class="empty">${i + 1}</span>`}</button><button type="button" class="keep" data-slot="${i}" title="Save how you look now to slot ${i + 1}">Save</button></div>`,
-    )
-    .join("");
-
-// The studio: making your avatar, on a screen of its own. Your head large,
-// live (turn it, zoom it, have it follow your face, try an emote), and
-// everything about it beside it. Each change shows at once and is saved
-// for everyone a moment later.
-export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: number, from = "/"): string {
-  const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
-  return layout(
-    `${APP}: your avatar`,
-    `<main class="studio">
-  <h1 class="visually-hidden">Your avatar</h1>
-  <section class="stage-3d" aria-label="Preview" style="--hue:${hue}">
-    <div class="preview spot mine" data-name="${esc(me.name)}" style="--hue:${hue}" data-words="${st.id}" data-font="${st.font}" data-look="${esc(JSON.stringify(look))}">
-      <span class="spot-avatar preview-head">${avatarSvg(look, REST, `${me.name}'s avatar`)}</span>
-      <p class="preview-name"><span class="who">${esc(me.name)}</span></p>
-      <p class="preview-words words" aria-hidden="true"></p>
+type Mine = { name: string; hue: number; voice: { voice: VoiceId; pitch: number; speed: number } };
+type ShownRoom = Omit<RoomInfo, "maker"> & { mine: boolean };
+export function roomPage(r: ShownRoom, me: Mine | undefined, transcript: Message[], hueOf: (name: string) => number, queue: string[], here: Here[], upTo: number, msg?: string): string {
+  const talk = me
+    ? `<section class="composer" aria-label="Say something">
+    <div class="composer-row">
+      <button type="button" class="talk" id="talk" aria-pressed="false" disabled><span class="dot" aria-hidden="true"></span><span class="label">Turn on microphone</span></button>
+      <form id="type-box" class="type-box" autocomplete="off">
+        <input name="text" maxlength="500" placeholder="Or type… *this* stands out" aria-label="Type something to say" enterkeyhint="send">
+        <button type="submit" class="send" disabled>Send</button>
+      </form>
     </div>
-    <p class="preview-help">Drag to turn · scroll or pinch to zoom</p>
-    <div class="preview-tools">
-      <button type="button" id="studio-face" aria-pressed="false">Follow my face</button>
-      <button type="button" id="studio-hands" aria-pressed="false" hidden>Hands too</button>
-      <button type="button" id="studio-front">Face front</button>
-      <select id="studio-emote" aria-label="Try an emote"><option value="">Try an emote…</option>${EMOTES.map((em) => `<option value="${em.id}">${em.burst ? em.burst + " " : ""}${esc(em.label)}</option>`).join("")}</select>
-    </div>
-  </section>
-  <section class="editor" aria-label="Choose how you look">
-    <div class="editor-head">
-      <a href="${esc(from)}" class="done">Done</a>
-      <div class="history"><button type="button" id="undo" disabled aria-label="Undo">↶ Undo</button><button type="button" id="redo" disabled aria-label="Redo">Redo ↷</button></div>
-      <button type="button" class="surprise" id="surprise">Surprise me</button>
-    </div>
-    <p id="status" class="status" aria-live="polite"></p>
-    <div class="saved-looks" aria-label="Saved looks">${savedSlots(saved)}</div>
-    ${lookEditor(look)}
-  </section>
-</main>`,
-    `<script type="module" src="/js/studio.ts"></script>`,
-  );
-}
-
-// Typing instead of talking: a message written here goes up word by word
-// and is spoken (for anyone with voices on) like a spoken one, in your
-// voice, the way it's written and in the tone picked (typed.ts). Your voice
-// is the one from the studio, changeable here too. Needs the page's script.
-function typeBox(look: Look): string {
-  const tune = (look.tune ?? {}) as Record<string, number>;
-  const slider = (id: string, label: string): string =>
-    `<label class="slider"><span>${label}</span><input type="range" name="tune.${id}" min="-1" max="1" step="0.05" value="${tune[id] ?? 0}"></label>`;
-  return `<form id="type-box" class="type-box" hidden>
-          <label for="typed" class="visually-hidden">Type instead of talking</label>
-          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type… *this* stands out"><button type="submit" class="type-send" disabled>Say it</button></div>
-          <fieldset class="tones"><legend class="visually-hidden">How it's said</legend>${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${t.label}</span></label>`).join("")}</fieldset>
-          <details class="type-voice"><summary>Your voice</summary>
-            <div class="type-voice-body">
-              <label class="voice-pick"><span>Voice</span><select name="voice">${VOICES_IN_ORDER.map((v) => `<option value="${v.id}"${look.voice === v.id ? " selected" : ""}>${esc(v.label)}: ${esc(v.about)}</option>`).join("")}</select></label>
-              ${slider("voicePitch", "Pitch")}${slider("voiceSpeed", "Speed")}
-              <button type="button" class="type-hear">🔊 Hear it first</button>
-              <p class="hint">*Stars* or CAPS make a word stand out, ! makes it louder, sooo draws it out, (brackets) say it aside, and a ? asks. Everyone with voices on hears it in this voice; it's marked as typed.</p>
-            </div>
-          </details>
-        </form>`;
-}
-
-// The welcome, said the way the app draws what's said: "say it how you
-// MEAN it", the "say" a little up, "mean" loud and high, "it" drawn out.
-const w = (word: string, loud: number, pitch: number, stretch = 0): Word => ({ w: word, start: 0, end: 0, loud, pitch, rise: 0, stretch, held: stretch ? 0.5 : null, contour: [] });
-// (on two lines, "mean it" on its own)
-const HERO = [[w("say", 2, 2), w("it", -2, 0), w("how", -1, -1), w("you", -2, -1)], [w("mean", 9, 5), w("it", 3, 2, 0.8)]].map((line) => `<span class="hero-line">${line.map((x) => wordHtml(x)).join(" ")}</span>`).join(" ");
-
-// One line of the brief record: who, in their colour, what they said, when.
-export const lineHtml = (l: { name: string; seat: number; text: string; until: number; face?: string | null }, now = Date.now()): string =>
-  `<li style="--hue:${hueOf(l.seat)}" data-name="${esc(l.name)}" data-until="${l.until}"><strong>${l.face ? `${esc(l.face)} ` : ""}${esc(l.name)}</strong> <span class="said-text">${esc(l.text)}</span> <time data-at="${l.until}">${ago(l.until, now)}</time></li>`;
-
-// The room someone's in, as the switcher at the top shows it: its name,
-// and a menu of the others to go to, and a way to make one.
-type Here = RoomInfo & { mine: boolean };
-const roomHref = (r: { id: number; slug: string }): string => (r.id === 1 ? "/" : `/r/${r.slug}/`);
-function switcher(here: Here, rooms: (RoomInfo & { lately: number })[]): string {
-  const others = rooms.filter((r) => r.id !== here.id).slice(0, 8);
-  return `<details class="room-switch">
-    <summary><span class="room-switch-name">${esc(here.name)}</span><span class="room-switch-caret" aria-hidden="true"></span></summary>
-    <div class="room-switch-menu" role="menu">
-      ${others.map((r) => `<a role="menuitem" href="${roomHref(r)}"><span>${esc(r.name)}</span>${r.lately ? `<small>${r.lately} lately</small>` : ""}</a>`).join("")}
-      <a role="menuitem" class="all" href="/rooms">All rooms · make one</a>
-    </div>
-  </details>`;
-}
-
-// A room's own settings, for whoever made it: its name, its look, whether
-// it's listed. Changes go to everyone in it at once.
-function roomSettings(here: Here): string {
-  if (!here.mine) return "";
-  const part = (p: keyof typeof SCENE_PARTS, label: string): string =>
-    `<fieldset class="pick scene-pick"><legend>${label}</legend>${(SCENE_PARTS[p] as readonly { id: string; label: string; emoji?: string; colour?: string; colours?: readonly string[] }[])
-      .map(
-        (o) =>
-          `<label><input type="radio" name="${p}" value="${o.id}"${here.scene[p] === o.id ? " checked" : ""}><span${o.colour ? ` class="tint" style="--c:${o.colour}"` : o.colours ? ` class="tint" style="--c:${o.colours[0] ?? "transparent"};--c2:${o.colours[1] ?? "transparent"}"` : ""}>${o.emoji ? `<span aria-hidden="true">${o.emoji}</span> ` : ""}${esc(o.label)}</span></label>`,
-      )
-      .join("")}</fieldset>`;
-  return `<details class="room-settings">
-    <summary>Room settings</summary>
-    <form class="room-settings-body" data-room-settings>
-      <label class="field"><span>Name</span><input name="name" maxlength="40" value="${esc(here.name)}" required></label>
-      <fieldset class="pick scene-pick themes"><legend>Start from</legend>${SCENES.map((t) => `<label><input type="radio" name="theme" value="${t.id}" data-scene="${esc(JSON.stringify(t.scene))}"><span><span aria-hidden="true">${t.emoji}</span> ${esc(t.label)}</span></label>`).join("")}</fieldset>
-      ${part("sky", "Outside")}${part("walls", "Walls")}${part("floor", "Floor")}${part("rug", "Rug")}
-      <label class="check"><input type="checkbox" name="listed"${here.listed ? " checked" : ""}><span>Listed for anyone to find (otherwise only those with the link)</span></label>
-      <p class="fine room-link">Link: <code>${esc(roomHref(here))}</code> <button type="button" class="copy-link">Copy link</button></p>
-    </form>
-  </details>`;
-}
-
-export function roomPage(
-  people: { name: string; seat: number }[],
-  me: (Person & { seat: number }) | undefined,
-  msg: string | undefined,
-  lines: { name: string; seat: number; text: string; until: number; face?: string | null }[] = [],
-  expressions: Map<string, Expression> = new Map(),
-  lookOf: (name: string) => Look = () => lookFor(0),
-  threads: Map<string, Said[]> = new Map(),
-  saved: (Look | null)[] = [],
-  queue: string[] = [],
-  away: string[] = [],
-  upTo = 0,
-  here: Here = { id: 1, slug: "main", name: "The main room", scene: SCENES[0].scene, listed: true, maker: null, made_at: 0, mine: false },
-  rooms: (RoomInfo & { lately: number })[] = [],
-): string {
-  const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
-  const myLook = me ? lookOf(me.name) : null;
-  const place = (name: string): number => queue.indexOf(name) + 1;
-  const mine = me ? spotHtml(me.name, me.seat, myLook!, true, expressions.get(me.name), threads.get(me.name), place(me.name)) : "";
-  const others = people
-    .filter((p) => p.name !== me?.name)
-    .map((p) => spotHtml(p.name, p.seat, lookOf(p.name), false, expressions.get(p.name), threads.get(p.name), place(p.name), away.includes(p.name)))
-    .join("");
-  const up = me ? queue.includes(me.name) : false;
-  const count = people.filter((p) => !away.includes(p.name)).length;
-
-  // a word of someone else's, tapped, offers these
-  const picker = me ? `<div id="react-picker" class="react-picker" role="menu" hidden>${REACTIONS.map((r) => `<button type="button" role="menuitem" data-reaction="${r.id}" title="${r.label}">${r.emoji}</button>`).join("")}</div>` : "";
-
-  // Joined: the room (or everyone as cards) on the wide side, and you on the
-  // narrow one: your card, a panel to say something, and the rest of what
-  // you can do in tabs under it. The same in either view. Not joined: a way
-  // in, and the room to watch.
-  const tab = (id: string, label: string, on = false): string => `<button type="button" role="tab" id="tab-${id}" aria-controls="panel-${id}" aria-selected="${on}"${on ? "" : ' tabindex="-1"'}>${label}</button>`;
-  const centre = me
-    ? `<section class="me" aria-label="You">
-        <ul class="mine-card">${mine}</ul>
-        <div class="say-panel">
-          <div class="controls">
-            <button id="talk" type="button" class="talk" aria-pressed="false" disabled><span class="dot"></span><span class="label">Turn on microphone</span></button>
-            <form method="post" action="hand" class="hand-form"><input type="hidden" name="up" value="${up ? "false" : "true"}"><button id="hand" type="submit" class="hand-toggle" aria-pressed="${up}" title="Raise your hand to speak next (Shift+R)"><span aria-hidden="true">✋</span> <span class="label">${up ? "Lower hand" : "Raise hand"}</span></button></form>
-          </div>
-          <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
-          ${typeBox(myLook!)}
+    <div class="composer-more">
+      <fieldset class="tones" aria-label="How it's said">${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}" form="type-box"${i === 0 ? " checked" : ""}><span>${t.label}</span></label>`).join("")}</fieldset>
+      <form class="hand-form" method="post" action="hand"><input type="hidden" name="up" value="${queue.includes(me.name) ? "false" : "true"}"><button type="submit" class="hand${queue.includes(me.name) ? " up" : ""}" aria-pressed="${queue.includes(me.name)}"><span aria-hidden="true">✋</span> <span class="hand-label">${queue.includes(me.name) ? "Lower hand" : "Raise hand"}</span></button></form>
+      <details class="menu your-voice">
+        <summary><span class="menu-label">Your voice</span></summary>
+        <div class="menu-body">
+          <p class="hint">What you type is read aloud in this, for anyone who has reading aloud on.</p>
+          <label class="field-label" for="voice-pick">Voice</label>
+          <select id="voice-pick" name="voice">${VOICES_IN_ORDER.map((v) => `<option value="${v.id}"${v.id === me.voice.voice ? " selected" : ""}>${esc(v.label)}, ${esc(v.about)}</option>`).join("")}</select>
+          <label class="slider"><span>Pitch</span><input type="range" name="pitch" min="-1" max="1" step="0.05" value="${me.voice.pitch}"></label>
+          <label class="slider"><span>Speed</span><input type="range" name="speed" min="-1" max="1" step="0.05" value="${me.voice.speed}"></label>
+          <button type="button" class="ghost" data-try-voice>Hear it</button>
         </div>
-        <div class="me-tabs">
-          <div class="tabs" role="tablist" aria-label="More you can do">${tab("emotes", "Emotes", true)}${tab("words", "Your words")}${tab("you", "You")}</div>
-          <div class="tab-panel" role="tabpanel" id="panel-emotes" aria-labelledby="tab-emotes">
-            <div class="emotes" role="toolbar" aria-label="Emotes: your head does it, for everyone">
-              ${EMOTES.map((em) => `<button type="button" data-emote="${em.id}" title="${em.label} (Shift+${em.key})"><span aria-hidden="true">${em.burst || (em.head === "nod" ? "🙂" : "🙅")}</span><span class="emote-label">${em.label}</span></button>`).join("")}
-            </div>
-          </div>
-          <div class="tab-panel" role="tabpanel" id="panel-words" aria-labelledby="tab-words" hidden>
-            <div class="edit-tools" role="toolbar" aria-label="Change the chosen word">
-              <p class="edit-hint">Your latest word is chosen; tap any of yours <span class="keys">(or press <kbd>←</kbd> <kbd>→</kbd>)</span> to choose it instead. Type to change it, live, for everyone.</p>
-              ${EFFECTS.map((fx) => `<button type="button" data-key="${fx.key}" title="${fx.label}" class="fx-button"><kbd>${fx.key}</kbd><span class="w fx-${fx.id}">${fx.label}</span></button>`).join("")}
-              <button type="button" data-key="Backspace" title="Delete"><kbd>⌫</kbd><span>Delete</span></button>
-            </div>
-          </div>
-          <div class="tab-panel" role="tabpanel" id="panel-you" aria-labelledby="tab-you" hidden>
-            <div class="you-tools">
-              <button id="face" type="button" class="face-toggle" aria-pressed="false" hidden><span class="label">Show my face</span></button>
-              <video id="face-preview" class="face-preview" muted playsinline hidden></video>
-              <label class="hands-toggle"><input type="checkbox" id="hands"><span>Hands too</span></label>
-              <label class="voices-toggle" hidden><input type="checkbox" id="voices"><span>🔊 Hear voices</span></label>
-              <label class="voices-toggle natural-toggle" hidden title="Natural-sounding voices, the same on every device: a download, once"><input type="checkbox" id="natural"><span>✨ Natural <small class="natural-size"></small></span></label>
-            </div>
-            <a class="customise-link" href="/studio${here.id === 1 ? "" : `?from=${encodeURIComponent(here.slug)}`}">Customise your avatar <span aria-hidden="true">→</span></a>
-          </div>
-        </div>
-      </section>`
-    : `<section class="me join-card" aria-labelledby="join-h">
-        <p class="hero-words words" aria-hidden="true">${HERO}</p>
-        <h2 id="join-h">${here.id === 1 ? "Join the room" : `Join ${esc(here.name)}`}</h2>
-        <p class="fine">Pick a name and talk. Everyone here sees your words as you say them, drawn the way you said them, and your avatar pulls the faces you pull.</p>
-        ${notice}
-        <form method="post" action="join" class="join">
-          <label for="name" class="visually-hidden">Your name</label>
-          <input id="name" name="name" maxlength="20" required autocomplete="nickname" placeholder="Your name">
-          <button>Join</button>
-        </form>
-      </section>`;
-
+      </details>
+    </div>
+    <p class="status" id="status" role="status"></p>
+  </section>`
+    : `<section class="composer join-card" aria-labelledby="join-h"><h2 id="join-h">Join to talk</h2><p class="hint">Just a name. You can read along without one.</p>${joinForm("join")}</section>`;
   return layout(
-    here.id === 1 ? `${APP}: say it how you mean it` : `${here.name} · ${APP}`,
-    `<main class="room${me ? " joined" : ""}" data-room="${here.id}" data-scene="${esc(JSON.stringify(here.scene))}">
-  <h1 class="visually-hidden">${here.id === 1 ? `${APP}: say it how you mean it` : `${esc(here.name)}, in ${APP}`}</h1>
-  ${centre}${picker}
-  <section class="others" aria-labelledby="others-h">
-    <div class="others-head">
-      <h2 id="others-h"><span class="room-title">${esc(here.name)}</span> <span class="room-count" id="room-count">${count ? `${count} here` : ""}</span></h2>
-      <div class="view-switch" role="radiogroup" aria-label="How to see everyone" hidden><label><input type="radio" name="view" value="cards" checked><span>Cards</span></label><label><input type="radio" name="view" value="room"><span>Room</span></label></div><p id="live" class="live" role="status" hidden></p>
+    `${r.name} · ${APP}`,
+    `<main id="main" class="room" data-room="${esc(r.slug)}" data-up-to="${upTo}"${me ? ` data-me="${esc(me.name)}" data-voice="${esc(JSON.stringify(me.voice))}"` : ""}>
+  <div class="room-head">
+    <div class="room-title-row">
+      <h1 class="room-name">${esc(r.name)}</h1>
+      <p class="live" id="live" hidden></p>
     </div>
-    ${roomSettings(here)}
-    <p id="queue" class="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
-    <div id="room3d" class="room3d" tabindex="0" aria-label="The room, drawn. W, A, S and D, or a tap on the floor, walk you about it. Drag or use the arrow keys to look round, scroll, pinch or press plus and minus to zoom, 0 to put it back." hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div>
-      <div class="room-bar"><div class="room-views" role="radiogroup" aria-label="Look at the room">${[["follow", "Everyone"], ["speaker", "Speaker"], ["wide", "Wide"], ["above", "Above"], ["me", "Me"]].map(([v, l]) => `<label${v === "me" ? ' class="room-me"' : ""}><input type="radio" name="room-view" value="${v}"${v === "follow" ? " checked" : ""}><span>${l}</span></label>`).join("")}</div><button type="button" class="room-reset" title="Put the camera back">Reset</button><button type="button" class="room-sit" title="Back to your chair">Sit</button></div>
-      <button type="button" class="room-full" aria-pressed="false" title="Full screen (Esc to come back)"><svg viewBox="0 0 20 20" aria-hidden="true"><path class="grow" d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5"/><path class="shrink" d="M8 3v5H3M17 8h-5V3M12 17v-5h5M3 12h5v5"/></svg><span class="visually-hidden">Full screen</span></button>
-      <div class="room-stick" aria-hidden="true"><span class="room-knob"></span></div>
-      <div class="room-dock" aria-label="Talk from the room">
-        <button type="button" class="dock-talk" aria-pressed="false" title="Microphone"><span class="dot"></span><span class="visually-hidden">Microphone</span></button>
-        <form class="dock-type"><input type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Say something…" aria-label="Type something to say"></form>
-        <div class="dock-emotes">${["hi", "laugh", "love", "yes", "wow"].map((id) => { const em = EMOTES.find((e) => e.id === id)!; return `<button type="button" data-dock-emote="${id}" title="${em.label}"><span aria-hidden="true">${em.burst}</span><span class="visually-hidden">${em.label}</span></button>`; }).join("")}</div>
-      </div>
-      <p class="room-hint" aria-hidden="true">W A S D or tap the floor to walk · drag to look round · scroll or pinch to zoom</p>
-    </div>
-    <ul id="stage" class="stage" data-up-to="${upTo}">${others}</ul>
-    <p id="nobody" class="fine" ${others ? "hidden" : ""}>${here.id === 1 ? "Nobody else is here yet." : `Nobody else is here yet. <button type="button" class="copy-link">Copy the link</button> to bring someone.`}</p>
-  </section>
-  <details class="record-wrap">
-    <summary><h2 id="record-h">Lately</h2></summary>
-    <ol id="record" class="record">${lines.map((l) => lineHtml(l)).join("")}</ol>
-    <p id="record-empty" class="fine" ${lines.length ? "hidden" : ""}>Nothing said yet.</p>
-  </details>
-  <p id="heard" class="visually-hidden" aria-live="polite"></p>
+    ${r.about ? `<p class="room-about">${esc(r.about)}</p>` : `<p class="room-about" hidden></p>`}
+    <p class="room-meta"><span class="keep-label">${keepLabel(r.keep)}</span>${r.listed ? "" : " · <span>Link only</span>"} · <a href="transcript.txt" download>Download transcript</a></p>
+  </div>
+  <div class="room-tools">
+    <button type="button" class="ghost" data-copy-link>Copy link</button>
+    <button type="button" class="ghost" data-present aria-pressed="false">Present</button>
+    ${readingHtml()}
+    ${r.mine ? settingsHtml(r) : ""}
+  </div>
+  ${notice(msg)}
+  <p class="queue" id="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
+  <div class="room-body">
+    <section class="transcript-wrap" aria-labelledby="transcript-h">
+      <h2 id="transcript-h" class="visually-hidden">Transcript</h2>
+      <ol class="transcript" id="transcript" aria-live="polite" aria-relevant="additions">${turnsHtml(transcript, hueOf, me?.name)}</ol>
+      <p class="empty" id="empty"${transcript.length ? " hidden" : ""}>Nothing's been said here yet${r.keep === "always" ? "" : ` (or not in the last ${KEEPS.find((k) => k.id === r.keep)!.label.toLowerCase().replace(/^an? /, "")})`}. ${me ? "Turn your microphone on, or type, to start." : "Join to start, or wait for someone to talk."}</p>
+      <ul class="drafts" id="drafts" aria-hidden="true"></ul>
+      <button type="button" class="jump" id="jump" hidden>New words ↓</button>
+    </section>
+    <aside class="here" aria-labelledby="here-h">
+      <h2 id="here-h">Here now</h2>
+      <ul id="here-list">${hereHtml(here, me?.name)}</ul>
+    </aside>
+  </div>
+  ${talk}
 </main>`,
-    `<script type="module" src="/js/client.ts"></script>`,
-    HELP,
-    switcher(here, rooms),
+    { script: `<script type="module" src="/js/client.ts"></script>`, bodyClass: "in-room" },
   );
 }
 
-// Every room: the ones anyone can find (and yours that aren't), each with
-// how it looks and who's in it, and a way to make another.
-export function roomsPage(rooms: (RoomInfo & { lately: number; here: number; mine: boolean })[], joined: boolean, msg?: string): string {
-  const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
-  const card = (r: (typeof rooms)[number]): string => {
-    const wall = SCENE_PARTS.walls.find((x) => x.id === r.scene.walls)?.colour ?? "#434c66";
-    const floor = SCENE_PARTS.floor.find((x) => x.id === r.scene.floor)?.colour ?? "#a8774c";
-    const rug = SCENE_PARTS.rug.find((x) => x.id === r.scene.rug)?.colours[0] ?? "transparent";
-    const sky = SCENE_PARTS.sky.find((x) => x.id === r.scene.sky);
-    return `<li><a class="room-card" href="${roomHref(r)}" style="--wall:${wall};--floor:${floor};--rug:${rug}" data-sky="${r.scene.sky}">
-      <span class="room-card-art" aria-hidden="true"><span class="win"></span><span class="rugdot"></span><span class="sky-emoji">${sky?.emoji ?? ""}</span></span>
-      <span class="room-card-text"><strong>${esc(r.name)}</strong><small>${r.here ? `${r.here} here now` : r.lately ? `${r.lately} talked lately` : "Quiet"}${r.listed ? "" : " · link only"}${r.mine ? " · yours" : ""}</small></span>
-    </a></li>`;
-  };
-  const make = joined
-    ? `<form method="post" action="/rooms" class="make-room">
-        <h2>Make a room</h2>
-        ${notice}
-        <label class="field"><span>Name</span><input name="name" maxlength="40" required placeholder="Book club, Team stand-up…"></label>
-        <fieldset class="pick scene-pick themes"><legend>Looks like</legend>${SCENES.map((t, i) => `<label><input type="radio" name="theme" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${esc(t.label)}</span></label>`).join("")}</fieldset>
-        <fieldset class="pick"><legend>Who finds it</legend><label><input type="radio" name="listed" value="yes" checked><span>Anyone, listed here</span></label><label><input type="radio" name="listed" value="no"><span>Only those with the link</span></label></fieldset>
-        <button class="primary">Make it</button>
-        <p class="fine">You can change how it looks once you're in it. Everyone in it sees what's said there, and only there.</p>
-      </form>`
-    : `<div class="make-room"><h2>Make a room</h2>${notice}<p class="fine">Join first (pick a name in <a href="/">the main room</a>), then make one of your own here.</p></div>`;
-  return layout(
-    `Rooms · ${APP}`,
-    `<main class="rooms-page">
-  <h1>Rooms</h1>
-  <p class="lede">Each room is its own space: its own people, its own look, and what's said there stays there.</p>
-  <ul class="room-cards">${rooms.map(card).join("")}</ul>
-  ${make}
-</main>`,
-  );
+// ---- a room's transcript to take away ----
+
+export function transcriptText(r: RoomInfo, messages: Message[]): string {
+  const lines = [`${r.name}${r.about ? ` — ${r.about}` : ""}`, `Transcript from ${APP}, ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney" })}. ${keepLabel(r.keep)}.`, ""];
+  let last = "";
+  for (const m of messages) {
+    const head = `[${new Date(m.at).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", timeZone: "Australia/Sydney" })}] ${m.name}${m.typed ? " (typed)" : ""}`;
+    if (head !== last) lines.push("", head);
+    lines.push(m.text);
+    last = head;
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n") + "\n";
 }
 
 export function notFoundPage(): string {
-  return layout(`Not here · ${APP}`, `<main class="prose"><h1>No room here</h1><p>There's no room at this address. It may have been a typo, or the link's from somewhere else. <a href="/rooms">See every room</a>.</p></main>`);
+  return layout(`Not found · ${APP}`, `<main id="main" class="home"><section class="intro"><h1>There's no room here.</h1><p class="lede">It may have been closed, or the link is mistyped.</p><p><a class="primary-link" href="/">See the rooms</a></p></section></main>`);
 }
 
 export function readmePage(html: string): string {
-  return layout(`About ${APP}`, `<main class="prose">${html}</main>`, "", "");
+  return layout(`About ${APP}`, `<main id="main" class="prose">${html}</main>`);
 }

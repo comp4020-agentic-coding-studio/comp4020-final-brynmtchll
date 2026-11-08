@@ -19,15 +19,11 @@ export type Word = {
   // the word's pitch as it went, evenly spaced through the word, in semitones
   // against this message's typical pitch; null where nothing was voiced
   contour: (number | null)[];
-  // an effect its speaker put on it before it went out, if any
-  effect?: Effect;
+  // a word typed in the Whisper tone (typed.ts): drawn and read out hushed
+  // (and, in a message kept from before, an effect someone put on a word,
+  // which is dropped: there are none now)
+  effect?: "whisper";
 };
-
-// What a speaker can do to a word while it waits in their queue, each on a
-// number key. style.css says what each looks like.
-// what effects there are lives in packs.ts
-import { isEffect, REACTIONS, type Effect } from "./packs.ts";
-export type { Effect };
 
 // the whole message's voice, on absolute scales so messages can be compared
 export type Voice = {
@@ -78,7 +74,7 @@ export function clean(input: unknown): Word[] | null {
       contour: Array.isArray(raw.contour)
         ? (raw.contour as unknown[]).slice(0, LIMITS.contour).map((p) => (finite(p) ? round(clamp(p, -RANGE.pitch, RANGE.pitch)) : null))
         : [],
-      ...(isEffect(raw.effect) ? { effect: raw.effect } : {}),
+      ...(raw.effect === "whisper" ? { effect: "whisper" as const } : {}),
     });
   }
   return words;
@@ -245,36 +241,13 @@ export function wordHtml(x: Word, gap = 0): string {
     at === null || cs[at] === undefined
       ? esc(x.w)
       : `${esc(cs.slice(0, at + 1).join(""))}<span class="held" aria-hidden="true">${esc(cs[at].repeat(n))}</span>${esc(cs.slice(at + 1).join(""))}`;
-  return `<span class="w${x.effect ? ` fx-${x.effect}` : ""}" style="${vars}">${shown}</span>`;
-}
-
-// The reactions on a word (packs.ts REACTIONS), as counts, as a little row
-// of emoji under it; nothing if there are none. Shared by the server's
-// drawing and the page's.
-export function reactionsHtml(counts: Record<string, number> | undefined): string {
-  const shown = REACTIONS.filter((r) => (counts?.[r.id] ?? 0) > 0);
-  if (!shown.length) return "";
-  return `<span class="reacts">${shown.map((r) => `<span class="react" title="${r.label}">${r.emoji}${counts![r.id] > 1 ? `<b>${counts![r.id]}</b>` : ""}</span>`).join("")}</span>`;
+  return `<span class="w${x.effect === "whisper" ? " hushed" : ""}" style="${vars}">${shown}</span>`;
 }
 
 // A message's words as HTML, a pause hanging off the end of the word before
 // it (so a pause at a line break doesn't indent the next line).
 export function renderWords(words: Word[]): string {
   return words.map((x, i) => wordHtml(x, i + 1 < words.length ? words[i + 1].start - x.end : 0)).join(" ");
-}
-
-// Where the i-th person stands on the stage, as 0-100 across and down it.
-// The R2 sequence (Roberts, 2018) spreads its first n points well for any n,
-// so the stage looks scattered with two people or twelve, and nobody moves
-// when someone new arrives. Starting it at 0.67 rather than the usual 0.5
-// leaves the largest empty patch about a fifth smaller with two to eight
-// people, the usual size of a room.
-const PLASTIC = 1.324717957244746;
-const R2_START = 0.67;
-export function spotAt(i: number): { x: number; y: number } {
-  const x = (R2_START + (i + 1) / PLASTIC) % 1;
-  const y = (R2_START + (i + 1) / (PLASTIC * PLASTIC)) % 1;
-  return { x: round(x * 100), y: round(y * 100) };
 }
 
 // Each person's colour, from their seat like their place, so it's the same
@@ -295,10 +268,3 @@ export const ago = (at: number, now: number = Date.now()): string => {
   if (s < 86400) return `${Math.round(s / 3600)}h ago`;
   return `${Math.round(s / 86400)}d ago`;
 };
-
-// A hand up to speak, and where it is in the queue: on their card, and as a
-// line under the room's heading
-export const handBadge = (place: number): string => (place ? `<span class="hand-badge" title="Hand up: ${ordinal(place)} to speak"><span aria-hidden="true">✋</span> ${place}</span>` : "");
-const ordinal = (n: number): string => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
-export const queueHtml = (queue: string[], me?: string): string =>
-  queue.length ? `<span aria-hidden="true">✋</span> Next: ${queue.map((n) => (n === me ? "<strong>you</strong>" : esc(n))).join(", then ")}` : "";
