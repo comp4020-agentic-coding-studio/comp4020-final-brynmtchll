@@ -1750,6 +1750,44 @@ walkSent((at) => {
   })();
 });
 
+// ---- talking from inside the room, full screen ----
+
+// Full screen, the page's own controls are out of sight: the room has a few
+// of its own, which do what those do (the microphone, typing, a handful of
+// emotes), so you can talk there.
+const dock = roomBoxEl()?.querySelector<HTMLElement>(".room-dock");
+function roomBoxEl(): HTMLElement | null {
+  return document.getElementById("room3d");
+}
+if (dock) {
+  const dockTalk = dock.querySelector<HTMLButtonElement>(".dock-talk")!;
+  const mirror = (): void => {
+    const on = talk?.getAttribute("aria-pressed") === "true";
+    dockTalk.setAttribute("aria-pressed", String(on));
+    dockTalk.disabled = !talk || talk.disabled;
+    dockTalk.title = talk?.querySelector(".label")?.textContent ?? "Microphone";
+  };
+  if (talk) new MutationObserver(mirror).observe(talk, { attributes: true, subtree: true, characterData: true, childList: true });
+  mirror();
+  dockTalk.addEventListener("click", () => talk?.click());
+  const form = dock.querySelector<HTMLFormElement>(".dock-type")!;
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const box = form.querySelector("input")!;
+    const real = typeBox?.elements.namedItem("text") as HTMLInputElement | null;
+    if (!real || !box.value.trim()) return;
+    real.value = box.value;
+    real.dispatchEvent(new Event("input", { bubbles: true }));
+    typeBox!.requestSubmit();
+    box.value = "";
+  });
+  // (typing here isn't walking, or anything else the room's keys do)
+  form.addEventListener("keydown", (e) => e.stopPropagation());
+  for (const b of dock.querySelectorAll<HTMLButtonElement>("[data-dock-emote]")) {
+    b.addEventListener("click", () => document.querySelector<HTMLButtonElement>(`.emotes [data-emote="${b.dataset.dockEmote}"]`)?.click());
+  }
+}
+
 // ---- seeing everyone as cards, or together in a room ----
 
 // The room (room3d.ts) draws everyone at once, around a table, with what

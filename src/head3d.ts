@@ -935,6 +935,23 @@ const centre = (el: HTMLElement): { x: number; y: number } => {
 
 // ---- the room: everyone in one place ----
 
+// Someone walking about the room swings their arms: how far into a stride
+// they are (radians, a step each half turn) and how much they're walking (0
+// to 1), set by the room each frame. Read where the arms are posed.
+const strides = new Map<HTMLElement, { phase: number; amount: number }>();
+export function walking(slot: HTMLElement, phase: number, amount: number): void {
+  if (amount <= 0.01) strides.delete(slot);
+  else strides.set(slot, { phase, amount });
+}
+function swung({ phase, amount }: { phase: number; amount: number }): Record<Side, Arm> {
+  const arm = (side: Side, sign: number): Arm => {
+    const r = RESTING[side];
+    const fwd = Math.sin(phase) * 0.55 * amount * sign;
+    return { ...r, upper: unit([r.upper[0], r.upper[1], r.upper[2] + fwd]), fore: unit([r.fore[0], r.fore[1] + 0.25 * amount, r.fore[2] + fwd * 1.4 + 0.35 * amount]) };
+  };
+  return { left: arm("left", 1), right: arm("right", -1) };
+}
+
 // A head as the room draws it: its slot (the card it belongs to), its
 // meshes, posed for this frame, and its shoulders and arms.
 export type RoomHead = { slot: HTMLElement; root: T; body: T | null; top: number; speaking: boolean; mine: boolean };
@@ -1087,7 +1104,10 @@ function frame(now: number): void {
     let armsBusy = false;
     if (body) {
       const read = s.arms.target && now - s.arms.at < ARMS_FOR ? s.arms.target : null;
-      let want: { left: Arm; right: Arm; tilt: number; turn: number } = { left: read?.left ?? RESTING.left, right: read?.right ?? (s.arms.up ? HAND_UP : RESTING.right), tilt: read?.tilt ?? 0, turn: read?.turn ?? 0 };
+      // (walking about the room: resting arms swing, each against its leg)
+      const stride = strides.get(slot);
+      const rest = stride && stride.amount > 0.02 ? swung(stride) : RESTING;
+      let want: { left: Arm; right: Arm; tilt: number; turn: number } = { left: read?.left ?? rest.left, right: read?.right ?? (s.arms.up ? HAND_UP : rest.right), tilt: read?.tilt ?? 0, turn: read?.turn ?? 0 };
       // an emote's arm: their right, on the screen's right (a wave waves),
       // up for most of the emote and back down for the end of it
       if (doingArm && doingArm.t < 0.85) {

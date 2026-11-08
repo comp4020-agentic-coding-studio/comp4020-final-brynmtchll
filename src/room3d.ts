@@ -29,10 +29,10 @@
 // looks down from above. Dragging turns it round the table, scrolling or
 // pinching zooms, a double click puts it back (camera.ts keeps it inside
 // the room).
-import { roomView, type RoomHead } from "./head3d.ts";
-import { seatPlaces } from "./seats.ts";
+import { roomView, walking, type RoomHead } from "./head3d.ts";
+import { seatPlaces, stepsBeside, type Place } from "./seats.ts";
 import { facing, fovFor, held, inside, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type Vec3, type View } from "./camera.ts";
-import { onFloor, PACE, step, turnedTo, type Spot } from "./walk.ts";
+import { blocked, clearLine, held as heldTo, PACE, route, seatSpot, step, TABLE, TURN_RATE, turnedTo, wayOut, type Chair, type Spot, type Step } from "./walk.ts";
 
 type T = any;
 
@@ -40,6 +40,7 @@ type T = any;
 const MOST_SEATS = 12;
 const CROWD = 6; // more than this, and only some are named over their heads
 const FLOOR = -5.2; // where the floor is, below a seated head's middle
+const ROOM_SHAPE = 16 / 9; // the seats, laid out the same for everyone
 const SPOT = 55; // how bright the light on whoever's talking is
 
 type Seat = { group: T; chair: T; riser: T; holds: RoomHead | null };
@@ -80,19 +81,30 @@ type Room = {
   // a stop rather than stopping dead
   spin: { yaw: number; pitch: number };
   framed: Shot | null; // the shot for the view, before it's turned
+  eyeFollowing: boolean; // the springs are following you (the "me" view)
+  handover: { from: { at: number[]; look: number[] }; t: number } | null;
+  lookingAt: number[]; // what the camera looked at, last frame
   // each person up and walking about, drawn where they are now (gliding
   // after where their page last said), with their legs, and how far into a
   // stride they are; the chair they got up from stays where it was
   walkers: Map<HTMLElement, Walker>;
+  // the chairs (and the empty steps beside a raised row), as walk.ts has
+  // them, where they are this frame, and which is whose
+  chairs: Chair[];
+  chairOf: Map<HTMLElement, number>;
+  mineChair: number;
 };
-type Walker = { group: T; legs: T[]; at: Spot; stride: number; speed: number; up: number; colour: string };
+// (`way`: what's left of the way out of their chair, or back into it, as
+// wayOut has it; `path`: the corners still to turn, on the way to where
+// they're going; `up`: how high the floor is under them)
+type Walker = { group: T; legs: { hip: T; knee: T }[]; at: Spot; v: { x: number; z: number }; stride: number; speed: number; pose: number; colour: string; sitting: boolean; way: Step[]; path: { x: number; z: number }[]; goal: string; up: number; hop: number };
 
 // Who's up and walking, by name, as their pages last said (client.ts tells
 // the room as it hears), and you: where you are, moved here as you walk.
 const standing = new Map<string, Spot>();
 let mineAt: Spot | null = null;
 // what you're pressing or pushing: ahead and aside, -1 to 1 (keys, the stick)
-const going = { ahead: 0, aside: 0, keys: new Set<string>(), stick: { ahead: 0, aside: 0 }, to: null as { x: number; z: number } | null };
+const going = { ahead: 0, aside: 0, keys: new Set<string>(), stick: { ahead: 0, aside: 0 }, to: null as { x: number; z: number } | null, path: null as { x: number; z: number }[] | null };
 let sendWalk: ((at: Spot | null) => void) | null = null;
 export function walkSent(send: (at: Spot | null) => void): void {
   sendWalk = send;
@@ -641,36 +653,36 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
   // a couple of mugs, a teapot and a pot of flowers on it
   const tableWood = mat(THREE, 0xb98a5e, 0.38, { map: floorTex });
   const topGeo = new THREE.CylinderGeometry(1, 1, 0.45, 64);
-  k.add(topGeo, tableWood, [0, FLOOR + 2.6, -4.2], [0, 0, 0], [9, 1, 2.6]);
+  k.add(topGeo, tableWood, [0, FLOOR + 2.6, TABLE.z], [0, 0, 0], [9, 1, 2.6]);
   const rim = new THREE.TorusGeometry(1, 0.06, 6, 96);
   rim.rotateX(Math.PI / 2);
-  k.add(rim, darkWood, [0, FLOOR + 2.38, -4.2], [0, 0, 0], [9, 1, 2.6]);
-  for (const x of [-6, 6]) for (const z of [-5.4, -3]) k.add(new THREE.CylinderGeometry(0.22, 0.14, 2.4, 10), darkWood, [x, FLOOR + 1.2, z]);
+  k.add(rim, darkWood, [0, FLOOR + 2.38, TABLE.z], [0, 0, 0], [9, 1, 2.6]);
+  for (const x of [-6, 6]) for (const z of [TABLE.z - 1.2, TABLE.z + 1.2]) k.add(new THREE.CylinderGeometry(0.22, 0.14, 2.4, 10), darkWood, [x, FLOOR + 1.2, z]);
   const ceramic = (c: number): T => mat(THREE, c, 0.25, { envMapIntensity: 1.2 });
   for (const [x, c] of [[-3.5, 0xf4f1ea], [4.2, 0x4a6fd1], [-1.6, 0xe0506a]] as const) {
     const cup = new THREE.LatheGeometry([[0, 0], [0.36, 0], [0.42, 0.1], [0.44, 0.8], [0.4, 0.8], [0.38, 0.12], [0, 0.12]].map(([a, b]) => new THREE.Vector2(a, b)), 24);
-    k.add(cup, ceramic(c), [x, FLOOR + 2.83, -3.6 + (x < 0 ? 0.2 : 0)]);
+    k.add(cup, ceramic(c), [x, FLOOR + 2.83, TABLE.z + 0.6 + (x < 0 ? 0.2 : 0)]);
     const handle = new THREE.TorusGeometry(0.2, 0.05, 6, 12, Math.PI);
-    k.add(handle, ceramic(c), [x + 0.44, FLOOR + 3.25, -3.6 + (x < 0 ? 0.2 : 0)], [0, 0, -Math.PI / 2]);
+    k.add(handle, ceramic(c), [x + 0.44, FLOOR + 3.25, TABLE.z + 0.6 + (x < 0 ? 0.2 : 0)], [0, 0, -Math.PI / 2]);
   }
   // a teapot: a squashed ball, a lid, a spout
   const pot = ceramic(0xe8c27a);
-  k.add(new THREE.SphereGeometry(0.85, 24, 16), pot, [3, FLOOR + 3.5, -4.9], [0, 0, 0], [1, 0.78, 1]);
-  k.add(new THREE.SphereGeometry(0.35, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), pot, [3, FLOOR + 4.1, -4.9]);
-  k.add(new THREE.CylinderGeometry(0.08, 0.16, 0.9, 10), pot, [3.85, FLOOR + 3.6, -4.9], [0, 0, -0.9]);
+  k.add(new THREE.SphereGeometry(0.85, 24, 16), pot, [3, FLOOR + 3.5, TABLE.z - 0.7], [0, 0, 0], [1, 0.78, 1]);
+  k.add(new THREE.SphereGeometry(0.35, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), pot, [3, FLOOR + 4.1, TABLE.z - 0.7]);
+  k.add(new THREE.CylinderGeometry(0.08, 0.16, 0.9, 10), pot, [3.85, FLOOR + 3.6, TABLE.z - 0.7], [0, 0, -0.9]);
   // the vase of flowers
   const vase = new THREE.LatheGeometry([[0, 0], [0.4, 0], [0.55, 0.4], [0.35, 1.0], [0.3, 1.15], [0.36, 1.25]].map(([a, b]) => new THREE.Vector2(a, b)), 24);
-  k.add(vase, ceramic(0x5ec4d8), [0.6, FLOOR + 2.83, -4.6]);
+  k.add(vase, ceramic(0x5ec4d8), [0.6, FLOOR + 2.83, TABLE.z - 0.4]);
   const stem = mat(THREE, 0x3f7a4a, 0.7);
   for (const [dx, dy, c] of [[-0.35, 1.3, 0xff6fae], [0.1, 1.6, 0xf2c14e], [0.45, 1.25, 0xe0506a], [-0.05, 1.05, 0xffffff], [0.3, 1.45, 0xff9a6a]] as const) {
-    k.add(new THREE.CylinderGeometry(0.03, 0.03, dy, 4), stem, [0.6 + dx / 2, FLOOR + 3.9 + dy / 2 - 0.4, -4.6], [0, 0, -dx * 0.5]);
-    k.add(new THREE.IcosahedronGeometry(0.26, 1), mat(THREE, c, 0.6), [0.6 + dx, FLOOR + 3.5 + dy, -4.6]);
+    k.add(new THREE.CylinderGeometry(0.03, 0.03, dy, 4), stem, [0.6 + dx / 2, FLOOR + 3.9 + dy / 2 - 0.4, TABLE.z - 0.4], [0, 0, -dx * 0.5]);
+    k.add(new THREE.IcosahedronGeometry(0.26, 1), mat(THREE, c, 0.6), [0.6 + dx, FLOOR + 3.5 + dy, TABLE.z - 0.4]);
   }
   // soft shadows under the table, the armchair and the pots (where the
   // sun's hard one, cast long, doesn't fall)
   const blotMat = new THREE.MeshBasicMaterial({ map: painted(THREE, 128, 128, blot), transparent: true, depthWrite: false, opacity: 0.9 });
   under = blotMat;
-  for (const [x, z, sx, sz] of [[0, -4.2, 22, 8], [-18, -7, 8, 8], [21, -14, 4, 4], [-21.5, -22, 5, 5], [20, 4, 3.5, 3.5]] as const) {
+  for (const [x, z, sx, sz] of [[0, TABLE.z, 22, 8], [-18, -7, 8, 8], [21, -14, 4, 4], [-21.5, -22, 5, 5], [20, 4, 3.5, 3.5]] as const) {
     const b = new THREE.Mesh(new THREE.PlaneGeometry(sx, sz), blotMat);
     b.rotation.x = -Math.PI / 2;
     b.position.set(x, FLOOR + 0.06, z);
@@ -680,7 +692,8 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
   // and a small one on the table under each thing on it, so they sit on it
   // rather than float (two draws: the blots are merged)
   const onTable: T[] = [];
-  for (const [x, z, d] of [[-3.5, -3.4, 1.5], [4.2, -3.6, 1.5], [-1.6, -3.4, 1.5], [3, -4.9, 2.6], [0.6, -4.6, 1.7]] as const) {
+  for (const [x, dz, d] of [[-3.5, 0.8, 1.5], [4.2, 0.6, 1.5], [-1.6, 0.8, 1.5], [3, -0.7, 2.6], [0.6, -0.4, 1.7]] as const) {
+    const z = TABLE.z + dz;
     const g = new THREE.PlaneGeometry(d * 1.15, d);
     g.rotateX(-Math.PI / 2);
     g.translate(x, FLOOR + 2.835, z);
@@ -865,26 +878,32 @@ async function postFor(THREE: T, renderer: T, scene: T, camera: T): Promise<Post
 
 // ---- seats: who sits where ----
 
-// the order people sit in: you in the middle, everyone else as they came.
-// A room with more people than seats seats those talking, with a hand up or
-// most lately either, and keeps where each sits while they stay in it.
-function arrange(heads: RoomHead[], aspect: number, r?: Pick<Room, "activeAt" | "seatOf">): RoomHead[] {
-  const mine = heads.find((h) => h.mine);
-  let others = heads.filter((h) => !h.mine);
-  const room = MOST_SEATS - (mine ? 1 : 0);
-  if (others.length > room && r) {
+// The order people sit in: the same on every page, so the room is one
+// room, and walking up to someone on yours is walking up to them on
+// theirs. (By the colour each was given, which comes from the order they
+// first joined, and then their name; it used to put you in the middle of
+// the front row, which made every page's room different.) A room with more
+// people than seats seats those talking, with a hand up or most lately
+// either, and keeps where each sits while they stay in it, and always you.
+const keyOf = (h: RoomHead): [number, string] => {
+  const card = h.slot.closest<HTMLElement>(".spot");
+  return [Number(card?.style.getPropertyValue("--hue") || 0), card?.dataset.name ?? ""];
+};
+const byPlace = (a: RoomHead, b: RoomHead): number => {
+  const [ha, na] = keyOf(a);
+  const [hb, nb] = keyOf(b);
+  return ha - hb || (na < nb ? -1 : na > nb ? 1 : 0);
+};
+function arrange(heads: RoomHead[], r?: Pick<Room, "activeAt" | "seatOf">): RoomHead[] {
+  let all = [...heads].sort(byPlace);
+  if (all.length > MOST_SEATS && r) {
     const now = performance.now();
-    for (const h of others) if (h.speaking || h.slot.closest<HTMLElement>(".spot")?.dataset.hand) r.activeAt.set(h.slot, now);
+    for (const h of all) if (h.speaking || h.slot.closest<HTMLElement>(".spot")?.dataset.hand) r.activeAt.set(h.slot, now);
     const seated = (h: RoomHead): number => r.seatOf.get(h.slot) ?? Infinity;
-    const chosen = new Set([...others].sort((a, b) => (r.activeAt.get(b.slot) ?? -1) - (r.activeAt.get(a.slot) ?? -1) || seated(a) - seated(b)).slice(0, room));
-    // in the seats they had, the newly seated after
-    others = others.filter((h) => chosen.has(h)).sort((a, b) => seated(a) - seated(b));
-  } else others = others.slice(0, room);
-  if (!mine) return others;
-  // (in the middle of the front row)
-  const front = seatPlaces(others.length + 1, aspect).filter((p) => p.row === 0).length;
-  const at = Math.floor((front - 1) / 2);
-  return [...others.slice(0, at), mine, ...others.slice(at)];
+    const chosen = new Set([...all].sort((a, b) => Number(b.mine) - Number(a.mine) || (r.activeAt.get(b.slot) ?? -1) - (r.activeAt.get(a.slot) ?? -1) || seated(a) - seated(b)).slice(0, MOST_SEATS));
+    all = all.filter((h) => chosen.has(h));
+  }
+  return all;
 }
 
 // ---- drawing it ----
@@ -903,95 +922,242 @@ function label(r: Room, slot: HTMLElement): HTMLElement {
 
 // ---- walking about ----
 
-// How high a head stands above where it sits (the hips come up off the
-// cushion onto a pair of legs), and the legs: a rounded leg and a shoe each,
-// made once, shared by everyone, in a darker shade of what they're wearing.
-const STAND = 2.6;
-const LEG = 2.9;
-let legGeo: T = null;
+// Someone up and about is drawn on their own, apart from their chair (which
+// stays where it is, empty): their head and body raised onto a pair of legs,
+// a thigh, a shin and a shoe each, made once and shared by everyone, in a
+// darker shade of what they're wearing. `pose` goes from 0, sat in their
+// chair, to 1, standing; they rise out of it, and sit back down into it,
+// rather than appearing or vanishing.
+const STAND = 2.6; // how much higher a head is standing than sitting
+const THIGH = 1.55;
+const SHIN = 1.45;
+let thighGeo: T = null;
+let shinGeo: T = null;
 let shoeGeo: T = null;
+let shoeMat: T = null;
 const legMats = new Map<string, T>();
-function walkerFor(r: Room, who: RoomHead, to: Spot, dt: number, THREE: T): Walker {
+type Leg = { hip: T; knee: T };
+function legsFor(THREE: T, group: T): Leg[] {
+  thighGeo ??= new THREE.CapsuleGeometry(0.44, THIGH - 0.6, 6, 14).translate(0, -THIGH / 2, 0);
+  shinGeo ??= new THREE.CapsuleGeometry(0.38, SHIN - 0.5, 6, 14).translate(0, -SHIN / 2, 0);
+  shoeGeo ??= new THREE.SphereGeometry(0.5, 16, 10);
+  shoeMat ??= mat(THREE, 0x2a2420, 0.55);
+  return [-1, 1].map((side) => {
+    // (the hip at the bottom of the body, the knee at the end of the thigh,
+    // the shoe at the end of the shin, so each turns from the top)
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.52, -4.35, 0);
+    const thigh = new THREE.Mesh(thighGeo, null);
+    const knee = new THREE.Group();
+    knee.position.y = -THIGH;
+    const shin = new THREE.Mesh(shinGeo, null);
+    const shoe = new THREE.Mesh(shoeGeo, shoeMat);
+    shoe.scale.set(0.9, 0.5, 1.4);
+    shoe.position.set(0, -SHIN - 0.1, 0.28);
+    knee.add(shin, shoe);
+    hip.add(thigh, knee);
+    for (const m of [thigh, shin, shoe]) m.castShadow = m.receiveShadow = true;
+    group.add(hip);
+    return { hip, knee };
+  });
+}
+function walkerFor(r: Room, who: RoomHead, to: Spot | null, dt: number, THREE: T): Walker | null {
   let w = r.walkers.get(who.slot);
-  const top = JSON.parse(who.slot.closest<HTMLElement>(".spot")?.dataset.look ?? "{}").topColour ?? "#3d4a6e";
+  const own = r.chairOf.get(who.slot) ?? -1;
+  const chair = r.chairs[own];
   if (!w) {
-    legGeo ??= new THREE.CapsuleGeometry(0.42, LEG - 0.84, 6, 14);
-    shoeGeo ??= new THREE.SphereGeometry(0.5, 14, 10);
+    if (!to) return null;
     const group = new THREE.Group();
-    const legs: T[] = [];
-    for (const side of [-1, 1]) {
-      // (a hip, and the leg hung from it, so it swings from the top)
-      const hip = new THREE.Group();
-      hip.position.set(side * 0.5, -4.4 + STAND - 0.1, 0);
-      const leg = new THREE.Mesh(legGeo, null);
-      leg.position.y = -LEG / 2;
-      const shoe = new THREE.Mesh(shoeGeo, mat(THREE, 0x2a2420, 0.6));
-      shoe.scale.set(0.95, 0.55, 1.35);
-      shoe.position.set(0, -LEG + 0.15, 0.25);
-      hip.add(leg, shoe);
-      for (const m of [leg, shoe]) m.castShadow = m.receiveShadow = true;
-      group.add(hip);
-      legs.push(hip);
+    // (from their chair, facing as it does; up on its step if it's raised)
+    const from = chair ? seatSpot(chair) : to;
+    const rise = chair && !still.matches;
+    w = { group, legs: legsFor(THREE, group), at: from, v: { x: 0, z: 0 }, stride: 0, speed: 0, pose: rise ? 0 : 1, colour: "", sitting: false, way: chair ? wayOut(r.chairs, own) : [], path: [], goal: "", up: chair?.up ?? 0, hop: 0 };
+    if (!rise) {
+      const last = w.way.at(-1);
+      if (last) w.at = { ...w.at, x: last.x, z: last.z };
+      w.way = [];
+      w.up = 0;
     }
-    // (got up from where their chair is: they start there)
-    const from = who.mine || !r.sat.get(who.slot) ? to : startSpot(r, who);
-    w = { group, legs, at: from, stride: 0, speed: 0, up: 0, colour: "" };
     r.scene.add(group);
     r.walkers.set(who.slot, w);
   }
+  const top = JSON.parse(who.slot.closest<HTMLElement>(".spot")?.dataset.look ?? "{}").topColour ?? "#3d4a6e";
   if (w.colour !== top) {
     w.colour = top;
-    const key = top;
-    let m = legMats.get(key);
-    if (!m) {
-      const c = new THREE.Color(top).multiplyScalar(0.45);
-      m = mat(THREE, c.getHex(), 0.85);
-      legMats.set(key, m);
+    let m = legMats.get(top);
+    if (!m) legMats.set(top, (m = mat(THREE, new THREE.Color(top).multiplyScalar(0.42).getHex(), 0.85)));
+    for (const leg of w.legs) {
+      leg.hip.children[0].material = m;
+      leg.knee.children[0].material = m;
     }
-    for (const hip of w.legs) hip.children[0].material = m;
   }
-  // (your own moves as you walk; anyone else's glides after where their
-  // page last said, a few times a second)
   const before = { ...w.at };
-  if (who.mine || still.matches) w.at = { ...to };
-  else {
-    const k = 1 - Math.exp(-10 * dt);
-    w.at = { x: w.at.x + (to.x - w.at.x) * k, z: w.at.z + (to.z - w.at.z) * k, turn: turnedTo(w.at.turn, to.turn, Math.max(0.02, Math.abs(Math.atan2(Math.sin(to.turn - w.at.turn), Math.cos(to.turn - w.at.turn))) * k)) };
+  // Sat down (their page says so, or your Sit): the way back in is the way
+  // out, backwards, from wherever it starts; walked to, along it, and down
+  // into the chair. Up again on the way: back out the way they came in.
+  if (!to !== w.sitting) {
+    w.sitting = !to;
+    w.path = [];
+    w.goal = "";
+    if (w.sitting && chair) {
+      const out = wayOut(r.chairs, own);
+      // (part way in or out already: from where they are on it; out and
+      // about, the way round anything in the way to where it starts first)
+      const back = out.slice().reverse();
+      w.way = w.way.length ? out.slice(out.length - w.way.length - 1).reverse() : [...route(w.at, back[0], r.chairs).slice(0, -1).map((p) => ({ ...p, up: 0 })), ...back];
+    } else w.way = w.way.length && chair ? wayOut(r.chairs, own).slice(-w.way.length) : [];
   }
-  // (seats are in a different order on each page, everyone's own in the
-  // middle: someone walking up to a chair on their page can be in another
-  // on this one. Drawn just clear of it here.)
-  if (!who.mine) w.at = { ...w.at, ...clearOfChairs(r, who.slot, w.at) };
+  if (still.matches) {
+    // (with reduced motion: where they're going, at once)
+    const at = w.sitting ? (chair ? seatSpot(chair) : w.at) : (to ?? w.at);
+    w.at = { ...at };
+    w.way = [];
+    w.up = w.sitting ? (chair?.up ?? 0) : 0;
+    w.pose = w.sitting ? 0 : 1;
+  } else if (!w.sitting && w.pose < 1) {
+    // getting up, out of the chair, turning a little to go
+    w.pose = Math.min(1, w.pose + dt * 2.2);
+    const next = w.way[1] ?? w.way[0];
+    if (next && Math.hypot(next.x - w.at.x, next.z - w.at.z) > 0.3) w.at.turn = turnedTo(w.at.turn, Math.atan2(next.x - w.at.x, next.z - w.at.z), TURN_RATE * 0.3 * dt);
+  } else if (w.way.length) {
+    // out along the row, or back in along it: one place after another, and
+    // at the edge of a step, a hop down (or up) it
+    const next = w.way[0];
+    const gone = Math.hypot(next.x - w.at.x, next.z - w.at.z);
+    if (w.hop === 0 && Math.abs(next.up - w.up) > 0.05) w.hop = gone || 1e-3;
+    if (gone < 0.08) {
+      w.up = next.up;
+      w.hop = 0;
+      w.way.shift();
+    } else {
+      // (slowing only at the end of it, not at every corner)
+      const pace = w.way.length > 1 ? PACE * 0.6 : Math.min(PACE * 0.6, gone * 5 + 1);
+      const k = Math.min(1, (pace * dt) / gone);
+      const from = { x: w.at.x, z: w.at.z };
+      w.at = { x: w.at.x + (next.x - w.at.x) * k, z: w.at.z + (next.z - w.at.z) * k, turn: turnedTo(w.at.turn, Math.atan2(next.x - from.x, next.z - from.z), TURN_RATE * 0.8 * dt) };
+    }
+  } else if (w.sitting) {
+    // in front of their chair: turned to face as it does, and down into it
+    const goal = chair ? seatSpot(chair) : w.at;
+    w.at = { x: w.at.x + (goal.x - w.at.x) * Math.min(1, dt * 8), z: w.at.z + (goal.z - w.at.z) * Math.min(1, dt * 8), turn: turnedTo(w.at.turn, goal.turn, TURN_RATE * 0.8 * dt) };
+    if (Math.cos(w.at.turn - goal.turn) > 0.9) w.pose = Math.max(0, w.pose - dt * 2.2);
+    w.up = chair?.up ?? 0;
+  } else if (who.mine) {
+    // you: where you've walked (walkMine)
+    w.at = { ...to! };
+  } else {
+    // someone else: walked there, at a walk, the way round anything in the
+    // way, from where their page last said, turning to face the way they're
+    // going and, there, the way they face
+    const goal = to!;
+    const key = `${goal.x},${goal.z}`;
+    if (key !== w.goal) {
+      // (sent a few times a second as they walk: straight there if nothing's
+      // in the way, else the way so far is kept while its last stretch
+      // still reaches the new place in a straight line, and only found
+      // again when it doesn't)
+      const last = w.path.length > 1 ? w.path[w.path.length - 2] : w.at;
+      w.path = clearLine(w.at, goal, r.chairs) ? [goal] : w.goal && w.path.length && clearLine(last, goal, r.chairs) ? [...w.path.slice(0, -1), goal] : route(w.at, goal, r.chairs);
+      w.goal = key;
+    }
+    const next = w.path[0] ?? goal;
+    const gone = Math.hypot(next.x - w.at.x, next.z - w.at.z);
+    const left = Math.hypot(goal.x - w.at.x, goal.z - w.at.z);
+    if (gone < 0.3 && w.path.length > 1) w.path.shift();
+    const pace = Math.min(PACE, left * 6);
+    const ux = gone > 1e-3 ? (next.x - w.at.x) / gone : 0;
+    const uz = gone > 1e-3 ? (next.z - w.at.z) / gone : 0;
+    const ease = 1 - Math.exp(-8 * dt);
+    w.v = { x: w.v.x + (ux * pace - w.v.x) * ease, z: w.v.z + (uz * pace - w.v.z) * ease };
+    const len = Math.min(gone, Math.hypot(w.v.x, w.v.z) * dt);
+    const vl = Math.hypot(w.v.x, w.v.z) || 1;
+    const p = heldTo(w.at.x + (w.v.x / vl) * len, w.at.z + (w.v.z / vl) * len, r.chairs);
+    const heading = left > 0.6 ? Math.atan2(next.x - w.at.x, next.z - w.at.z) : goal.turn;
+    w.at = { x: p.x, z: p.z, turn: turnedTo(w.at.turn, heading, TURN_RATE * 0.8 * dt) };
+  }
   const moved = Math.hypot(w.at.x - before.x, w.at.z - before.z) / Math.max(dt, 1e-3);
-  w.speed += (Math.min(1, moved / PACE) - w.speed) * (1 - Math.exp(-8 * dt));
-  w.stride += dt * 9 * w.speed;
-  w.up = still.matches ? 1 : Math.min(1, w.up + dt * 3);
-  const rise = 1 - (1 - w.up) ** 3;
-  const bob = Math.abs(Math.sin(w.stride)) * 0.18 * w.speed;
-  w.group.position.set(w.at.x, STAND * rise + bob - 0.1 * w.speed, w.at.z);
-  w.group.rotation.y = w.at.turn;
-  // (leaning into it a little at a pace)
-  w.group.rotation.x = 0.06 * w.speed;
-  const swing = Math.sin(w.stride) * 0.6 * w.speed;
-  w.legs[0].rotation.x = swing;
-  w.legs[1].rotation.x = -swing;
-  for (const hip of w.legs) hip.scale.y = Math.max(0.05, rise);
+  w.speed += (Math.min(1, moved / PACE) - w.speed) * (1 - Math.exp(-10 * dt));
+  if (w.speed < 0.02) w.speed = 0;
+  w.stride += dt * 10.5 * Math.max(w.speed, 0) ** 0.7;
+  pose(w);
+  walking(who.slot, w.stride, w.speed * w.pose);
+  // sat right down: back in the chair (the room puts them there)
+  if (w.sitting && w.pose <= 0 && !w.way.length) {
+    sitDown(r, who.slot);
+    if (who.mine && r.view === "me") setView(savedView(), false);
+    return null;
+  }
   return w;
 }
+// The legs and body for a walker's pose and stride: standing straight, or
+// part way out of the chair (knees bent, hips back), or walking (a thigh
+// swung forward, the other back, the back knee bent as its foot comes
+// through, the body rising and falling a little with each step, swaying from
+// foot to foot), and on a step, or hopping down off one.
+function pose(w: Walker): void {
+  const up = 1 - (1 - w.pose) ** 3;
+  const s = w.speed;
+  const ph = w.stride;
+  const bob = (Math.cos(ph * 2) * -0.5 + 0.5) * 0.16 * s;
+  // (sat: the hips down by a seat's height and back; up: over the feet)
+  const back = (1 - up) * SAT_BACK;
+  // (hopping: from the height of the step to the next, over an arc)
+  const next = w.way[0];
+  let y = w.up;
+  let hop = 0;
+  if (w.hop > 0 && next) {
+    const t = 1 - Math.min(1, Math.hypot(next.x - w.at.x, next.z - w.at.z) / w.hop);
+    y = w.up + (next.up - w.up) * t * t * (3 - 2 * t);
+    hop = Math.sin(t * Math.PI);
+  }
+  w.group.position.set(w.at.x - Math.sin(w.at.turn) * back, y + (STAND - 0.15) * up + bob + hop * 0.5, w.at.z - Math.cos(w.at.turn) * back);
+  w.group.rotation.set(0.05 * s + (1 - up) * -0.05, w.at.turn, Math.sin(ph) * 0.035 * s);
+  w.legs.forEach((leg, i) => {
+    const side = i === 0 ? 1 : -1;
+    const swing = Math.sin(ph) * side;
+    // walking: the thigh swings, the knee bends behind (most as the foot
+    // passes under), sitting: thighs out level, shins down; hopping, both
+    // knees a little bent
+    const thigh = swing * 0.5 * s;
+    const knee = Math.max(0, -Math.cos(ph) * side) * 0.9 * s + 0.08 * s + hop * 0.5;
+    leg.hip.rotation.x = -(1 - up) * Math.PI * 0.48 + thigh * up - hop * 0.3;
+    leg.knee.rotation.x = (1 - up) * Math.PI * 0.48 + knee * up;
+  });
+}
+// how far behind where they stand to sit down a seated head is
+const SAT_BACK = 0.7;
 // back in their chair: their walker goes
 function sitDown(r: Room, slot: HTMLElement): void {
   const w = r.walkers.get(slot);
   if (!w) return;
   r.scene.remove(w.group);
   r.walkers.delete(slot);
+  walking(slot, 0, 0);
+}
+// The chairs as walk.ts has them, from the seats where they are this frame
+// (gliding along as the rows change), and the empty step past the ends of
+// a raised row
+function chairsFor(r: Room, sitting: RoomHead[], places: Place[]): void {
+  r.chairs = [];
+  r.chairOf.clear();
+  r.mineChair = -1;
+  sitting.forEach((who, i) => {
+    const at = r.sat.get(who.slot)?.at ?? [places[i].x, places[i].y, places[i].z, places[i].turn];
+    if (who.mine) r.mineChair = r.chairs.length;
+    r.chairOf.set(who.slot, r.chairs.length);
+    r.chairs.push({ x: at[0], z: at[2], turn: at[3], up: at[1] });
+  });
+  for (const p of stepsBeside(places)) r.chairs.push({ x: p.x, z: p.z, turn: p.turn, up: p.y, empty: true });
 }
 
 // You, walking: the keys (WASD or, with the room not focused for looking
-// round, the arrows), the stick on a phone, or where you tapped, from the way
-// the camera's looking. Getting up the first time you move; sat back down by
-// walking into your chair, or the Sit button.
+// round, the arrows), the stick on a phone, or where you tapped (the way
+// there, round anything in the way), from the way the camera's looking.
+// Getting up the first time you move, and out from your chair; sat back
+// down by the Sit button, or tapping your chair.
 let sentAt = 0;
 let sentSpot = "";
+const pushed = { ahead: 0, aside: 0 };
 function walkMine(r: Room, sitting: RoomHead[], dt: number): void {
   const me = sitting.find((x) => x.mine);
   if (!me) return;
@@ -1001,32 +1167,56 @@ function walkMine(r: Room, sitting: RoomHead[], dt: number): void {
   // the way the camera looks, along the floor
   const eye = r.camera.getWorldDirection(new r.THREE.Vector3());
   const facing = Math.atan2(eye.x, eye.z);
-  // (tapped somewhere: walk there, until near it or another way's pressed)
   if (going.to && (ahead || aside)) going.to = null;
+  if (!mineAt) {
+    if (!ahead && !aside && !going.to) return;
+    // up out of your chair: you'll be where the way out of it ends (the
+    // room walks you there, along your row and down off its step)
+    const own = r.chairOf.get(me.slot);
+    const out = own === undefined ? [] : wayOut(r.chairs, own);
+    const end = out.at(-1);
+    mineAt = end ? { x: end.x, z: end.z, turn: r.chairs[own!].turn } : { ...heldTo(0, 6, r.chairs), turn: 0 };
+    pushed.ahead = pushed.aside = 0;
+    if (r.view !== "me") setView("me", false);
+    r.overlay.closest(".room3d")?.toggleAttribute("data-up", true);
+    sendWalk?.(mineAt);
+    sentSpot = "";
+    return;
+  }
+  // (not out yet: rising, and along the row)
+  const w = r.walkers.get(me.slot);
+  if (w && (w.pose < 1 || w.way.length)) return;
+  // (tapped somewhere: the way there, a corner at a time, until near it or
+  // another way's pressed)
   if (going.to) {
-    const from = mineAt ?? startSpot(r, me);
-    const dx = going.to.x - from.x;
-    const dz = going.to.z - from.z;
-    const d = Math.hypot(dx, dz);
-    if (d < 0.4) going.to = null;
+    going.path ??= route(mineAt, going.to, r.chairs);
+    const next = going.path[0];
+    const d = next ? Math.hypot(next.x - mineAt.x, next.z - mineAt.z) : 0;
+    if (next && d < (going.path.length > 1 ? 0.6 : 0.3)) going.path.shift();
+    if (!going.path.length) going.to = going.path = null;
     else {
-      const a = Math.atan2(dx, dz) - facing;
-      const pace = Math.min(1, d / 1.5);
+      const to = going.path[0];
+      const a = facing - Math.atan2(to.x - mineAt.x, to.z - mineAt.z);
+      const left = Math.hypot(going.to.x - mineAt.x, going.to.z - mineAt.z);
+      const pace = Math.min(1, left / 1.5 + 0.2);
       ahead = Math.cos(a) * pace;
       aside = Math.sin(a) * pace;
     }
   }
-  if (!ahead && !aside && !mineAt) return;
-  if (!mineAt) {
-    if (!ahead && !aside) return;
-    mineAt = startSpot(r, me);
-    if (r.view !== "me") setView("me", false);
-    r.overlay.closest(".room3d")?.toggleAttribute("data-up", true);
-  }
+  // (gathering speed and slowing, rather than at full pace at once: a
+  // stick or keys eased towards, quicker to stop than to start)
+  const len = Math.hypot(ahead, aside);
+  if (len > 1) [ahead, aside] = [ahead / len, aside / len];
+  const rate = len > 0.05 ? 7 : 11;
+  const e = 1 - Math.exp(-rate * dt);
+  pushed.ahead += (ahead - pushed.ahead) * e;
+  pushed.aside += (aside - pushed.aside) * e;
   const was = mineAt;
-  mineAt = step(mineAt, ahead, aside, facing, dt);
-  // (others' chairs: walked round, not through)
-  mineAt = { ...mineAt, ...clearOfChairs(r, me.slot, mineAt) };
+  mineAt = step(mineAt, pushed.ahead, pushed.aside, facing, dt, r.chairs);
+  // (turned to face the way you're going even when only just moving)
+  if (len > 0.05 && Math.hypot(pushed.ahead, pushed.aside) < 0.05) mineAt = { ...mineAt, turn: turnedTo(mineAt.turn, facing - Math.atan2(aside, ahead), TURN_RATE * dt) };
+  // (the chairs moved round you, as someone came or went: out of them)
+  if (blocked(mineAt.x, mineAt.z, r.chairs)) mineAt = { ...mineAt, ...heldTo(mineAt.x, mineAt.z, r.chairs) };
   // sent a few times a second while moving, and once when stopped
   const now = performance.now();
   const key = `${mineAt.x.toFixed(2)},${mineAt.z.toFixed(2)},${mineAt.turn.toFixed(2)}`;
@@ -1037,52 +1227,60 @@ function walkMine(r: Room, sitting: RoomHead[], dt: number): void {
     sendWalk?.(mineAt);
   }
 }
-// a spot pushed just clear of every chair, and the step under a raised one
-// (but `own`, the one they got up from), and kept on the floor
-function clearOfChairs(r: Room, own: HTMLElement, at: { x: number; z: number }): { x: number; z: number } {
-  let p = { x: at.x, z: at.z };
-  for (const [slot, s] of r.sat) {
-    if (slot === own) continue;
-    const cx = s.at[0];
-    const cz = s.at[2] - 1.5;
-    const dx = p.x - cx;
-    const dz = p.z - cz;
-    const d = Math.hypot(dx, dz);
-    if (d < 3.2) p = onFloor(cx + (dx / (d || 1)) * 3.2, cz + (dz / (d || 1)) * 3.2);
-  }
-  return p;
-}
-// where you get up from: just in front of your chair, facing as it does
-// (in front of the chair is the table: they step out round its end, to the
-// side the table's nearer its end, and stand facing as the chair does)
-function startSpot(r: Room, me: RoomHead): Spot {
-  const was = r.sat.get(me.slot)?.at;
-  if (!was) return { x: 0, z: 6, turn: 0 };
-  const side = was[0] >= 0 ? 1 : -1;
-  const p = clearOfChairs(r, me.slot, onFloor(was[0] + side * 3.4, was[2] - 1.2));
-  return { x: p.x, z: p.z, turn: was[3] };
-}
-// back down in your chair (the Sit button, or leaving the room)
+// back down in your chair (the Sit button, tapping it, or leaving the room)
+// (walked back to it, and down into it, here and on every page; the view
+// goes back to what it was once you're in it)
 export function sit(): void {
   if (!mineAt) return;
   mineAt = null;
-  going.to = null;
+  going.to = going.path = null;
+  going.keys.clear();
+  going.stick = { ahead: 0, aside: 0 };
   sentSpot = "";
   sendWalk?.(null);
-  if (room?.view === "me") setView(savedView(), false);
   room?.overlay.closest(".room3d")?.toggleAttribute("data-up", false);
 }
-// The "me" view: over your shoulder, a little behind and above, looking
-// where you face, and kept inside the room
-// (It looks into the room, as every view does, and turns only as you drag
-// it: one that swung round behind wherever you faced turned you round as
-// you walked back towards it, and then looked out of the room's open front.
-// High enough and far enough back that you're low in the picture and where
-// you're going shows over you.)
-function behind(at: Spot, aspect: number): Shot {
-  const back = aspect < 1 ? 18 : 16;
-  const look: Vec3 = [at.x, 0, at.z - 3];
-  return { at: inside(look, [at.x, 10, at.z - 3 + back]), look };
+// The "me" view: behind you, from the front of the room, a little above,
+// looking past you into it (at everyone), and turned right round you as far
+// as you drag it (the other views stop turning before they look along the
+// rows; here there's no such edge). (It stays looking into the room until
+// you drag it: one that swung round behind wherever you faced turned you
+// round as you walked back towards it.) Never through a wall; over the
+// lamp, the plants and the armchair, higher, rather than in them, and
+// short of the bookcase.
+const TALL = [
+  { x: -19, z: -15, r: 2.6, top: FLOOR + 14 },
+  { x: 21, z: -14, r: 3.2, top: FLOOR + 8.5 },
+  { x: -21.5, z: -22, r: 3.6, top: FLOOR + 10 },
+  { x: 20, z: 4, r: 2.6, top: FLOOR + 6.5 },
+  { x: -18, z: -7, r: 3.2, top: FLOOR + 5.6 },
+];
+const SHELVES = { x0: 15, x1: 23, z0: -26, z1: -22.5, top: FLOOR + 12.5 };
+function inTheWay(look: Vec3, cam: Vec3): number {
+  for (let i = 1; i <= 24; i++) {
+    const f = i / 24;
+    const p = [look[0] + (cam[0] - look[0]) * f, look[1] + (cam[1] - look[1]) * f, look[2] + (cam[2] - look[2]) * f];
+    if (TALL.some((t) => Math.hypot(p[0] - t.x, p[2] - t.z) < t.r && p[1] < t.top)) return (i - 1) / 24;
+    if (p[0] > SHELVES.x0 && p[0] < SHELVES.x1 && p[2] > SHELVES.z0 && p[2] < SHELVES.z1 && p[1] < SHELVES.top) return (i - 1) / 24;
+  }
+  return 1;
+}
+function behind(at: Spot, aspect: number, t: Turn): Shot {
+  const dist = (aspect < 1 ? 17 : 15) * Math.max(0.55, Math.min(1.6, t.zoom));
+  const yaw = t.yaw;
+  const rise = Math.max(0.12, Math.min(1.25, 0.42 + t.pitch));
+  const look: Vec3 = [at.x - Math.sin(yaw) * 2.5, 0.8, at.z - Math.cos(yaw) * 2.5];
+  const at3 = (r: number): Vec3 => [at.x + Math.sin(yaw) * Math.cos(r) * dist, 0.8 + Math.sin(r) * dist, at.z + Math.cos(yaw) * Math.cos(r) * dist];
+  // (squeezed against a wall, or something in the way: up higher, looking
+  // down, rather than right up against your back or in it)
+  for (let r2 = rise; r2 < 1.36; r2 += 0.08) {
+    const cam = inside(look, at3(r2));
+    if (Math.hypot(cam[0] - look[0], cam[1] - look[1], cam[2] - look[2]) > dist * 0.7 && inTheWay(look, cam) === 1) return { at: cam, look };
+  }
+  // (nowhere clear, however high: brought in, short of it)
+  const cam = inside(look, at3(rise));
+  const k = Math.max(0.25, inTheWay(look, cam));
+  return { at: [look[0] + (cam[0] - look[0]) * k, look[1] + (cam[1] - look[1]) * k, look[2] + (cam[2] - look[2]) * k], look };
 }
 
 // how sharp to draw: as sharp as the screen, within 2 (a phone, 1.5), times
@@ -1110,16 +1308,21 @@ function draw(heads: RoomHead[], THREE: T): void {
     r.camera.fov = fovFor(r.camera.aspect);
     r.camera.updateProjectionMatrix();
   }
-  const sitting = arrange(heads, r.camera.aspect, r);
+  const sitting = arrange(heads, r);
+  // (laid out the same on every page, as on a wide screen; a phone's camera
+  // stands back further to see it)
+  const places = seatPlaces(sitting.length, ROOM_SHAPE);
+  chairsFor(r, sitting, places);
   walkMine(r, sitting, dt);
-  const places = seatPlaces(sitting.length, r.camera.aspect);
   // seats: as many as there are people, made as needed
   while (r.seats.length < sitting.length) {
     const group = new THREE.Group();
     const c = chair(THREE, r.seats.length, roundedBox);
     // a step under a raised row's chair, as a lecture theatre's (side by
     // side, they make one long step)
-    const riser = new THREE.Mesh(new roundedBox(4.9, 1, 4.8, 2, 0.06), stepMat ??= mat(THREE, 0x4a3a30, 0.7));
+    // (running on in front of the chair, a ledge to walk along: walk.ts,
+    // STEP)
+    const riser = new THREE.Mesh(new roundedBox(4.9, 1, 6, 2, 0.06), stepMat ??= mat(THREE, 0x4a3a30, 0.7));
     riser.castShadow = riser.receiveShadow = true;
     group.add(c, riser);
     r.scene.add(group);
@@ -1153,13 +1356,14 @@ function draw(heads: RoomHead[], THREE: T): void {
     seat.group.scale.setScalar(0.85 + 0.15 * up);
     seat.riser.visible = y > 0.05;
     seat.riser.scale.y = Math.max(0.01, y);
-    seat.riser.position.set(0, FLOOR - y / 2, -1.5);
+    seat.riser.position.set(0, FLOOR - y / 2, -0.9);
     // up and walking about: drawn where they stand, the chair left empty
     // where it was; otherwise in it
     const name = who.slot.closest<HTMLElement>(".spot")?.dataset.name ?? "";
     const stood = who.mine ? mineAt : standing.get(name) ?? null;
-    const walker = stood ? walkerFor(r, who, stood, dt, THREE) : null;
-    if (!stood) sitDown(r, who.slot);
+    // (sat down: still drawn walking back and lowering into the chair, until
+    // they're in it)
+    const walker = stood || r.walkers.has(who.slot) ? walkerFor(r, who, stood, dt, THREE) : null;
     const holder = walker?.group ?? seat.group;
     // (a head3d frame takes the head out of any scene it's in, to draw it
     // in its card; here it isn't, so it stays put between frames)
@@ -1185,11 +1389,14 @@ function draw(heads: RoomHead[], THREE: T): void {
   if (talking >= 0) r.focus = sitting[talking].slot;
   let focus = r.focus ? sitting.findIndex((x) => x.slot === r.focus) : -1;
   if (focus < 0) focus = sitting.findIndex((x) => x.mine);
-  const mineW = mineAt ? r.walkers.get(sitting.find((x) => x.mine)?.slot as HTMLElement) : null;
+  const mineW = r.walkers.get(sitting.find((x) => x.mine)?.slot as HTMLElement) ?? null;
   // (anyone up and about counts as wide as they've gone, so walking off
   // to one side doesn't take them out of the picture)
-  const about = [...r.walkers.values()].map((w) => ({ x: w.at.x, y: 0, z: w.at.z, turn: w.at.turn, row: 0 }));
-  const framed = r.view === "me" && mineW ? behind(mineW.at, r.camera.aspect) : r.view === "speaker" ? shotFor("speaker", places.map((p, i) => { const w = r.walkers.get(sitting[i]?.slot); return w ? { x: w.at.x, y: STAND, z: w.at.z, turn: w.at.turn, row: 0 } : p; }), r.camera.aspect, talking, focus) : shotFor(r.view === "me" ? "follow" : r.view, [...places, ...about], r.camera.aspect, talking, focus);
+  // (a little wider than the seats at most: someone walking to a wall
+  // shouldn't shrink everyone else to fit them in)
+  const widest = Math.max(4, ...places.map((p) => Math.abs(p.x))) + 5;
+  const about = [...r.walkers.values()].map((w) => ({ x: Math.max(-widest, Math.min(widest, w.at.x)), y: 0, z: w.at.z, turn: w.at.turn, row: 0 }));
+  const framed = r.view === "me" && mineW ? behind(mineW.at, r.camera.aspect, r.turn) : r.view === "speaker" ? shotFor("speaker", places.map((p, i) => { const w = r.walkers.get(sitting[i]?.slot); return w ? { x: w.at.x, y: STAND, z: w.at.z, turn: w.at.turn, row: 0 } : p; }), r.camera.aspect, talking, focus) : shotFor(r.view === "me" ? "follow" : r.view, [...places, ...about], r.camera.aspect, talking, focus);
   r.framed = framed;
   // the light on whoever's talking: over to them, and up, as they start;
   // down, where it was, after they stop
@@ -1208,14 +1415,26 @@ function draw(heads: RoomHead[], THREE: T): void {
   // (what it can show, held to while it's dragged or gliding: the follow
   // view's leaning would otherwise loosen it, a little, every time someone
   // spoke)
-  if (dragging || r.spin.yaw || r.spin.pitch) r.turn = held(framed, r.turn);
+  const following = r.view === "me" && mineW;
+  if ((dragging || r.spin.yaw || r.spin.pitch) && !following) r.turn = held(framed, r.turn);
   // (on springs, critically damped: they gather speed and settle, where
   // easing a share of the way each frame set off at full speed, a jolt
   // every time the view changed or someone else spoke. The shot and the
   // turn are sprung apart and turned after, so the camera swings round on
   // its arc, never across it, through a wall.)
-  const goal = [...framed.at, ...framed.look, r.turn.yaw, r.turn.pitch, r.turn.zoom];
-  r.eye ??= { at: [...framed.at], look: [...framed.look], turn: [r.turn.yaw, r.turn.pitch, r.turn.zoom], v: goal.map(() => 0) };
+  // (following you: where you are is sprung, and the turn, and the shot
+  // worked out from them after, so it swings round you on its arc)
+  const goal = following ? [mineW.at.x, 0, mineW.at.z, 0, 0, 0, r.turn.yaw, r.turn.pitch, r.turn.zoom] : [...framed.at, ...framed.look, r.turn.yaw, r.turn.pitch, r.turn.zoom];
+  // (into or out of following, the springs start from where the camera is)
+  if (r.eye && !!following !== r.eyeFollowing) {
+    r.eye = null;
+    r.eyeFollowing = !!following;
+    // (from the shot it was showing, eased over to the new one)
+    r.handover = { from: { at: r.camera.position.toArray(), look: r.lookingAt }, t: 0 };
+  }
+  // (from the goal: following, that's where you are, not the shot)
+  r.eyeFollowing = !!following;
+  r.eye ??= { at: goal.slice(0, 3), look: goal.slice(3, 6), turn: [r.turn.yaw, r.turn.pitch, r.turn.zoom], v: goal.map(() => 0) };
   const now9 = [...r.eye.at, ...r.eye.look, ...r.eye.turn];
   const stiff = r.view === "follow" ? 4 : 5;
   const byHand = dragging || r.spin.yaw || r.spin.pitch ? 30 : 9;
@@ -1224,7 +1443,16 @@ function draw(heads: RoomHead[], THREE: T): void {
     else [now9[i], r.eye.v[i]] = sprung(now9[i], r.eye.v[i], goal[i], i < 6 ? stiff : byHand, dt);
   }
   r.eye = { at: now9.slice(0, 3), look: now9.slice(3, 6), turn: now9.slice(6), v: r.eye.v };
-  const shot = turned({ at: r.eye.at as Vec3, look: r.eye.look as Vec3 }, { yaw: now9[6], pitch: now9[7], zoom: now9[8] });
+  const shot = following ? behind({ x: now9[0], z: now9[2], turn: 0 }, r.camera.aspect, { yaw: now9[6], pitch: now9[7], zoom: now9[8] }) : turned({ at: r.eye.at as Vec3, look: r.eye.look as Vec3 }, { yaw: now9[6], pitch: now9[7], zoom: now9[8] });
+  // (handing over between following you and not: from where it was)
+  if (r.handover) {
+    r.handover.t = still.matches ? 1 : Math.min(1, r.handover.t + dt / 0.7);
+    const k = r.handover.t * r.handover.t * (3 - 2 * r.handover.t);
+    shot.at = shot.at.map((n, i) => r.handover!.from.at[i] + (n - r.handover!.from.at[i]) * k) as Vec3;
+    shot.look = shot.look.map((n, i) => r.handover!.from.look[i] + (n - r.handover!.from.look[i]) * k) as Vec3;
+    if (r.handover.t >= 1) r.handover = null;
+  }
+  r.lookingAt = [...shot.look];
   r.camera.position.set(...shot.at);
   r.camera.lookAt(...shot.look);
   r.camera.updateMatrixWorld();
@@ -1387,6 +1615,9 @@ function sprung(at: number, v: number, to: number, w: number, dt: number): [numb
 
 // a turn, turned further (within how far it can go)
 const turnedFrom = (r: Room, yaw: number, pitch: number): Turn => {
+  // (following you: right round, as far as it's dragged; up and down within
+  // what behind() allows)
+  if (r.view === "me" && r.walkers.size) return { ...r.turn, yaw: r.turn.yaw + yaw, pitch: Math.max(-0.43, Math.min(0.7, r.turn.pitch + pitch)) };
   const t = { ...r.turn, yaw: Math.max(-MOST_YAW * 2, Math.min(MOST_YAW * 2, r.turn.yaw + yaw)), pitch: Math.max(-RISE[1], Math.min(RISE[1], r.turn.pitch + pitch)) };
   return r.framed ? held(r.framed, t) : t;
 };
@@ -1498,7 +1729,8 @@ function control(r: Room, box: HTMLElement): void {
   // drag's then)
   const walkKey = (e: KeyboardEvent): string | null => {
     const k = e.key.toLowerCase();
-    if (e.metaKey || e.ctrlKey || e.altKey) return null;
+    // (Shift and a letter is an emote: Shift+W is Wow, not a step)
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
     if (["w", "a", "s", "d"].includes(k)) return k;
     if (mineAt && k.startsWith("arrow")) return k;
     return null;
@@ -1565,8 +1797,13 @@ function walkTo(cx: number, cy: number): void {
   const d = ray.ray.direction;
   if (d.y >= -0.01) return;
   const t = (FLOOR - o.y) / d.y;
-  const p = onFloor(o.x + d.x * t, o.z + d.z * t);
-  going.to = p;
+  const x = o.x + d.x * t;
+  const z = o.z + d.z * t;
+  // (your own chair, tapped while you're up: back to it)
+  const own = r.chairs[r.mineChair];
+  if (mineAt && own && Math.hypot(x - own.x + Math.sin(own.turn) * 1.5, z - own.z + Math.cos(own.turn) * 1.5) < 2.6) return void sit();
+  going.to = heldTo(x, z, r.chairs);
+  going.path = null;
 }
 // The stick, on a touch screen: a thumb pushed from where it first touched,
 // as far as the ring, walks that way, as fast as it's pushed.
@@ -1678,6 +1915,7 @@ const startQuality = (): Quality => (phone() ? 0 : 2);
 export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLElement | null): Promise<boolean> {
   if (!canvas || !overlay) {
     if (room) {
+      for (const slot of [...room.walkers.keys()]) sitDown(room, slot);
       // everyone back to their cards
       for (const seat of room.seats) {
         if (seat.holds) {
@@ -1751,7 +1989,13 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       shadowFrame: 0,
       spin: { yaw: 0, pitch: 0 },
       framed: null,
+      eyeFollowing: false,
+      handover: null,
+      lookingAt: [0, 0, -10],
       walkers: new Map(),
+      chairs: [],
+      chairOf: new Map(),
+      mineChair: -1,
       pixels: 1,
     };
     const box = canvas.closest<HTMLElement>(".room3d");

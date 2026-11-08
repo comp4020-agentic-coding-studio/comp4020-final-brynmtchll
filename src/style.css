@@ -495,6 +495,29 @@ main.room {
   .room3d[data-up] .room-views span { padding: 6px 7px; font-size: 0.75rem; }
   .room3d[data-up] .room-sit { padding: 6px 9px; font-size: 0.75rem; }
 }
+/* full screen: a few of your controls, in the room, bottom right */
+.room-dock { display: none; position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); z-index: 3; align-items: center; gap: 6px; padding: 5px; border-radius: 999px; background: rgb(12 15 24 / 0.55); border: 1px solid rgb(255 255 255 / 0.1); backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.6); }
+.room3d.full .room-dock { display: flex; }
+.room3d.full .room-bar { left: max(14px, env(safe-area-inset-left)); translate: 0 0; }
+.dock-talk { width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgb(255 255 255 / 0.92); }
+.dock-talk .dot { width: 12px; height: 12px; border-radius: 50%; background: #6b7280; transition: background 0.2s, box-shadow 0.2s; }
+.dock-talk[aria-pressed="true"] .dot { background: #ef4444; box-shadow: 0 0 0 4px rgb(239 68 68 / 0.25); animation: pulse 1.4s ease-in-out infinite; }
+.dock-type input { width: min(36vw, 280px); min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.14); background: rgb(255 255 255 / 0.08); color: #fff; font: inherit; font-size: 0.875rem; }
+.dock-type input::placeholder { color: rgb(255 255 255 / 0.55); }
+.dock-type input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dock-emotes { display: flex; gap: 2px; }
+.dock-emotes button { width: 38px; height: 38px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: transparent; font-size: 1.15rem; transition: background 0.15s, transform 0.12s var(--ease); }
+.dock-emotes button:hover:not(:disabled) { background: rgb(255 255 255 / 0.12); }
+.dock-emotes button:active { transform: scale(0.9); }
+/* a phone, full screen: the bar along the top, the dock along the bottom */
+@media (max-width: 600px) {
+  .room3d.full .room-bar { top: max(12px, env(safe-area-inset-top)); bottom: auto; left: 12px; right: 64px; translate: 0 0; overflow-x: auto; scrollbar-width: none; }
+  .room3d.full .room-dock { left: 12px; right: 12px; justify-content: space-between; }
+  .dock-type { flex: 1; min-width: 0; }
+  .dock-type input { width: 100%; }
+  .dock-emotes button { width: 32px; height: 32px; font-size: 1rem; }
+  .room3d.full .room-stick { bottom: max(84px, calc(env(safe-area-inset-bottom) + 72px)); }
+}
 .room3d.full .room-stick { bottom: max(84px, calc(env(safe-area-inset-bottom) + 70px)); left: max(18px, env(safe-area-inset-left)); }
 @media (max-width: 600px) {
   .room-bar { bottom: 10px; }

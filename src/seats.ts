@@ -9,7 +9,10 @@ const ARC = 13; // the arc's radius
 // heads in front), as many in a row as suits the shape of the screen: a wide
 // one has a long row, a phone stands people in rows of two or three, so
 // they're big enough to see either way.
-export const ROW = { y: 3.4, z: -5 };
+// (a row's chairs come 3.6 back from where its people's heads are: 6 back,
+// the row behind has an aisle in front of it, on its step, to walk along
+// without going through anyone's face or the chairs in front)
+export const ROW = { y: 3.4, z: -6 };
 export type Place = { x: number; y: number; z: number; turn: number; row: number };
 export function seatPlaces(n: number, aspect = 16 / 9): Place[] {
   const out: Place[] = [];
@@ -23,9 +26,31 @@ export function seatPlaces(n: number, aspect = 16 / 9): Place[] {
     const count = row < rows - 1 ? perRow : n - perRow * (rows - 1);
     const r = ARC - row * ROW.z;
     const step = SEAT_GAP / r;
-    for (let i = 0; i < count; i++) {
-      const a = (i - (count - 1) / 2 + (row % 2 ? 0.5 : 0) * (count < perRow ? 0 : 1)) * step;
-      out.push({ x: Math.sin(a) * r, y: row * ROW.y, z: -r + Math.cos(a) * r - 8 + row * ROW.z, turn: -a, row });
+    for (let i = 0; i < count; i++) out.push(placeAt((i - (count - 1) / 2 + (row % 2 ? 0.5 : 0) * (count < perRow ? 0 : 1)) * step, row));
+  }
+  return out;
+}
+// the place `a` round a row's arc
+function placeAt(a: number, row: number): Place {
+  const r = ARC - row * ROW.z;
+  return { x: Math.sin(a) * r, y: row * ROW.y, z: -r + Math.cos(a) * r - 8 + row * ROW.z, turn: -a, row };
+}
+
+// A raised row's step goes on past its ends, with no chairs on it (as a
+// lecture theatre's does), far enough that someone walking out along the
+// row steps down past the end of every row in front, not into the backs of
+// their chairs. The places along it, each as a seat would be.
+export function stepsBeside(places: Place[]): Place[] {
+  const out: Place[] = [];
+  const rows = places.length ? Math.max(...places.map((p) => p.row)) + 1 : 0;
+  for (let row = 1; row < rows; row++) {
+    const gap = SEAT_GAP / (ARC - row * ROW.z);
+    const lower = [...places, ...out].filter((p) => p.row < row);
+    const angles = places.filter((p) => p.row === row).map((p) => -p.turn);
+    for (const dir of [-1, 1]) {
+      const past = Math.max(...lower.map((p) => p.x * dir)) + 1.5;
+      let a = dir < 0 ? Math.min(...angles) : Math.max(...angles);
+      for (let n = 0; n < 8 && placeAt(a, row).x * dir < past; n++) out.push(placeAt((a += dir * gap), row));
     }
   }
   return out;

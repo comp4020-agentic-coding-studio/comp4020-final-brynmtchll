@@ -329,6 +329,11 @@ export function roomPage(
       <div class="room-bar"><div class="room-views" role="radiogroup" aria-label="Look at the room">${[["follow", "Everyone"], ["speaker", "Speaker"], ["wide", "Wide"], ["above", "Above"], ["me", "Me"]].map(([v, l]) => `<label${v === "me" ? ' class="room-me"' : ""}><input type="radio" name="room-view" value="${v}"${v === "follow" ? " checked" : ""}><span>${l}</span></label>`).join("")}</div><button type="button" class="room-reset" title="Put the camera back">Reset</button><button type="button" class="room-sit" title="Back to your chair">Sit</button></div>
       <button type="button" class="room-full" aria-pressed="false" title="Full screen (Esc to come back)"><svg viewBox="0 0 20 20" aria-hidden="true"><path class="grow" d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5"/><path class="shrink" d="M8 3v5H3M17 8h-5V3M12 17v-5h5M3 12h5v5"/></svg><span class="visually-hidden">Full screen</span></button>
       <div class="room-stick" aria-hidden="true"><span class="room-knob"></span></div>
+      <div class="room-dock" aria-label="Talk from the room">
+        <button type="button" class="dock-talk" aria-pressed="false" title="Microphone"><span class="dot"></span><span class="visually-hidden">Microphone</span></button>
+        <form class="dock-type"><input type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Say something…" aria-label="Type something to say"></form>
+        <div class="dock-emotes">${["hi", "laugh", "love", "yes", "wow"].map((id) => { const em = EMOTES.find((e) => e.id === id)!; return `<button type="button" data-dock-emote="${id}" title="${em.label}"><span aria-hidden="true">${em.burst}</span><span class="visually-hidden">${em.label}</span></button>`; }).join("")}</div>
+      </div>
       <p class="room-hint" aria-hidden="true">W A S D or tap the floor to walk · drag to look round · scroll or pinch to zoom</p>
     </div>
     <ul id="stage" class="stage" data-up-to="${upTo}">${others}</ul>

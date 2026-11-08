@@ -1,4 +1,5 @@
 import { describe, expect, inject, it } from "vitest";
+import { TABLE } from "../src/walk.ts";
 
 // The room's promises, checked over HTTP against the running app. These join
 // people and say things, so they run against a local or CI app (a throwaway
@@ -375,8 +376,8 @@ describe.skipIf(!writable)("the room", () => {
     // through a wall, or into the table: held to the floor, out of the way
     const out = (await (await walk({ at: { x: 900, z: -4.2, turn: 0 } })).json()) as { at: { x: number; z: number } };
     expect(Math.abs(out.at.x)).toBeLessThan(26);
-    const intoTable = (await (await walk({ at: { x: 0, z: -4.2, turn: 0 } })).json()) as { at: { x: number; z: number } };
-    expect(Math.abs(intoTable.at.z + 4.2)).toBeGreaterThan(2.8);
+    const intoTable = (await (await walk({ at: { x: TABLE.x, z: TABLE.z, turn: 0 } })).json()) as { at: { x: number; z: number } };
+    expect(((intoTable.at.x - TABLE.x) / TABLE.rx) ** 2 + ((intoTable.at.z - TABLE.z) / TABLE.rz) ** 2).toBeGreaterThan(1);
     // a page opened while they're up sees them there
     const later = listen();
     const now = (await later.waitFor(`"standing"`)) as unknown as { standing: Record<string, unknown> };
