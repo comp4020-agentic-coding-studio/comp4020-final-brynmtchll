@@ -72,10 +72,17 @@ be more interesting because others are in the room at the same moment.
 - The room is a place to be in, not only to look at: you can walk your
   avatar about it, everyone sees you there, and it can fill the screen
   ("make it so that you can control your avatar and move around, also i
-  want a full screen option", 7 Nov). Nobody walks through a wall, the
-  table or a chair (`walk.test.ts`), and where someone stands is only ever a
-  place on the floor, kept while they're up and never stored or logged
-  (`room.test.ts`: "shows someone walking about the room").
+  want a full screen option", 7 Nov; "theres a lot more work that needs to
+  be done on that", then "reimagine the whole thing"). Nobody walks through
+  a wall, the table or a chair: getting up and sitting go out and back
+  between the chairs, a raised row along its step and down at the end, and
+  a tap finds a way round (`walk.test.ts`: "gets everyone out of their
+  chair and back into it ... never through a chair or the table", "finds
+  the way round the table and the chairs"). Right is right, as the camera
+  sees it (`walk.test.ts`: "walks the way the stick points"; it went left
+  for a day). Full screen keeps a way to talk. Where someone stands is only ever a place on the
+  floor, kept while they're up and never stored or logged (`room.test.ts`:
+  "shows someone walking about the room").
 
 ## Every change
 

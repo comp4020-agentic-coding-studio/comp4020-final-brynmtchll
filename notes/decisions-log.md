@@ -377,6 +377,23 @@ led to. Claude chose how to build each; what to build was yours.
      towards it, and looked out of the room's open front; it now looks into
      the room and turns only when dragged. Getting up straight forward put
      you between your chair and the table; you now step out to the side.
+   - Brynly, 7 November, after trying it: "ok theres a lot more work that
+     needs to be done on that", then "reimagine the whole thing". Rebuilt
+     ([`990b708`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/990b708)):
+     getting up and sitting walk out and back between the chairs (the front
+     row towards the table, a raised row along its step, which now runs on
+     past the row's ends, and down at the end); a tap on the floor finds a
+     way round the table and the chairs; W A S D slide along what they
+     meet; tapping near your own chair sits you down; others walk the same
+     ways round; arms swing; full screen has its own microphone, typing box
+     and five emotes. Rows 6 apart (were 5) and the table nearer the front
+     row, so the raised rows have a step to walk along. 190 checks;
+     `walk.test.ts` takes everyone out of every seat and back for 1 to 12
+     people. 12 people at phone size, processor slowed four times, 11 of
+     them walking round the table: 47.2 and 45.4 frames a second (the
+     commit before, same run: 47.6 and 43.0).
+   - Found while rebuilding: in `0023cd6`, D and right on the stick walked
+     you left, and A right. Fixed in `990b708`, with a check.
 
 ### What the three spikes measured (22 October, for the next decisions)
 
