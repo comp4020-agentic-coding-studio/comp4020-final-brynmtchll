@@ -633,6 +633,14 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 .live { margin: 0; font-size: 0.8125rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 .live.on::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+/* (on a phone, live is just its dot, so it doesn't take a line to itself
+   under the room's name; reconnecting still says so) */
+@media (max-width: 600px) {
+  .live.on { font-size: 0; gap: 0; padding: 8px 2px; }
+  /* (by the room's name, the line's full: on the switch's corner) */
+  .others-head { position: relative; }
+  .others-head > .live.on { position: absolute; right: -4px; top: -4px; padding: 0; z-index: 1; }
+}
 
 /* ---- changing your words, live ---- */
 
