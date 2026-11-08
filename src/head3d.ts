@@ -16,6 +16,8 @@
 // no voice to go on), it reacts to how each word was said, turns its eyes
 // and head to whoever is speaking, glances about and blinks.
 import { STILL, type Expression, type Pose } from "./avatar.ts";
+import { detailFrom, detailOf, easeDetail, overlay, STILL_DETAIL, type Detail, type Face52 } from "./arkit.ts";
+import { mouthAt, mouthFace, visemesOf } from "./visemes.ts";
 import type { Look } from "./packs.ts";
 import { handPoints, HAND_UP, RESTING, GESTURE_ARMS, unit, type Arm, type Body, type Side, type Vec } from "./body.ts";
 
@@ -37,6 +39,12 @@ export const webgl = (() => {
 
 type Head = {
   root: T;
+  // the face itself, inside root, so it can squash and stretch (a gasp
+  // stretches it tall, a laugh squashes it) without moving the head
+  squash: T;
+  lowL: T; // the lower lids, which rise with a squint or a real smile
+  lowR: T;
+  lift: T[]; // the apples of the cheeks, pushed up by a smile
   nose: T;
   puffs: T[];
   jaw: T;
@@ -54,6 +62,7 @@ type Head = {
   sleepy: boolean;
   // where the brows sit at rest, after the look's sliders
   browY: number;
+  browX: number;
   look: string;
   // where the camera stands to fit all of it (bunny ears, a crown) in frame,
   // and how high the top of it is (the room puts their word over it)
@@ -70,7 +79,14 @@ type Shown = {
   e: Expression;
   pose: Pose;
   // pose is null when its owner's camera isn't steering it
-  target: { e: Expression; pose: Pose | null };
+  // (and, from a page that sends them, all 52 of the face's scores: arkit.ts)
+  target: { e: Expression; pose: Pose | null; f: Face52 | null };
+  // the face as drawn, each side on its own (arkit.ts Detail), easing
+  // towards the target's
+  detail: Detail;
+  // the word going up, letter by letter, for the mouth's shapes without a
+  // camera (visemes.ts)
+  word: { shapes: string[]; from: number; until: number } | null;
   talk: { from: number; until: number; loud: number };
   // their voice: levels (0 to 1) waiting to be played, one every LEVEL_EVERY
   voice: { level: number; to: number; queue: number[]; nextAt: number; loudAt: number; since: number };
@@ -690,6 +706,7 @@ function build(THREE: T, look: Look): Head {
 
   const irises: T[] = [];
   const lids: T[] = [];
+  const lows: T[] = [];
   for (const side of [-1, 1]) {
     const g = new THREE.Group();
     g.position.set(side * eyeX, eyeY, 0.82);
@@ -730,9 +747,27 @@ function build(THREE: T, look: Look): Head {
       }
     }
     g.add(lidPivot);
+    // the lower lid: a smaller shell under the eye, which rises with a
+    // squint or a real smile's crinkle (the eye narrows from below as well)
+    const lowPivot = new THREE.Group();
+    const low = new THREE.Mesh(new THREE.SphereGeometry(eyeR * 1.1, 32, 12, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), skin);
+    low.rotation.x = 0.25;
+    lowPivot.add(low);
+    g.add(lowPivot);
+    lows.push(lowPivot);
     root.add(g);
     irises.push(iris);
     lids.push(lidPivot);
+  }
+  // the apples of the cheeks: just under the surface, they rise and round out
+  // with a smile
+  const lift: T[] = [];
+  for (const side of [-1, 1]) {
+    const apple = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), skin);
+    apple.position.set(side * 0.42, -0.08, 0.6);
+    apple.scale.set(0.2, 0.15, 0.2);
+    root.add(apple);
+    lift.push(apple);
   }
 
   // brows: in their style and hair colour, which lift, drop and tilt
@@ -803,105 +838,154 @@ function build(THREE: T, look: Look): Head {
   // stubble or a blush, which would cast one as dark as a solid's)
   for (const part of [root, body?.root]) part?.traverse((o: T) => void (o.isMesh && ((o.castShadow = !o.material.transparent), (o.receiveShadow = true))));
 
-  return { body, root, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush" || (look.more ?? []).includes("blush"), sleepy: look.eyes === "sleepy", browY: 0.44 + t("browHeight") * 0.07 + t("eyeHeight") * 0.08, look: JSON.stringify(look), fit };
+  // the face's parts (everything but the body) into a group of their own,
+  // the face's squash and stretch, round the middle of the head
+  const squash = new THREE.Group();
+  for (const child of [...root.children]) squash.add(child);
+  root.add(squash);
+  return { body, root, squash, lowL: lows[0], lowR: lows[1], lift, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush" || (look.more ?? []).includes("blush"), sleepy: look.eyes === "sleepy", browY: 0.44 + t("browHeight") * 0.07 + t("eyeHeight") * 0.08, browX: eyeX, look: JSON.stringify(look), fit };
 }
 
-// set a head's face, turn, place and gaze (-1 to 1 across and up)
-function pose(h: Head, given: Expression, at: Pose, look: { x: number; y: number }): void {
+// Set a head's face, turn, place and gaze (-1 to 1 across and up), from the
+// face's detail (arkit.ts Detail: each eye, brow and corner of the mouth on
+// its own), as drawn in the mirror. A cartoon shows a face bigger than a face
+// does: brows travel further, lids squeeze, the whole face stretches tall
+// with a gasp and squashes with a laugh.
+function pose(h: Head, given: Detail, at: Pose, look: { x: number; y: number }): void {
   // a number that isn't one, anywhere, would put the whole head nowhere
   // (three.js draws nothing, and says nothing), so it's taken as 0
   const fin = <O extends Record<string, number>>(o: O): O => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Number.isFinite(v) ? v : 0])) as O;
-  const e = fin(given);
+  const d = fin(given);
   const p = fin(at);
   const gaze = fin(look);
   h.root.rotation.set(p.pitch, p.yaw, p.roll);
   // moving about and leaning in: only so far, so it stays in its frame
   h.root.position.set(p.x * 0.16, p.y * 0.1, p.z * 0.45);
-  // lids: open (half shut, for sleepy eyes; further open, for wide), swinging
-  // down over the eye with a blink or a wink on its side, and partway with a
-  // big smile (the cheeks push up), a glare or a sneer (a smile narrows them
-  // only a little: much more read as sleepy, not happy)
-  const shut = (h.sleepy ? 0.32 : 0) + e.blink + e.smile * 0.15 + e.browDown * 0.12 + e.sneer * 0.3;
-  // wide eyes lift the lid back; a wink shuts its own eye all the way
-  const lid = (wink: number): number => Math.max(shut, 0) + Math.max(0, wink) * 1.1 - e.wide * 0.35;
-  h.lidL.rotation.x = clamp(lid(-e.wink), -0.35, 1) * 1.95;
-  h.lidR.rotation.x = clamp(lid(e.wink), -0.35, 1) * 1.95;
+  const smile = (d.smileL + d.smileR) / 2;
+  // squash and stretch: a dropped jaw and raised brows stretch the face tall
+  // and narrow; a big smile with the cheeks up squashes it wide
+  const stretch = d.jaw * 0.07 + d.innerUp * 0.025 + (d.wideL + d.wideR) * 0.012 - smile * d.cheekUp * 0.05 - d.puff * 0.03;
+  h.squash.scale.set(1 - stretch * 0.6 + d.puff * 0.05, 1 + stretch, 1);
+  h.squash.position.y = -stretch * 0.25;
+  // upper lids: each its own (a wink, a squint, a sleepy droop), pulled down
+  // by a glare and lifted back by wide eyes
+  // (by how far down the eye the lid's edge comes, not by how far it swings:
+  // its edge goes round the ball, so the same swing hides far more of the
+  // eye halfway down than at the top, and a half-shut eye drawn by angle
+  // reads as shut. Its edge starts 0.26 up from the eye's front, and at
+  // 0.255 of the lid's height; shut, it's below the eye's bottom)
+  const upper = (shut: number, wide: number, down: number): number => {
+    const v = clamp((h.sleepy ? 0.5 : 0) + shut + down * 0.12 + d.sneer * 0.06 - wide * 0.4, -0.4, 1);
+    return 0.26 - Math.asin(clamp(0.255 - 1.2 * v, -1, 1));
+  };
+  h.lidL.rotation.x = upper(d.lidL, d.wideL, d.downL);
+  h.lidR.rotation.x = upper(d.lidR, d.wideR, d.downR);
+  // lower lids: up with a squint, a real smile's cheeks, a sneer
+  // (only so far: a glare narrows the eye, it doesn't shut it)
+  const lower = (sq: number, sm: number): number => clamp(sq * 0.5 + sm * d.cheekUp * 0.45 + d.sneer * 0.1, 0, 0.85) * -0.7;
+  h.lowL.rotation.x = lower(d.squintL, d.smileL);
+  h.lowR.rotation.x = lower(d.squintR, d.smileR);
   // eyes: the irises turn in their sockets, less far up than down, so
   // looking up doesn't take them under the lid
   for (const iris of [h.irisL, h.irisR]) iris.rotation.set(-gaze.y * (gaze.y > 0 ? 0.22 : 0.38), gaze.x * 0.65, 0);
-  // brows: up lifts; down drops and angles the inner ends down (cross);
-  // up with a frown lifts the inner ends (worried); one raised on its own
-  const down = Math.min(1, e.browDown + e.sneer * 0.4);
-  const y = h.browY + e.browUp * 0.09 + e.wide * 0.03 - down * 0.05;
-  const tilt = down * 0.35 - e.browUp * e.frown * 0.4;
-  // one brow up: it lifts and arches, and the other drops a little
-  h.browL.position.y = y + Math.max(0, -e.brow) * 0.15 - Math.max(0, e.brow) * 0.03;
-  h.browR.position.y = y + Math.max(0, e.brow) * 0.15 - Math.max(0, -e.brow) * 0.03;
-  h.browL.rotation.z = Math.PI / 2 - tilt - Math.max(0, -e.brow) * 0.35;
-  h.browR.rotation.z = Math.PI / 2 + tilt + Math.max(0, e.brow) * 0.35;
-  // a sneer wrinkles the nose up; puffed cheeks push out
-  h.nose.scale.set(0.9 + e.sneer * 0.25, 1 - e.sneer * 0.2, 1.1);
-  h.nose.position.y = -0.02 + e.sneer * 0.06;
-  // flattened against the face, so they swell it rather than sit on it
-  for (const puff of h.puffs) puff.scale.set(0.05 + e.puff * 0.3, 0.05 + e.puff * 0.26, 0.05 + e.puff * 0.42);
-  shapeMouth(h, e);
-  for (const c of h.cheeks.children) c.material.opacity = h.blush ? 0.5 : Math.max(0, (e.smile - 0.55) * 1.2);
+  // brows, each end on its own: the inner end up (worry, surprise) or down
+  // and in (a glare), the outer end up (a raised brow), so a brow can tilt
+  // either way and arch; down also draws them together
+  for (const [brow, side, outer, down] of [[h.browL, -1, d.outerUpL, d.downL], [h.browR, 1, d.outerUpR, d.downR]] as [T, number, number, number][]) {
+    const inner = d.innerUp - down;
+    brow.position.y = h.browY + (inner + outer) * 0.06 + Math.max(d.wideL, d.wideR) * 0.03 - down * 0.035;
+    brow.position.x = side * (h.browX - down * 0.02 + d.innerUp * 0.005);
+    // + tilts the inner end up (the brow's inner end is towards the middle)
+    brow.rotation.z = Math.PI / 2 + side * (outer - inner) * 0.42;
+  }
+  // a sneer wrinkles the nose up; puffed cheeks push out; a smile lifts the
+  // apples of the cheeks
+  h.nose.scale.set(0.9 + d.sneer * 0.3, 1 - d.sneer * 0.22, 1.1);
+  h.nose.position.y = -0.02 + d.sneer * 0.06 + d.upperUp * 0.02;
+  for (const puff of h.puffs) puff.scale.set(0.05 + d.puff * 0.3, 0.05 + d.puff * 0.26, 0.05 + d.puff * 0.42);
+  h.lift.forEach((apple: T, i: number) => {
+    const up = i === 0 ? Math.max(d.smileL * 0.6, d.squintL * 0.3) * (0.5 + d.cheekUp) : Math.max(d.smileR * 0.6, d.squintR * 0.3) * (0.5 + d.cheekUp);
+    apple.position.y = -0.08 + up * 0.09;
+    apple.scale.set(0.2 + up * 0.05, 0.15 + up * 0.04, 0.2 + up * 0.09);
+  });
+  shapeMouth(h, d);
+  for (const c of h.cheeks.children) c.material.opacity = h.blush ? 0.5 : Math.max(0, (smile - 0.5) * 1.2);
 }
 
-// The lips as curves: corners up with a smile, down with a frown, the lower
-// lip dropping as the jaw opens, the whole mouth narrowing to a pucker. Each
-// lip is a tube along its curve, and the opening is filled between them.
-// Rebuilt only when the face has moved enough to see.
-function shapeMouth(h: Head, given: Expression): void {
+// The lips as curves, each corner on its own: up with a smile, down with a
+// frown, out with a stretch, the lower lip dropping as the jaw opens (and
+// to one side with it), pressed thin, rolled in, pushed out in a pout,
+// rounded to a pucker or a funnel, the upper lip raised in a sneer. Each lip
+// is a tube along its curve, and the opening is filled between them. Rebuilt
+// only when the face has moved enough to see.
+function shapeMouth(h: Head, given: Detail): void {
   // a number that isn't one (from a bad reading, or arithmetic gone wrong)
   // would take the lips' curve with it, and with it the frame
-  const e = Object.fromEntries(Object.entries(given).map(([k, v]) => [k, Number.isFinite(v) ? v : 0])) as Expression;
+  const d = Object.fromEntries(Object.entries(given).map(([k, v]) => [k, Number.isFinite(v) ? v : 0])) as Detail;
   const u = h.mouth.userData as { THREE: T; w: number; teeth: T; tongue: T; cat: boolean; full: boolean; lips: number; key?: string };
-  const key = [e.smile, e.frown, e.open, e.pucker, e.smirk, e.sneer, e.puff].map((v) => Math.round(v * 40)).join(",");
+  const key = [d.smileL, d.smileR, d.frownL, d.frownR, d.stretchL, d.stretchR, d.jaw, d.jawSide, d.mouthSide, d.pucker, d.funnel, d.press, d.rollIn, d.shrug, d.upperUp, d.puff, d.tongue].map((v) => Math.round(v * 40)).join(",");
   if (u.key === key) return;
   u.key = key;
   const THREE = u.THREE;
-  const w = u.w * (1 - e.pucker * 0.5) * (1 + e.smile * 0.18) * (1 - e.puff * 0.25);
-  const lift = (e.smile - e.frown) * 0.075; // corners up (+) or down (-)
-  // puffed cheeks keep the lips shut
-  const open = (e.open * 0.2 + e.pucker * 0.035) * (1 - e.puff * 0.8);
-  // a smirk lifts one corner, on its side
-  const side = Math.sign(e.smirk);
+  const round = Math.max(d.pucker, d.funnel * 0.8);
+  const smile = (d.smileL + d.smileR) / 2;
+  const w = u.w * (1 - round * 0.5) * (1 + smile * 0.16) * (1 - d.puff * 0.25) * (1 - d.press * 0.06);
+  // each corner: up with a smile, down with a frown, out with a stretch
+  const cornerY = (sm: number, fr: number, st: number): number => (sm - fr) * 0.085 - st * 0.02;
+  const cornerX = (sm: number, st: number): number => 1 + sm * 0.08 + st * 0.22;
+  const yL = cornerY(d.smileL, d.frownL, d.stretchL);
+  const yR = cornerY(d.smileR, d.frownR, d.stretchR);
+  const xL = cornerX(d.smileL, d.stretchL);
+  const xR = cornerX(d.smileR, d.stretchR);
+  // the opening: the jaw (puffed cheeks and pressed lips keep it shut), a
+  // funnel opening it a little round
+  const open = Math.max(0, (d.jaw * 0.22 + d.funnel * 0.05 + round * 0.02) * (1 - d.puff * 0.8) * (1 - d.press * 0.9) - d.rollIn * 0.01);
+  const shift = d.mouthSide * 0.06;
   const N = 16;
-  const curve = (dip: number, drop: number): T[] =>
+  const curve = (dip: number, drop: number, lower: boolean): T[] =>
     Array.from({ length: N + 1 }, (_, i) => {
-      const x = (i / N) * 2 - 1; // -1 to 1 across the mouth
-      // the corners rise with lift; the middle dips (or rises) by dip; the
-      // lower lip drops by drop at the middle, less at the corners
-      const y = lift * x * x - lift * 0.35 + dip * (1 - x * x) - drop * (1 - x * x * 0.7) + Math.abs(e.smirk) * 0.08 * Math.max(0, x * side) ** 2;
-      const z = -0.04 * x * x; // curving back round the face
-      return new THREE.Vector3(x * w, y, z);
+      const x = (i / N) * 2 - 1; // -1 (the screen's left corner) to 1 across the mouth
+      const mid = 1 - x * x;
+      // each corner rises (or falls) on its own; between them it bends
+      // smoothly; the middle dips (or rises) by dip; the lower lip drops by
+      // drop at the middle, and to the side the jaw's gone
+      const corner = x < 0 ? yL : yR;
+      const y = corner * x * x - (yL + yR) * 0.15 + dip * mid - drop * (1 - x * x * 0.7) * (1 + (lower ? d.jawSide * x * 0.4 : 0));
+      const z = -0.04 * x * x + (round * 0.05 + d.shrug * (lower ? 0.03 : 0.015)) * mid; // curving back round the face, out in a pout
+      const across = (x < 0 ? xL : xR) * x * w + shift + (lower ? d.jawSide * drop * 0.25 : 0);
+      return new THREE.Vector3(across, y, z);
     });
-  // a sneer lifts the upper lip
-  const top = curve(e.pucker * 0.01 + e.sneer * 0.06, 0);
-  const bottom = curve(-0.006, open);
+  // the upper lip lifts in a sneer; the lower pushes up in a pout
+  const top = curve(round * 0.012 + d.upperUp * 0.07 + d.sneer * 0.03, 0, false);
+  const bottom = curve(-0.006 + d.shrug * 0.02, open, true);
   const tube = (pts: T[], r: number): T => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 32, r, 8, false);
+  // lips thinner pressed or rolled in, fuller pushed out
+  const thick = (1 - d.press * 0.45 - d.rollIn * 0.55) * (1 + round * 0.25 + d.shrug * 0.15);
   h.lipTop.geometry.dispose();
   h.lipBottom.geometry.dispose();
-  h.lipTop.geometry = tube(top, (u.cat ? 0.018 : u.full ? 0.038 : 0.026) * u.lips);
-  h.lipBottom.geometry = tube(bottom, (u.cat ? 0.018 : u.full ? 0.045 : 0.03) * u.lips);
+  h.lipTop.geometry = tube(top, (u.cat ? 0.018 : u.full ? 0.038 : 0.026) * u.lips * thick);
+  h.lipBottom.geometry = tube(bottom, (u.cat ? 0.018 : u.full ? 0.045 : 0.03) * u.lips * thick);
   // the opening between them, as a strip
   const pos: number[] = [];
   for (let i = 0; i < N; i++) {
-    const [a, b, c, d] = [top[i], top[i + 1], bottom[i], bottom[i + 1]];
-    pos.push(a.x, a.y, a.z, c.x, c.y, c.z, b.x, b.y, b.z, b.x, b.y, b.z, c.x, c.y, c.z, d.x, d.y, d.z);
+    const [a, b, c, e] = [top[i], top[i + 1], bottom[i], bottom[i + 1]];
+    pos.push(a.x, a.y, a.z, c.x, c.y, c.z, b.x, b.y, b.z, b.x, b.y, b.z, c.x, c.y, c.z, e.x, e.y, e.z);
   }
   const cavity = h.mouth.children[0];
   cavity.geometry.dispose();
   cavity.geometry = new THREE.BufferGeometry();
   cavity.geometry.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   cavity.geometry.computeVertexNormals();
-  // teeth show once it's open a little; the tongue rides the jaw
-  u.teeth.visible = open > 0.03;
-  u.teeth.position.y = -lift * 0.35 - 0.012;
+  // teeth show once it's open a little (or a sneer bares them); the tongue
+  // rides the jaw, and comes out when it's put out
+  u.teeth.visible = open > 0.03 || d.upperUp > 0.4;
+  u.teeth.position.set(shift, -(yL + yR) * 0.17 - 0.012, -0.02);
   u.teeth.scale.x = w / u.w;
-  u.tongue.visible = open > 0.06;
-  u.tongue.position.y = -open * 0.75;
+  u.tongue.visible = open > 0.06 || d.tongue > 0.1;
+  // (put out, it comes forward and down over the lower lip, tip first)
+  u.tongue.position.set(shift + d.jawSide * open * 0.25, -open * 0.75 - d.tongue * 0.035, -0.035 + d.tongue * 0.16);
+  u.tongue.scale.set(1 + d.tongue * 0.1, 0.3 + d.tongue * 0.18, 0.55 + d.tongue * 0.9);
+  u.tongue.rotation.x = d.tongue * 0.45;
 }
 
 // a head's shaders made (from those already made, for the same kinds of
@@ -1031,7 +1115,7 @@ function frame(now: number): void {
     // whoever's speaking, or (nobody, or it's them) a glance now and then
     const me = roomDraw ? centre(slot) : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     let look = { x: s.glance.x, y: s.glance.y };
-    if (live) look = { x: s.e.lookX, y: s.e.lookY };
+    if (live) look = s.target.f ? { x: s.detail.lookX, y: s.detail.lookY } : { x: s.e.lookX, y: s.e.lookY };
     else if (talker && speakerNow !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
     else if (!calm && now > s.glance.at) s.glance = { x: (Math.random() - 0.5) * 0.8, y: (Math.random() - 0.5) * 0.4, at: now + 1800 + Math.random() * 3500 };
     s.gaze.x = ease(s.gaze.x, look.x, k(live ? 30 : 8));
@@ -1097,6 +1181,31 @@ function frame(now: number): void {
       move = { ...move, pitch: move.pitch + 0.22 * s.away, y: move.y - 0.15 * s.away };
     }
     const moved = { ...s.pose, pitch: s.pose.pitch + move.pitch, yaw: s.pose.yaw + move.yaw, roll: s.pose.roll + move.roll, y: s.pose.y + move.y, z: s.pose.z + move.z };
+    // The face as drawn, each side on its own (arkit.ts Detail). From a
+    // camera's 52 scores, if they're coming, every muscle as it is; otherwise
+    // from the expression. Then on top of either, what the head does of
+    // itself this frame: the voice's mouth, an emote, a blink, dozing.
+    const fromCamera = live && s.target.f;
+    const want = fromCamera ? detailOf(s.target.f!) : detailFrom(s.target.e);
+    s.detail = easeDetail(s.detail, want, k(fromCamera ? 34 : live ? 30 : 14));
+    let dd: Detail = { ...s.detail };
+    // (the expression's own extras this frame, as the old face had them:
+    // a word's accent, the voice's open, an emote's face, a blink)
+    const extra = detailFrom(e);
+    dd = overlay(dd, { jaw: extra.jaw, lidL: extra.lidL, lidR: extra.lidR, innerUp: Math.max(0, extra.innerUp - want.innerUp), outerUpL: extra.outerUpL, outerUpR: extra.outerUpR, wideL: extra.wideL, wideR: extra.wideR });
+    if (s.doing) dd = overlay(dd, detailFrom({ ...e }));
+    // the mouth's shapes from the word going up, without a camera: the
+    // letters' shapes in time, opened as wide as the voice is loud (or as the
+    // word was said, with no voice coming)
+    if (!live && !calm && s.word && now < s.word.until) {
+      const shape = mouthAt(s.word.shapes, (now - s.word.from) / 1000, (s.word.until - s.word.from) / 1000);
+      const level = Math.max(s.voice.level, now < s.talk.until ? s.talk.loud : 0, 0.35);
+      const f = mouthFace(shape, level);
+      dd = overlay(dd, detailOf(f));
+    }
+    // dozing and blinking win over everything
+    dd.lidL = Math.max(dd.lidL, e.blink);
+    dd.lidR = Math.max(dd.lidR, e.blink);
     // arms: as read off their camera while that's coming, an emote's while
     // one's going, or resting; the frame widens to show them while they do
     // something, and closes back to the head a while after
@@ -1130,13 +1239,13 @@ function frame(now: number): void {
     if (slot.hasAttribute("data-arms") !== roomy) slot.toggleAttribute("data-arms", roomy);
     // drawn only if it's moved enough to see
     const armKey = body && s.arms.shown > 0.01 ? [s.arms.shown, s.arms.tilt, s.arms.turn, ...armNumbers(s.arms.left), ...armNumbers(s.arms.right)] : [];
-    const looks = [...Object.values(e), ...Object.values(moved), s.gaze.x, s.gaze.y, ...armKey].map((v) => Math.round(v * 200)).join(",");
+    const looks = [...Object.values(dd), ...Object.values(moved), s.gaze.x, s.gaze.y, ...armKey].map((v) => Math.round(v * 200)).join(",");
     if (roomDraw) {
       // posed in place, and drawn with everyone after
       if (looks !== s.drawn) {
         s.drawn = looks;
-        s.open = e.open;
-        pose(s.head, e, moved, s.gaze);
+        s.open = dd.jaw;
+        pose(s.head, dd, moved, s.gaze);
         if (body) {
           body.root.rotation.set(0, s.arms.turn, s.arms.tilt);
           poseArm(THREE_, body.left, s.arms.left);
@@ -1157,8 +1266,8 @@ function frame(now: number): void {
     }
     if (looks === s.drawn) continue;
     s.drawn = looks;
-    s.open = e.open;
-    pose(s.head, e, moved, s.gaze);
+    s.open = dd.jaw;
+    pose(s.head, dd, moved, s.gaze);
     drawCard(slot, s);
   }
   roomDraw?.draw(inRoom, THREE_);
@@ -1221,14 +1330,14 @@ export const drawn = (slot: HTMLElement): { pose: Pose; open: number } | null =>
 // pulling their face and, if their camera's sending it, turned as their head
 // is. The flat avatar already in the slot stays until three.js has loaded,
 // and for good where there's no WebGL: then this returns false.
-export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Pose | null = null): Promise<boolean> {
+export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Pose | null = null, f: Face52 | null = null): Promise<boolean> {
   if (!webgl) return false;
   try {
     const THREE = await setUp();
     const known = heads.get(slot);
     const lookKey = JSON.stringify(look);
     if (known && known.head.look === lookKey && known.canvas.isConnected) {
-      known.target = { e: { ...e }, pose: p && { ...p } };
+      known.target = { e: { ...e }, pose: p && { ...p }, f: f && [...f] };
       return true;
     }
     const label = slot.querySelector("[aria-label]")?.getAttribute("aria-label") ?? known?.canvas.getAttribute("aria-label") ?? "";
@@ -1252,7 +1361,9 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       head,
       e: known?.e ?? { ...e },
       pose: known?.pose ?? { ...(p ?? STILL) },
-      target: { e: { ...e }, pose: p && { ...p } },
+      target: { e: { ...e }, pose: p && { ...p }, f: f && [...f] },
+      detail: known?.detail ?? { ...STILL_DETAIL },
+      word: known?.word ?? null,
       talk: known?.talk ?? { from: 0, until: 0, loud: 0 },
       voice: known?.voice ?? { level: 0, to: 0, queue: [], nextAt: 0, loudAt: -Infinity, since: 0 },
       accent: known?.accent ?? { at: -Infinity, brows: 0, wide: 0, nod: 0, lean: 0, smile: 0 },
@@ -1279,10 +1390,13 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
 // for a Whisper, a smile for a Glow. And if their voice isn't coming
 // through to move its mouth, the mouth moves for as long as the word was
 // said, opening once per syllable, wider the louder it was.
-export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; syllables: number; effect: string | null }): void {
+export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; syllables: number; effect: string | null; text?: string }): void {
   const s = heads.get(slot);
   if (!s) return;
   const now = performance.now();
+  // the mouth makes the word's shapes as it goes up (visemes.ts), whether or
+  // not a voice is opening it too
+  if (w.text) s.word = { shapes: visemesOf(w.text), from: now, until: now + Math.max(0.15, w.seconds) * 1000 };
   const loud = clamp((w.loud - 3) / 9, 0, 1);
   const high = clamp((w.pitch - 1.5) / 6, 0, 1);
   const impact = w.effect === "impact" ? 1 : 0;

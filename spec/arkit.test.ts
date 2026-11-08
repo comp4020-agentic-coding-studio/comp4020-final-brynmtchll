@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ARKIT, cleanFace52, easeFace, face52, faceFilter, mirrored, oneEuro, STILL52 } from "../src/arkit.ts";
+import { ARKIT, cleanFace52, detailFrom, detailOf, easeFace, face52, faceFilter, mirrored, oneEuro, STILL52 } from "../src/arkit.ts";
+import { fromShapes } from "../src/avatar.ts";
 import { aliveAt, blinkAt, faceShown, sayingFace } from "../src/alive.ts";
 import { mouthAt, mouthFace, visemesOf } from "../src/visemes.ts";
 
@@ -147,5 +148,41 @@ describe("an avatar alive on its own", () => {
     expect(faceShown(cam, aliveAt(1, 3), STILL52, high)).toEqual(cam);
     const own = faceShown(null, aliveAt(1, 3), STILL52, high);
     expect(own[ARKIT.indexOf("browInnerUp")]).toBeGreaterThan(0.6);
+  });
+});
+
+describe("a face's detail, each side on its own", () => {
+  const scores = (s: Record<string, number>) => face52(s);
+  it("puts a wink, a raised brow, a smirk and a glance on the same side the 15-number face does", () => {
+    // the portrait with its picture-left eye shut (as face.test.ts)
+    const raw = { eyeBlinkLeft: 0.341, eyeBlinkRight: 0.595 };
+    const d = detailOf(scores(raw));
+    expect(fromShapes(raw).wink).toBeGreaterThan(0);
+    expect(d.lidR).toBeGreaterThan(d.lidL);
+    const look = { eyeLookInLeft: 0.008, eyeLookInRight: 0.402, eyeLookOutLeft: 0.397, eyeLookOutRight: 0.015 };
+    expect(Math.sign(detailOf(scores(look)).lookX)).toBe(Math.sign(fromShapes(look).lookX));
+    const smirk = { mouthSmileRight: 0.6 };
+    expect(Math.sign(fromShapes(smirk).smirk)).toBe(1);
+    expect(detailOf(scores(smirk)).smileR).toBeGreaterThan(detailOf(scores(smirk)).smileL);
+  });
+
+  it("shows what the 15 numbers can't: a squint apart from a blink, lips pressed, a jaw to one side, a tongue", () => {
+    const d = detailOf(scores({ eyeSquintLeft: 0.5, mouthPressLeft: 0.4, mouthPressRight: 0.4, jawRight: 0.3, tongueOut: 0.4, cheekSquintLeft: 0.4, cheekSquintRight: 0.4 }));
+    expect(d.squintL).toBeGreaterThan(0.5);
+    expect(d.lidL).toBe(0);
+    expect(d.press).toBeGreaterThan(0.6);
+    expect(d.jawSide).toBeGreaterThan(0.5);
+    expect(d.tongue).toBeGreaterThan(0.6);
+    expect(d.cheekUp).toBeGreaterThan(0.5);
+    for (const v of Object.values(d)) expect(Math.abs(v)).toBeLessThanOrEqual(1);
+  });
+
+  it("makes the same kind of detail from a 15-number face, for pages that send no scores", () => {
+    const d = detailFrom({ smile: 0.8, frown: 0, open: 0.5, pucker: 0, browUp: 0.6, browDown: 0, blink: 0, wink: 0.7, smirk: 0, brow: 0, lookX: 0.2, lookY: 0, wide: 0.3, puff: 0, sneer: 0 });
+    expect(d.smileL).toBe(0.8);
+    expect(d.jaw).toBe(0.5);
+    expect(d.lidR).toBeCloseTo(0.7, 5);
+    expect(d.lidL).toBe(0);
+    expect(d.lookX).toBe(0.2);
   });
 });

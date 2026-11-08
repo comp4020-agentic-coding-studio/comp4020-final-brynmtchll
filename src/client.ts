@@ -3,6 +3,7 @@
 // speaker's spot, and, while someone's microphone is on, hears them a phrase
 // at a time and sends each phrase as it's heard.
 import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
+import { face52, faceFilter, type Face52 } from "./arkit.ts";
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
@@ -127,7 +128,7 @@ function styleWords(card: HTMLElement, look: PackLook): void {
   card.dataset.font = st.font;
   card.toggleAttribute("data-glow", "glow" in st);
 }
-function drawAvatar(name: string, e: Expression, pose: Pose | null = null): void {
+function drawAvatar(name: string, e: Expression, pose: Pose | null = null, f: Face52 | null = null): void {
   expressionOf.set(name, e);
   const card = cardOf(name);
   const look = card?.dataset.look ? (JSON.parse(card.dataset.look) as Look) : null;
@@ -135,7 +136,7 @@ function drawAvatar(name: string, e: Expression, pose: Pose | null = null): void
   const slot = card?.querySelector<HTMLElement>(".spot-avatar");
   if (!look || !slot) return;
   if (!slot.querySelector(".head3d")) slot.innerHTML = avatarSvg(look, e, `${name}'s avatar`);
-  if (webgl) void head3d(slot, look, e, pose);
+  if (webgl) void head3d(slot, look, e, pose, f);
 }
 const slotOf = (spot: Spot): HTMLElement | null => spot.el.querySelector<HTMLElement>(".spot-avatar");
 for (const el of document.querySelectorAll<HTMLElement>(".spot")) spotFor({ name: el.dataset.name!, hue: 0 });
@@ -193,6 +194,7 @@ function play(spot: Spot): void {
       pitch: n("--pitch"),
       syllables: vowels(shown.textContent ?? "").length,
       effect: /fx-(\w+)/.exec(shown.className)?.[1] ?? null,
+      text: shown.textContent ?? "",
     });
   };
   // `at` is when each word goes up on the page; `due` is when it was said,
@@ -587,10 +589,10 @@ function connect(): void {
     showQueue(queueNow);
   });
   stream.addEventListener("face", (e) => {
-    const { name, e: expression, pose, body } = JSON.parse((e as MessageEvent<string>).data) as { name: string; e: Expression; pose?: Pose | null; body?: Body | null };
+    const { name, e: expression, pose, body, f } = JSON.parse((e as MessageEvent<string>).data) as { name: string; e: Expression; pose?: Pose | null; body?: Body | null; f?: Face52 };
     // your own avatar follows your face here, not the server's echo of it
     if (cardOf(name)?.classList.contains("mine") && faceOn) return;
-    drawAvatar(name, expression, pose ?? null);
+    drawAvatar(name, expression, pose ?? null, f ?? null);
     const slot = cardOf(name)?.querySelector<HTMLElement>(".spot-avatar");
     if (slot && webgl) headArms(slot, body ?? null);
   });
@@ -1419,17 +1421,17 @@ let sendingFace = false;
 let lastSent = "";
 let lastSentAt = 0;
 const coarse = (o: Record<string, number> | null): string => (o ? Object.values(o).map((v) => Math.round(v * 40)).join(",") : "-");
-async function sendFace(e: Expression | null, pose: Pose | null = null): Promise<void> {
+async function sendFace(e: Expression | null, pose: Pose | null = null, f: Face52 | null = null): Promise<void> {
   // (and their arms and hands, while those are being read)
   const body = e && hands ? bodyNow : null;
-  const key = coarse(e) + "|" + coarse(pose) + "|" + (body ? JSON.stringify(body) : "-");
+  const key = coarse(e) + "|" + coarse(pose) + "|" + (f ? f.map((v) => Math.round(v * 25)).join("") : "-") + "|" + (body ? JSON.stringify(body) : "-");
   const since = Date.now() - lastSentAt;
   if (sendingFace || since < SEND_EVERY || (key === lastSent && since < 2000)) return;
   sendingFace = true;
   lastSent = key;
   lastSentAt = Date.now();
   try {
-    await fetch("face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ e, pose, body }) });
+    await fetch("face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ e, pose, body, ...(e && f ? { f } : {}) }) });
   } catch {
     // a missed reading is soon replaced by the next
   } finally {
@@ -1515,6 +1517,10 @@ async function faceStart(): Promise<void> {
   let shown: Expression = REST;
   let turned: Pose = STILL;
   const steadyFace = smoother<Expression>(1.2, 0.6);
+  // and all 52 scores, each followed closely (arkit.ts), drawn on the side
+  // they're read from, as the 15 are (their left, the screen's left)
+  const steady52 = faceFilter();
+  let shown52: Face52 | null = null;
   const steadyPose = smoother<Pose>(1, 0.8);
   const rest = resting();
   let restNow = rest.rest();
@@ -1563,6 +1569,7 @@ async function faceStart(): Promise<void> {
       rest.add(scores);
       if (++readings % 15 === 0) restNow = rest.rest();
       shown = steadyFace(fromShapes(scores, restNow), now / 1000);
+      shown52 = steady52(face52(scores, restNow), now / 1000);
       if (matrix) {
         const at = placed(matrix);
         const k = home ? 1 - Math.exp(-dt / 1000 / HOME_OVER) : 1;
@@ -1570,8 +1577,9 @@ async function faceStart(): Promise<void> {
         turned = steadyPose(poseFrom(matrix, home), now / 1000);
       }
     }
-    drawAvatar(myName, shown, turned);
-    void sendFace(shown, turned);
+    if (!shapes) shown52 = null;
+    drawAvatar(myName, shown, turned, shown52);
+    void sendFace(shown, turned, shown52);
     if (shapes) faceEmotes(shown);
     handsFrame(video, now);
   };

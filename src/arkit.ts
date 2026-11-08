@@ -100,3 +100,119 @@ export function easeFace(from: Face52, to: Face52, dt: number, rate = 0.35): Fac
   const k = 1 - Math.pow(1 - rate, dt * 60);
   return from.map((v, i) => v + (to[i] - v) * k);
 }
+
+// What a cartoon head needs from a face, side by side, in its own terms:
+// each eye's lid (blink and squint apart, so a wink, a squint and a sleepy
+// look are each their own), how far the lower lids rise (a real smile's
+// crinkle), each brow's inner and outer end, each mouth corner up or down,
+// out or in, the lips pressed, rolled in, pushed out or funnelled, the jaw
+// open and to either side, the upper lip raised, cheeks puffed and lifted,
+// the nose wrinkled, the tongue out. All 0 to 1, but the sideways ones -1 to
+// 1 (+ the screen's right). Sides are as drawn in the mirror: the camera's
+// "Left" is the person's left, which their avatar shows on the screen's left.
+export type Detail = {
+  lidL: number; lidR: number; // shut: 0 open, 1 closed
+  squintL: number; squintR: number; // lower lid up
+  wideL: number; wideR: number;
+  innerUp: number; // both brows' inner ends up (worry, surprise)
+  outerUpL: number; outerUpR: number;
+  downL: number; downR: number; // brows down and in
+  smileL: number; smileR: number;
+  frownL: number; frownR: number;
+  stretchL: number; stretchR: number; // corners pulled out (fear, a grimace)
+  dimpleL: number; dimpleR: number;
+  press: number; // lips pressed together
+  rollIn: number; // lips rolled in
+  pucker: number;
+  funnel: number;
+  shrug: number; // lower lip pushed up (a pout)
+  upperUp: number; // upper lip raised (disgust)
+  jaw: number; // open
+  jawSide: number; // -1 to 1
+  mouthSide: number; // the whole mouth to one side, -1 to 1
+  puff: number;
+  cheekUp: number;
+  sneer: number;
+  tongue: number;
+  lookX: number; lookY: number; // -1 to 1
+};
+export const STILL_DETAIL: Detail = {
+  lidL: 0, lidR: 0, squintL: 0, squintR: 0, wideL: 0, wideR: 0, innerUp: 0, outerUpL: 0, outerUpR: 0, downL: 0, downR: 0,
+  smileL: 0, smileR: 0, frownL: 0, frownR: 0, stretchL: 0, stretchR: 0, dimpleL: 0, dimpleR: 0, press: 0, rollIn: 0, pucker: 0, funnel: 0,
+  shrug: 0, upperUp: 0, jaw: 0, jawSide: 0, mouthSide: 0, puff: 0, cheekUp: 0, sneer: 0, tongue: 0, lookX: 0, lookY: 0,
+};
+
+const I = Object.fromEntries(ARKIT.map((k, i) => [k, i])) as Record<ArkitName, number>;
+// A face's 52 scores (as from a camera, with its rest taken off) as a head's
+// detail. A little gain on what a camera reads small (brows and corners
+// move only a few tenths on most faces), so a cartoon shows it as clearly
+// as a real face does.
+export function detailOf(f: Face52): Detail {
+  const g = (k: ArkitName, gain = 1): number => Math.min(1, (f[I[k]] ?? 0) * gain);
+  // (the mirror: the person's left is the screen's left, as drawn)
+  const avg2 = (a: number, b: number): number => (a + b) / 2;
+  return {
+    lidL: g("eyeBlinkLeft", 1.15), lidR: g("eyeBlinkRight", 1.15),
+    squintL: g("eyeSquintLeft", 1.4), squintR: g("eyeSquintRight", 1.4),
+    wideL: g("eyeWideLeft", 1.6), wideR: g("eyeWideRight", 1.6),
+    innerUp: g("browInnerUp", 1.5),
+    outerUpL: g("browOuterUpLeft", 1.6), outerUpR: g("browOuterUpRight", 1.6),
+    downL: g("browDownLeft", 1.5), downR: g("browDownRight", 1.5),
+    smileL: g("mouthSmileLeft", 1.3), smileR: g("mouthSmileRight", 1.3),
+    frownL: g("mouthFrownLeft", 2), frownR: g("mouthFrownRight", 2),
+    stretchL: g("mouthStretchLeft", 2), stretchR: g("mouthStretchRight", 2),
+    dimpleL: g("mouthDimpleLeft", 2), dimpleR: g("mouthDimpleRight", 2),
+    press: Math.min(1, avg2(g("mouthPressLeft"), g("mouthPressRight")) * 2 + g("mouthClose") * 0.5),
+    rollIn: Math.min(1, avg2(g("mouthRollLower"), g("mouthRollUpper")) * 1.8),
+    pucker: g("mouthPucker", 1.3),
+    funnel: g("mouthFunnel", 1.5),
+    shrug: Math.min(1, avg2(g("mouthShrugLower"), g("mouthShrugUpper")) * 1.6),
+    upperUp: Math.min(1, avg2(g("mouthUpperUpLeft"), g("mouthUpperUpRight")) * 1.8),
+    jaw: g("jawOpen", 1.25),
+    jawSide: Math.max(-1, Math.min(1, (g("jawRight") - g("jawLeft")) * 2.5)),
+    mouthSide: Math.max(-1, Math.min(1, (g("mouthRight") - g("mouthLeft")) * 2.5)),
+    puff: g("cheekPuff", 1.5),
+    cheekUp: Math.min(1, avg2(g("cheekSquintLeft"), g("cheekSquintRight")) * 1.6),
+    sneer: Math.min(1, avg2(g("noseSneerLeft"), g("noseSneerRight")) * 1.8),
+    tongue: g("tongueOut", 2),
+    lookX: Math.max(-1, Math.min(1, (avg2(g("eyeLookOutRight"), g("eyeLookInLeft")) - avg2(g("eyeLookOutLeft"), g("eyeLookInRight"))) * 2.2)),
+    lookY: Math.max(-1, Math.min(1, (avg2(g("eyeLookUpLeft"), g("eyeLookUpRight")) - avg2(g("eyeLookDownLeft"), g("eyeLookDownRight"))) * 2.2)),
+  };
+}
+
+// The same detail from the 15-number expression, for a face from a page that
+// sends no scores (and from emotes, and the studio's pulled faces): the
+// detail a cartoon head shows, made symmetric where the expression is.
+export function detailFrom(e: { smile: number; frown: number; open: number; pucker: number; browUp: number; browDown: number; blink: number; wink: number; smirk: number; brow: number; lookX: number; lookY: number; wide: number; puff: number; sneer: number }): Detail {
+  const lean = (v: number, s: 1 | -1): number => Math.max(0, v * s);
+  return {
+    ...STILL_DETAIL,
+    lidL: Math.min(1, e.blink + lean(e.wink, -1)), lidR: Math.min(1, e.blink + lean(e.wink, 1)),
+    squintL: e.smile * 0.5, squintR: e.smile * 0.5,
+    wideL: e.wide, wideR: e.wide,
+    innerUp: e.browUp * (0.6 + e.frown * 0.4),
+    outerUpL: Math.min(1, e.browUp + lean(e.brow, -1)), outerUpR: Math.min(1, e.browUp + lean(e.brow, 1)),
+    downL: e.browDown, downR: e.browDown,
+    smileL: Math.min(1, e.smile + lean(e.smirk, -1)), smileR: Math.min(1, e.smile + lean(e.smirk, 1)),
+    frownL: e.frown, frownR: e.frown,
+    pucker: e.pucker, jaw: e.open, puff: e.puff, cheekUp: e.smile * 0.6, sneer: e.sneer, upperUp: e.sneer * 0.6,
+    lookX: e.lookX, lookY: e.lookY,
+  };
+}
+
+// one detail eased towards another, as an expression is (k of the way)
+export function easeDetail(a: Detail, b: Detail, k: number): Detail {
+  const out = { ...a };
+  for (const key of Object.keys(a) as (keyof Detail)[]) out[key] = a[key] + (b[key] - a[key]) * k;
+  return out;
+}
+// the larger of two details, part by part (a voice's mouth over a face's;
+// the sideways ones by whichever's further from the middle)
+export function overlay(a: Detail, b: Partial<Detail>): Detail {
+  const out = { ...a };
+  for (const [key, v] of Object.entries(b) as [keyof Detail, number][]) {
+    const sideways = key === "jawSide" || key === "mouthSide" || key === "lookX" || key === "lookY";
+    out[key] = sideways ? (Math.abs(v) > Math.abs(out[key]) ? v : out[key]) : Math.max(out[key], v);
+  }
+  return out;
+}
