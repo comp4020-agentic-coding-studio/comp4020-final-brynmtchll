@@ -116,7 +116,9 @@ type Shown = {
   // a hand that moves with what they say, as people's do talking: a beat
   // on a word that's leaned on, a palm up on a question, then down again.
   // Only from their own words, never read off anyone else.
-  beat: { at: number; until: number; open: number; firm: number; side: Side };
+  // (a word's effect, with both hands: claws for spooky, jazz hands for
+  // sparkle, a hand swaying for wave)
+  beat: { at: number; until: number; open: number; firm: number; side: Side; both?: "claws" | "jazz" | "sway" };
   // what it was last drawn as, so a head that hasn't moved isn't drawn again
   drawn: string;
   cardDrawn?: string; // (in the room: what yours was last drawn as on your card)
@@ -1064,6 +1066,25 @@ function swung({ phase, amount }: { phase: number; amount: number }): Record<Sid
   return { left: arm("left", 1), right: arm("right", -1) };
 }
 
+// Both hands with a word's effect, `amount` of the way up (0 to 1), `t`
+// seconds in: claws up beside the face, fingers curled (spooky); hands up
+// and open, shaking (sparkle); one hand up, palm out, swaying (wave).
+function effectArm(side: Side, kind: "claws" | "jazz" | "sway", amount: number, t: number): Arm {
+  const r = RESTING[side];
+  const sign = side === "right" ? 1 : -1;
+  const mix = (a: Vec, b: Vec): Vec => unit([ease(a[0], b[0], amount), ease(a[1], b[1], amount), ease(a[2], b[2], amount)]);
+  const shake = kind === "jazz" ? Math.sin(t * Math.PI * 14) * 0.18 : kind === "sway" ? Math.sin(t * Math.PI * 3) * 0.45 : 0;
+  // (claws: up by the face, fingers bent part way, as a cartoon's are)
+  const upper: Vec = kind === "sway" ? [0.5 * sign, -0.45, 0.3] : kind === "claws" ? [0.5 * sign, -0.35, 0.5] : [0.55 * sign, -0.55, 0.45];
+  const fore: Vec = kind === "claws" ? [-0.1 * sign, 1, 0.35] : kind === "jazz" ? [0.2 * sign + shake, 0.95, 0.3] : [0.05 * sign + shake, 1, 0.15];
+  const curl = kind === "claws" ? 0.38 : 0.03;
+  const palm: Vec = [0, 0, 1];
+  const up = mix(r.upper, unit(upper));
+  const f = mix(r.fore, unit(fore));
+  const c = ease(0.35, curl, amount);
+  return { upper: up, fore: f, hand: { curl: [kind === "claws" ? 0.25 : c, c, c, c, c], point: f, palm: mix(r.hand!.palm, unit(palm)) } };
+}
+
 // A hand moving with what's said, `amount` of the way (0 to 1): the forearm
 // up in front from the elbow, the hand loosely open, palm in for a beat and
 // turned up for a question (`open`, 0 to 1).
@@ -1351,7 +1372,18 @@ function frame(now: number): void {
       // (only where the arms are drawn anyway: in the room, the studio; a
       // card isn't widened for a word)
       const beating = !calm && !read && !doingArm && now < s.beat.until && (!!roomDraw || always.has(slot));
-      if (beating && !(s.arms.up && s.beat.side === "right")) {
+      if (beating && s.beat.both) {
+        // (up quickly, held, and down: a third of a second each way)
+        const since = now - s.beat.at;
+        const amt = Math.min(1, since / 250, (s.beat.until - now) / 300);
+        const t = since / 1000;
+        for (const side of ["left", "right"] as const) {
+          if (s.arms.up && side === "right") continue;
+          if (s.beat.both === "sway" && side !== s.beat.side) continue;
+          want = { ...want, [side]: effectArm(side, s.beat.both, amt, t) };
+        }
+      }
+      else if (beating && !(s.arms.up && s.beat.side === "right")) {
         const bt = (now - s.beat.at) / (s.beat.until - s.beat.at);
         const amt = Math.sin(Math.PI * clamp(bt, 0, 1)) * (0.55 + s.beat.firm * 0.45);
         want = { ...want, [s.beat.side]: talkingArm(s.beat.side, amt, s.beat.open) };
@@ -1575,6 +1607,8 @@ export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; p
     const side: Side = Math.random() < 0.75 ? (s.seed % 2 < 1 ? "right" : "left") : (s.seed % 2 < 1 ? "left" : "right");
     s.beat = { at: now, until: now + clamp(w.seconds * 1000, 350, 900) + 350, open: rising, firm: lean, side: now < s.beat.until ? s.beat.side : side };
   }
+  const both = w.effect === "spooky" ? "claws" : w.effect === "sparkle" ? "jazz" : w.effect === "wave" ? "sway" : undefined;
+  if (both) s.beat = { at: now, until: now + Math.max(w.seconds * 1000, 500) + 700, open: 0, firm: 1, side: s.beat.side, both };
   if (now - s.voice.loudAt < 1500) return; // their voice is moving it already
   // one opening per syllable, back to back, so a word of three moves three times
   const each = Math.max(0.12, w.seconds / Math.max(1, w.syllables));
