@@ -443,6 +443,10 @@ led to. Claude chose how to build each; what to build was yours.
      a headless browser Esc didn't leave full screen (a real browser's own
      Esc does); walkers pass through seated people's knees; nothing shows
      the tone chips scroll sideways on a phone.
+   - Your own card beside the room was often dim: its fade-in was caught
+     part way while the room was being built, and stayed there. It was the
+     same in `990b708`. Your card no longer fades in
+     ([`0478f98`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0478f98)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
