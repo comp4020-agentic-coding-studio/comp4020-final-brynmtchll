@@ -881,6 +881,10 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 .burst { position: absolute; left: 50%; top: 10%; font-size: 1.6em; pointer-events: none; animation: burst 1.5s ease-out forwards; z-index: 2; }
 .mine-card .burst { font-size: 2.2em; }
 .room-label .burst { top: auto; bottom: 100%; font-size: 1.8rem; }
+/* a reaction landing: one, smaller than an emote's */
+.burst.reaction-burst { font-size: 1.1em; }
+.mine-card .burst.reaction-burst { font-size: 1.5em; }
+.room-label .burst.reaction-burst { font-size: 1.3rem; }
 @keyframes burst {
   0% { transform: translate(-50%, 0) scale(0.4); opacity: 0; }
   15% { transform: translate(calc(-50% + var(--dx) * 0.3), -10px) scale(1.15); opacity: 1; }

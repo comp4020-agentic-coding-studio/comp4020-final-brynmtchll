@@ -1989,7 +1989,21 @@ const picker = document.getElementById("react-picker");
 let reactingTo: { id: number; index: number } | null = null;
 function showReactions(id: number, index: number, counts: Record<string, number>): void {
   const p = said.get(id);
+  // (one just added: it rises from the head of whoever said the word, once,
+  // smaller than an emote's, so they and everyone near see it land)
+  const before = p?.reactions?.[index] ?? {};
+  const added = REACTIONS.find((r) => (counts[r.id] ?? 0) > (before[r.id] ?? 0));
   if (p) (p.reactions ??= {})[index] = counts;
+  const slot = p && added && !still.matches ? cardOf(p.name)?.querySelector<HTMLElement>(".spot-avatar") : null;
+  if (slot && added) {
+    const b = document.createElement("span");
+    b.className = "burst reaction-burst";
+    b.textContent = added.emoji;
+    b.setAttribute("aria-hidden", "true");
+    b.style.setProperty("--dx", `${(Math.random() - 0.5) * 30}px`);
+    (overHead(slot) ?? slot).append(b);
+    b.addEventListener("animationend", () => b.remove());
+  }
   for (const w of document.querySelectorAll<HTMLElement>(`.phrase[data-id="${id}"] .tw[data-i="${index}"]`)) {
     w.querySelector(".reacts")?.remove();
     w.insertAdjacentHTML("beforeend", reactionsHtml(counts));
