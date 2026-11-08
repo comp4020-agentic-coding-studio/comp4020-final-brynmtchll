@@ -116,6 +116,17 @@ led to. Claude chose how to build each; what to build was yours.
   is yours; is a reaction "on" your word, or beside it?
 - What would you cut if a user found it too much? The brief rewards
   defending choices, including what you said no to.
+- Facts the README is behind on, as of 9 November (the README is yours to
+  change):
+  - its line about changing a word says "press 1, 2 or 3 to make it
+    Impact, Whisper or Glow"; there are eight, on keys 1 to 8 (Impact,
+    Whisper, Glow, Shake, Wave, Rainbow, Spooky, Sparkle), as its later
+    line says;
+  - "Show my face" is the room's button; the studio's says "Follow my
+    face";
+  - it doesn't mention rooms, Space, the 3D room, walking, typing a word
+    at a time, word gestures, or the room's settings;
+  - "What good means" and "Judged by people" are still to write.
 
 ## Since crit 10 (from 22 October): your directions, in your words
 
