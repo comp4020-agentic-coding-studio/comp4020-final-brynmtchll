@@ -154,6 +154,13 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   when turned on. Judged
   from screenshots, both sizes and both themes, joined and not; on a phone
   the field is shown turned, and right on the screen is still right.
+- Everything works from the keyboard, with a ring you can see on whatever's
+  focused: someone's latest words are one stop each, the arrow keys choose a
+  word and Enter reacts to it; Esc closes any panel that's open (the help,
+  the room switcher, the room's settings) and puts you back where you were.
+  A panel taller than a phone's screen opens as a sheet from its bottom,
+  all of it within reach. Judged by tabbing through each page (probe
+  `a11y.mjs`; a bug hunt found these missing on 9 Nov).
 - One place for each thing: what you can do sits together beside the room
   (on a phone, under the 3D room, and above the cards), one panel for
   saying something, the rest in tabs;

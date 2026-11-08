@@ -3,6 +3,7 @@
 // which can follow your face and try an emote) and is saved for everyone a
 // moment later; undo and redo walk back and forth through what you've
 // changed. Without this script the page is a plain form, and nothing saves.
+import "./popout.ts";
 import { avatarSvg, fromShapes, resting, REST, smoother, type Expression, type Pose } from "./avatar.ts";
 import { ARKIT, face52, faceFilter, type ArkitName } from "./arkit.ts";
 import { arms, emote, head3d, webgl, withBody, zoom } from "./head3d.ts";

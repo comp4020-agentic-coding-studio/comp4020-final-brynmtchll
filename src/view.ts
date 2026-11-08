@@ -18,7 +18,7 @@ const HELP = `<details class="help">
   <summary aria-label="How it works">?</summary>
   <div class="help-body">
     <p>Turn your microphone on and talk. Your words appear for everyone as you say them: louder is heavier, higher sits higher, drawn-out sounds repeat (sooo).</p>
-    <p>Tap any of your words (your latest is chosen already) to type over it, delete it, or press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for Impact, Whisper or Glow, live, for everyone.</p>
+    <p>Tap any of your words (your latest is chosen already) to type over it, delete it, or press <kbd>1</kbd> to <kbd>${EFFECTS.length}</kbd> for an effect (${EFFECTS.map((e) => e.label).join(", ")}), live, for everyone.</p>
     <p>Show your face and your avatar pulls the faces you pull and turns as you turn. Your voice and face are read in this browser; only words, how they were said, and a handful of numbers about your face leave it. No recording or picture is kept anywhere.</p>
     <p>Hands too, and your avatar's arms and hands follow yours: a thumbs up, a wave or a peace sign sets off its emote. Raise your hand (<kbd>Shift</kbd> <kbd>R</kbd>) to take a place in the queue to speak.</p>
     <p>Hear voices, and what everyone says is spoken in the voice they chose, the way they said it. ✨ Natural voices sound like people and the same on every device (a download, once, made and played in this browser). Pick yours in Customise. Headphones stop it coming back through your microphone.</p>
@@ -43,6 +43,10 @@ export function layout(title: string, body: string, script = "", help = HELP, mi
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="data:,">
 <script type="importmap">{"imports":{"three":"${THREE}","three/addons/":"${THREE_ADDONS}"}}</script>
+<script>/* the fade from one page to the next (style.css @view-transition) is
+skipped by the browser now and then (after a form is sent, on a phone);
+skipped is fine, but its promises then fail with no one to hear it */
+for (const t of ["pagereveal", "pageswap"]) addEventListener(t, (e) => { const v = e.viewTransition; if (v) for (const p of [v.ready, v.finished, v.updateCallbackDone]) p?.catch(() => {}); });</script>
 ${script}
 </head>
 <body>
@@ -239,7 +243,7 @@ function typeBox(look: Look): string {
     `<label class="slider"><span>${label}</span><input type="range" name="tune.${id}" min="-1" max="1" step="0.05" value="${tune[id] ?? 0}"></label>`;
   return `<form id="type-box" class="type-box" hidden>
           <label for="typed" class="visually-hidden">Type instead of talking</label>
-          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type: each word goes as you type"><button type="submit" class="type-send" disabled>Say it</button></div>
+          <div class="type-row"><input id="typed" name="text" type="text" maxlength="500" autocomplete="off" enterkeyhint="send" placeholder="Or type here…"><button type="submit" class="type-send" disabled>Say it</button></div>
           <fieldset class="tones"><legend class="visually-hidden">How it's said</legend>${TONES.map((t, i) => `<label><input type="radio" name="tone" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${t.label}</span></label>`).join("")}</fieldset>
           <details class="type-voice"><summary>Your voice</summary>
             <div class="type-voice-body">
@@ -505,7 +509,7 @@ export function spacePage(me: (InSpace & { look: Look }) | undefined, people: (I
     me
       ? `<form class="space-say" id="type-box" autocomplete="off">
     <button type="button" class="talk" id="talk" aria-pressed="false" disabled><span class="dot" aria-hidden="true"></span><span class="label">Talk</span></button>
-    <input name="text" maxlength="300" placeholder="Or type: each word goes as you type" aria-label="Type something to say: each word goes to everyone as you finish it" enterkeyhint="send">
+    <input name="text" maxlength="300" placeholder="Or type here…" aria-label="Type something to say: each word goes to everyone as you finish it" enterkeyhint="send">
     <select name="tone" aria-label="How it's said">${TONES.map((t) => `<option value="${t.id}">${t.emoji} ${t.label}</option>`).join("")}</select>
     <button type="submit" class="type-send">Say</button>
   </form>

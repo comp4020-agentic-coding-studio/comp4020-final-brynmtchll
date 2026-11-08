@@ -5,6 +5,7 @@
 // goes to everyone, and others' words are as clear as you are close
 // (hearing.ts: a loud word carries further, too far and you only see that
 // someone's talking). What's said is read as words, as colour or as emoji.
+import "./popout.ts";
 import { apart, clarity, FLOOR, reach, scaleAt, SEEN_AT } from "./hearing.ts";
 import { listener } from "./listen.ts";
 import { play, tonesAreOn, tonesOn } from "./tones.ts";

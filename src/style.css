@@ -1026,8 +1026,8 @@ input[type="range"]::-moz-range-track { height: 4px; border-radius: 999px; backg
 input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; border-radius: 50%; background: var(--ink); border: 3px solid var(--accent); box-shadow: 0 2px 6px rgb(0 0 0 / 0.35); transition: transform 0.15s var(--ease); }
 input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); border: 3px solid var(--accent); box-shadow: 0 2px 6px rgb(0 0 0 / 0.35); }
 input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.2); }
-input[type="range"]:focus-visible { outline: none; }
-input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
+input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
+input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent); transform: scale(1.15); }
 .slider .reset { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 0.875rem; color: var(--muted); }
 .pick.more .hint { width: 100%; margin: 2px 0 0; font-size: 0.75rem; color: var(--faint); }
 .pick input[type="checkbox"] { position: absolute; opacity: 0; pointer-events: none; }
@@ -1108,6 +1108,11 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px 
 .room-settings[open] { position: absolute; z-index: 6; left: 0; right: 0; top: 44px; max-height: min(70vh, 640px); overflow: auto; box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.7); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
 .room-settings summary { position: sticky; top: 0; background: inherit; z-index: 1; }
 .room-settings[open] summary::after { content: "Done"; margin-left: auto; color: var(--accent); font-size: 0.8125rem; }
+/* on a phone, a sheet up from the bottom of the screen, all of it within
+   reach (over the room, partway down the page, its end was off the screen) */
+@media (max-width: 600px) {
+  .room-settings[open] { position: fixed; top: auto; bottom: 0; left: 0; right: 0; max-height: 82dvh; border-radius: var(--radius) var(--radius) 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); z-index: 40; }
+}
 /* on a phone: the switcher and the way round on one line, the switcher
    giving way first */
 @media (max-width: 600px) {
@@ -1245,3 +1250,8 @@ main.space-page > .visually-hidden { position: absolute; }
   .space-say select { width: 52px; padding: 0 6px; }
 }
 @media (prefers-reduced-motion: reduce) { .being, .being.gliding { transition: none; } .being.speaking .being-words { animation: none; } .ripple { display: none; } }
+
+/* a phrase reached by Tab, to react to one of its words, and the word the
+   arrow keys are on */
+.phrase[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.tw.key-chosen { background: color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 4px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); }

@@ -17,6 +17,7 @@ import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
 import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
 import type { FromWorker, ToWorker } from "./worker.ts";
+import "./popout.ts";
 
 const stage = document.getElementById("stage") as HTMLUListElement;
 const nobody = document.getElementById("nobody") as HTMLElement;
@@ -1994,9 +1995,13 @@ function showReactions(id: number, index: number, counts: Record<string, number>
     w.querySelector(".reacts")?.classList.add("pop");
   }
 }
-function closePicker(): void {
+let pickedFrom: HTMLElement | null = null;
+function closePicker(back = false): void {
   picker?.setAttribute("hidden", "");
   reactingTo = null;
+  // (from the keyboard, back to the phrase it was opened from)
+  if (back) pickedFrom?.closest<HTMLElement>(".phrase[tabindex]")?.focus();
+  pickedFrom = null;
 }
 stage.addEventListener("click", (e) => {
   const w = (e.target as HTMLElement).closest<HTMLElement>(".tw");
@@ -2004,6 +2009,50 @@ stage.addEventListener("click", (e) => {
   if (!w || !ph || w.closest(".spot.mine")) return;
   openPicker({ id: Number(ph.dataset.id), index: Number(w.dataset.i) }, w);
   e.stopPropagation();
+});
+// From the keyboard: someone else's latest phrase on each card is one stop
+// (not every word of every phrase, hundreds of them), and Enter or Space on
+// it reacts to the word it's on, its last to start with; the arrow keys go
+// from word to word.
+let keyWord = new WeakMap<HTMLElement, number>();
+function reachable(): void {
+  // (only what's changed: taking the stop off the phrase you're on would
+  // lose your place every time a word arrived)
+  const latest = new Set<HTMLElement>();
+  for (const card of stage.querySelectorAll<HTMLElement>(".spot:not(.mine)")) {
+    const ph = card.querySelector<HTMLElement>(".thread .bubble:not(.draft) .phrase");
+    if (!ph) continue;
+    latest.add(ph);
+    if (!ph.hasAttribute("tabindex")) ph.tabIndex = 0;
+    // (the words alone, not the reactions on them)
+    const text = [...ph.querySelectorAll(".tw .w")].map((w) => w.textContent?.trim()).join(" ");
+    const label = `${card.dataset.name ?? "Their"} said: ${text}. Enter to react to a word, arrows to choose which.`;
+    if (ph.getAttribute("aria-label") !== label) ph.setAttribute("aria-label", label);
+  }
+  for (const ph of stage.querySelectorAll<HTMLElement>(".phrase[tabindex]")) if (!latest.has(ph) && ph !== document.activeElement) ph.removeAttribute("tabindex");
+}
+new MutationObserver(reachable).observe(stage, { childList: true, subtree: true });
+reachable();
+stage.addEventListener("keydown", (e) => {
+  const ph = (e.target as HTMLElement).closest<HTMLElement>(".phrase[tabindex]");
+  if (!ph) return;
+  const ws = [...ph.querySelectorAll<HTMLElement>(".tw")];
+  if (!ws.length) return;
+  let i = Math.min(ws.length - 1, keyWord.get(ph) ?? ws.length - 1);
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    i = Math.max(0, Math.min(ws.length - 1, i + (e.key === "ArrowRight" ? 1 : -1)));
+    keyWord.set(ph, i);
+    for (const w of ws) w.classList.toggle("key-chosen", w === ws[i]);
+    e.preventDefault();
+  } else if (e.key === "Enter" || e.key === " ") {
+    openPicker({ id: Number(ph.dataset.id), index: Number(ws[i].dataset.i) }, ws[i]);
+    e.preventDefault();
+    e.stopPropagation();
+  }
+});
+stage.addEventListener("focusout", (e) => {
+  for (const w of (e.target as HTMLElement).querySelectorAll?.(".key-chosen") ?? []) w.classList.remove("key-chosen");
+  keyWord = new WeakMap();
 });
 // a word over someone's head in the room, the same
 document.querySelector(".room-labels")?.addEventListener("click", (e) => {
@@ -2015,6 +2064,7 @@ document.querySelector(".room-labels")?.addEventListener("click", (e) => {
 function openPicker(to: { id: number; index: number }, w: HTMLElement): void {
   if (!picker || !myName || !Number.isFinite(to.id) || !Number.isFinite(to.index)) return;
   reactingTo = to;
+  pickedFrom = w;
   const r = w.getBoundingClientRect();
   picker.hidden = false;
   picker.style.left = `${Math.max(8, Math.min(innerWidth - picker.offsetWidth - 8, r.left + r.width / 2 - picker.offsetWidth / 2))}px`;
@@ -2024,7 +2074,7 @@ function openPicker(to: { id: number; index: number }, w: HTMLElement): void {
 picker?.addEventListener("click", async (e) => {
   const reaction = (e.target as HTMLElement).closest<HTMLElement>("[data-reaction]")?.dataset.reaction;
   const to = reactingTo;
-  closePicker();
+  closePicker(e.detail === 0);
   if (!reaction || !to) return;
   try {
     const res = await fetch("react", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...to, reaction }) });
@@ -2038,7 +2088,7 @@ addEventListener("click", (e) => {
   if (picker && !picker.hidden && !(e.target as HTMLElement).closest("#react-picker")) closePicker();
 });
 addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && picker && !picker.hidden) closePicker();
+  if (e.key === "Escape" && picker && !picker.hidden) closePicker(true);
 });
 
 
@@ -2166,10 +2216,6 @@ try {
 } catch {
   // (the first, then)
 }
-// (the room switcher closes when you click elsewhere)
-document.addEventListener("click", (e) => {
-  for (const d of document.querySelectorAll<HTMLDetailsElement>(".room-switch[open]")) if (!d.contains(e.target as Node)) d.open = false;
-});
 
 // Someone in another room now: their card goes from this one (they're
 // talking somewhere else), and comes back with what they say when they're
