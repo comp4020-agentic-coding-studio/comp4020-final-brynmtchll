@@ -191,7 +191,7 @@ Candidates:
 - Word gestures first fired on one word in five of ordinary talk, measured
   on a paragraph; now one in twenty, and the rule says so
   ([`3148db2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/3148db2)).
-- The size of spec/ now: 231 checks in 21 files (9 Nov).
+- The size of spec/ now: 231 checks in 19 files (9 Nov).
 
 ## 6. Stack and why (~150 words; link the ADRs instead of restating them)
 
