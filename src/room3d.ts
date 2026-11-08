@@ -31,6 +31,7 @@
 // the room).
 import { roomView, walking, type RoomHead } from "./head3d.ts";
 import { seatPlaces, stepsBeside, type Place } from "./seats.ts";
+import { DEFAULT_SCENE, SCENE_PARTS, type Scene } from "./packs.ts";
 import { facing, fovFor, held, inside, LEVEL, MOST_YAW, RISE, shotFor, turned, VIEWS, ZOOM, type Shot, type Turn, type Vec3, type View } from "./camera.ts";
 import { blocked, clearLine, held as heldTo, PACE, route, seatSpot, step, TABLE, TURN_RATE, turnedTo, wayOut, type Chair, type Spot, type Step } from "./walk.ts";
 
@@ -143,6 +144,7 @@ function seeded(seed: number): () => number {
 
 // floorboards: long planks, each its own shade, with grain along them and a
 // dark seam between
+// (in shades of grey, lightness only: the floor's colour is its material's)
 function boards(g: CanvasRenderingContext2D, w: number, h: number): void {
   const rnd = seeded(7);
   const rows = 8;
@@ -152,12 +154,12 @@ function boards(g: CanvasRenderingContext2D, w: number, h: number): void {
     while (x < w) {
       const len = w * (0.35 + rnd() * 0.4);
       const l = 36 + rnd() * 10;
-      g.fillStyle = `hsl(${24 + rnd() * 8} ${42 + rnd() * 10}% ${l}%)`;
+      g.fillStyle = `hsl(0 0% ${l + 26 + (rnd() * 8 - 4)}%)`;
       g.fillRect(x, r * ph, len, ph);
       // grain: thin streaks along the plank, darker and lighter
       for (let i = 0; i < 26; i++) {
         const y = r * ph + rnd() * ph;
-        g.strokeStyle = `hsl(24 40% ${l + (rnd() - 0.5) * 16}% / ${0.12 + rnd() * 0.2})`;
+        g.strokeStyle = `hsl(0 0% ${l + 26 + (rnd() - 0.5) * 16}% / ${0.12 + rnd() * 0.2})`;
         g.lineWidth = 0.6 + rnd() * 1.6;
         g.beginPath();
         g.moveTo(x, y);
@@ -168,25 +170,30 @@ function boards(g: CanvasRenderingContext2D, w: number, h: number): void {
       if (rnd() < 0.25) {
         const kx = x + rnd() * len, ky = r * ph + ph * (0.3 + rnd() * 0.4);
         const grad = g.createRadialGradient(kx, ky, 0, kx, ky, 7);
-        grad.addColorStop(0, "hsl(20 45% 22% / 0.8)");
-        grad.addColorStop(1, "hsl(20 45% 30% / 0)");
+        grad.addColorStop(0, "hsl(0 0% 40% / 0.8)");
+        grad.addColorStop(1, "hsl(0 0% 50% / 0)");
         g.fillStyle = grad;
         g.fillRect(kx - 8, ky - 8, 16, 16);
       }
-      g.fillStyle = "hsl(20 40% 14% / 0.85)";
+      g.fillStyle = "hsl(0 0% 22% / 0.85)";
       g.fillRect(x + len - 1.5, r * ph, 1.5, ph);
       x += len;
     }
-    g.fillStyle = "hsl(20 40% 12% / 0.9)";
+    g.fillStyle = "hsl(0 0% 20% / 0.9)";
     g.fillRect(0, r * ph, w, 2);
   }
 }
 
 // the rug: rings of colour round its middle, a woven texture, a fringe of
 // pattern near its edge
-function rug(g: CanvasRenderingContext2D, w: number, h: number): void {
+// (in the scene's colours: an edge, a trim, a field and a middle)
+const rugOf = (c: readonly string[]) => (g: CanvasRenderingContext2D, w: number, h: number): void => rug(g, w, h, c);
+function rug(g: CanvasRenderingContext2D, w: number, h: number, c: readonly string[] = ["#7a3443", "#d9a441", "#8c3d4f", "#a8505f"]): void {
   const cx = w / 2, cy = h / 2, R = w / 2;
-  const rings: [number, string][] = [[1, "#7a3443"], [0.93, "#d9a441"], [0.9, "#7a3443"], [0.8, "#5a2633"], [0.78, "#e8c27a"], [0.74, "#8c3d4f"], [0.42, "#a8505f"], [0.38, "#e8c27a"], [0.35, "#8c3d4f"]];
+  const [edge, trim, field, middle] = c;
+  const dark = `color-mix(in oklab, ${edge} 75%, black)`;
+  g.clearRect(0, 0, w, h);
+  const rings: [number, string][] = [[1, edge], [0.93, trim], [0.9, edge], [0.8, dark], [0.78, trim], [0.74, field], [0.42, middle], [0.38, trim], [0.35, field]];
   for (const [r, c] of rings) {
     g.fillStyle = c;
     g.beginPath();
@@ -194,7 +201,7 @@ function rug(g: CanvasRenderingContext2D, w: number, h: number): void {
     g.fill();
   }
   // a band of diamonds between the rings
-  g.fillStyle = "#e8c27a";
+  g.fillStyle = trim;
   for (let i = 0; i < 48; i++) {
     const a = (i / 48) * Math.PI * 2;
     const r = R * 0.85;
@@ -213,6 +220,7 @@ function rug(g: CanvasRenderingContext2D, w: number, h: number): void {
   const img = g.getImageData(0, 0, w, h);
   const rnd = seeded(3);
   for (let i = 0; i < img.data.length; i += 4) {
+    if (!img.data[i + 3]) continue;
     const n = (rnd() - 0.5) * 22 + (((i >> 2) % w) % 3 === 0 ? -6 : 0);
     img.data[i] += n;
     img.data[i + 1] += n;
@@ -221,43 +229,90 @@ function rug(g: CanvasRenderingContext2D, w: number, h: number): void {
   g.putImageData(img, 0, 0);
 }
 
-// the view from the window: a sky going from blue to gold, a low sun, a
-// few clouds, hills fading into the distance, and a line of trees
-function view(g: CanvasRenderingContext2D, w: number, h: number): void {
+// The view from the window, as the room's sky has it (packs.ts
+// SCENE_PARTS.sky): a sky, a sun or moon, clouds or stars, and hills, the
+// sea, or snow, fading into the distance.
+type Sky = { stops: [number, string][]; sun: [number, number, string] | null; moon?: boolean; stars?: boolean; clouds: string | null; land: [number, string, number][]; trees: string | null; sea?: [string, string]; snow?: boolean };
+const SKIES: Record<string, Sky> = {
+  dusk: { stops: [[0, "#3d5f9e"], [0.45, "#8fa6cf"], [0.72, "#f3c48a"], [0.86, "#ffb070"]], sun: [0.68, 0.7, "255 220 160"], clouds: "255 220 200", land: [[0.66, "#7f8fb3", 0.05], [0.72, "#5f7f86", 0.07], [0.8, "#3f6b55", 0.09], [0.9, "#2c4f3d", 0.06]], trees: "#213d2f" },
+  day: { stops: [[0, "#3f86d6"], [0.5, "#86bdf0"], [0.85, "#cfe6f7"]], sun: [0.78, 0.18, "255 250 225"], clouds: "255 255 255", land: [[0.68, "#9fb7c9", 0.04], [0.74, "#7fae7a", 0.06], [0.82, "#5f9a55", 0.08], [0.9, "#4b8344", 0.06]], trees: "#2f6233" },
+  night: { stops: [[0, "#070b1d"], [0.55, "#16214a"], [0.88, "#2b3a6b"]], sun: [0.24, 0.22, "220 230 255"], moon: true, stars: true, clouds: null, land: [[0.7, "#1d2747", 0.05], [0.78, "#151d36", 0.07], [0.86, "#0f1528", 0.08], [0.93, "#0a0f1d", 0.05]], trees: "#070a14" },
+  snow: { stops: [[0, "#7f93ab"], [0.6, "#b9c6d6"], [0.9, "#dfe6ee"]], sun: [0.6, 0.35, "255 250 240"], clouds: "240 244 250", land: [[0.66, "#c7d2df", 0.05], [0.74, "#dfe6ee", 0.07], [0.83, "#eef2f7", 0.08], [0.91, "#ffffff", 0.05]], trees: "#2f453c", snow: true },
+  sea: { stops: [[0, "#2f7cc4"], [0.5, "#7fc0ea"], [0.62, "#d6eef8"]], sun: [0.3, 0.28, "255 248 220"], clouds: "255 255 255", land: [], trees: null, sea: ["#2a7fae", "#e9d7a8"] },
+};
+const viewOf = (sky: string) => (g: CanvasRenderingContext2D, w: number, h: number): void => view(g, w, h, SKIES[sky] ?? SKIES.dusk);
+function view(g: CanvasRenderingContext2D, w: number, h: number, k: Sky = SKIES.dusk): void {
   const sky = g.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, "#3d5f9e");
-  sky.addColorStop(0.45, "#8fa6cf");
-  sky.addColorStop(0.72, "#f3c48a");
-  sky.addColorStop(0.86, "#ffb070");
+  for (const [at, c] of k.stops) sky.addColorStop(at, c);
   g.fillStyle = sky;
   g.fillRect(0, 0, w, h);
-  // the sun, low, with a halo
-  const sx = w * 0.68, sy = h * 0.7;
-  const halo = g.createRadialGradient(sx, sy, 0, sx, sy, h * 0.5);
-  halo.addColorStop(0, "rgb(255 236 190 / 1)");
-  halo.addColorStop(0.08, "rgb(255 220 160 / 0.9)");
-  halo.addColorStop(0.4, "rgb(255 190 120 / 0.25)");
-  halo.addColorStop(1, "rgb(255 190 120 / 0)");
-  g.fillStyle = halo;
-  g.fillRect(0, 0, w, h);
-  // clouds: soft streaks lit from below
   const rnd = seeded(11);
-  for (let i = 0; i < 9; i++) {
-    const cx = rnd() * w, cy = h * (0.15 + rnd() * 0.4), cw = w * (0.15 + rnd() * 0.25);
-    const c = g.createRadialGradient(cx, cy, 0, cx, cy, cw / 2);
-    c.addColorStop(0, `rgb(255 ${200 + rnd() * 40} ${190 + rnd() * 30} / 0.55)`);
-    c.addColorStop(1, "rgb(255 220 200 / 0)");
-    g.save();
-    g.translate(cx, cy);
-    g.scale(1, 0.18);
-    g.translate(-cx, -cy);
-    g.fillStyle = c;
-    g.fillRect(cx - cw, cy - cw, cw * 2, cw * 2);
-    g.restore();
+  if (k.stars) {
+    for (let i = 0; i < 160; i++) {
+      g.fillStyle = `rgb(255 255 255 / ${0.3 + rnd() * 0.7})`;
+      const r = rnd() < 0.1 ? 1.6 : 0.8;
+      g.fillRect(rnd() * w, rnd() * h * 0.7, r, r);
+    }
   }
-  // hills, furthest first, each nearer one darker and greener
-  const hills: [number, string, number][] = [[0.66, "#7f8fb3", 0.05], [0.72, "#5f7f86", 0.07], [0.8, "#3f6b55", 0.09], [0.9, "#2c4f3d", 0.06]];
-  for (const [base, colour, amp] of hills) {
+  // the sun (or the moon), with a halo
+  if (k.sun) {
+    const [fx, fy, c] = k.sun;
+    const sx = w * fx, sy = h * fy;
+    const halo = g.createRadialGradient(sx, sy, 0, sx, sy, h * (k.moon ? 0.25 : 0.5));
+    halo.addColorStop(0, `rgb(${c} / 1)`);
+    halo.addColorStop(0.08, `rgb(${c} / 0.9)`);
+    halo.addColorStop(0.4, `rgb(${c} / ${k.moon ? 0.12 : 0.25})`);
+    halo.addColorStop(1, `rgb(${c} / 0)`);
+    g.fillStyle = halo;
+    g.fillRect(0, 0, w, h);
+    if (k.moon) {
+      g.fillStyle = "#f4f1e4";
+      g.beginPath();
+      g.arc(sx, sy, h * 0.05, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  // clouds: soft streaks
+  if (k.clouds) {
+    for (let i = 0; i < 9; i++) {
+      const cx = rnd() * w, cy = h * (0.15 + rnd() * 0.4), cw = w * (0.15 + rnd() * 0.25);
+      const c = g.createRadialGradient(cx, cy, 0, cx, cy, cw / 2);
+      c.addColorStop(0, `rgb(${k.clouds} / 0.55)`);
+      c.addColorStop(1, `rgb(${k.clouds} / 0)`);
+      g.save();
+      g.translate(cx, cy);
+      g.scale(1, 0.18);
+      g.translate(-cx, -cy);
+      g.fillStyle = c;
+      g.fillRect(cx - cw, cy - cw, cw * 2, cw * 2);
+      g.restore();
+    }
+  }
+  // the sea, out to the horizon, and a beach before it
+  if (k.sea) {
+    const sea = g.createLinearGradient(0, h * 0.62, 0, h * 0.85);
+    sea.addColorStop(0, k.sea[0]);
+    sea.addColorStop(1, "#5fb4d6");
+    g.fillStyle = sea;
+    g.fillRect(0, h * 0.62, w, h * 0.25);
+    g.strokeStyle = "rgb(255 255 255 / 0.5)";
+    g.lineWidth = 2;
+    for (let i = 0; i < 30; i++) {
+      const y = h * (0.66 + rnd() * 0.18), x = rnd() * w;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + 10 + rnd() * 30, y);
+      g.stroke();
+    }
+    g.fillStyle = k.sea[1];
+    g.beginPath();
+    g.moveTo(0, h);
+    for (let x = 0; x <= w; x += 8) g.lineTo(x, h * (0.86 - 0.02 * Math.sin(x / w * 4)));
+    g.lineTo(w, h);
+    g.fill();
+  }
+  // hills, furthest first, each nearer one darker
+  for (const [base, colour, amp] of k.land) {
     g.fillStyle = colour;
     g.beginPath();
     g.moveTo(0, h);
@@ -266,12 +321,23 @@ function view(g: CanvasRenderingContext2D, w: number, h: number): void {
     g.fill();
   }
   // a line of trees along the nearest
-  g.fillStyle = "#213d2f";
-  for (let i = 0; i < 40; i++) {
-    const x = rnd() * w, y = h * (0.86 + rnd() * 0.04), r = h * (0.015 + rnd() * 0.025);
-    g.beginPath();
-    g.ellipse(x, y, r * 0.8, r * 1.6, 0, 0, Math.PI * 2);
-    g.fill();
+  if (k.trees) {
+    g.fillStyle = k.trees;
+    for (let i = 0; i < 40; i++) {
+      const x = rnd() * w, y = h * (0.86 + rnd() * 0.04), r = h * (0.015 + rnd() * 0.025);
+      g.beginPath();
+      g.ellipse(x, y, r * 0.8, r * 1.6, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  // snow falling
+  if (k.snow) {
+    for (let i = 0; i < 420; i++) {
+      g.fillStyle = `rgb(255 255 255 / ${0.6 + rnd() * 0.4})`;
+      g.beginPath();
+      g.arc(rnd() * w, rnd() * h, 1 + rnd() * 2, 0, Math.PI * 2);
+      g.fill();
+    }
   }
 }
 
@@ -370,11 +436,12 @@ function kit(THREE: T, scene: T, merge: (g: T[]) => T): Kit & { done: (shadows: 
 
 const mat = (THREE: T, color: number | string, rough = 0.7, extra: Record<string, unknown> = {}): T => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, ...extra });
 
-function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lamp: T; sun: T; dust: T; fairy: T; spot: T } {
+function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lamp: T; sun: T; dust: T; fairy: T; spot: T; dress: (s: Scene) => void } {
   scene.background = new THREE.Color(0x141824);
   scene.fog = new THREE.Fog(0x141824, 46, 90);
   // light from above and below: warm from the ceiling, cool off the floor
-  scene.add(new THREE.HemisphereLight(0xffe6c8, 0x2a2f45, 0.55));
+  const sky = new THREE.HemisphereLight(0xffe6c8, 0x2a2f45, 0.55);
+  scene.add(sky);
   // late sun through the window, low and gold, throwing long soft shadows
   const sun = new THREE.DirectionalLight(0xffc68a, 3.2);
   sun.position.set(-14, 16, -30);
@@ -404,12 +471,13 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
   const k = kit(THREE, scene, merge);
   // the floor: boards, a little sheen
   const floorTex = painted(THREE, 1024, 1024, boards, [3, 3]);
-  const floor = mat(THREE, 0xffffff, 0.62, { map: floorTex });
+  const floor = mat(THREE, 0xa8774c, 0.62, { map: floorTex });
   const fl = new THREE.PlaneGeometry(60, 66);
   fl.rotateX(-Math.PI / 2);
   k.add(fl, floor, [0, FLOOR, 7]);
   // a big round rug under where everyone sits
-  const rugMat = mat(THREE, 0xffffff, 0.95, { map: painted(THREE, 1024, 1024, rug) });
+  const rugTex = painted(THREE, 1024, 1024, rug);
+  const rugMat = mat(THREE, 0xffffff, 0.95, { map: rugTex, transparent: true, alphaTest: 0.5 });
   const rugGeo = new THREE.CircleGeometry(15.5, 96);
   rugGeo.rotateX(-Math.PI / 2);
   k.add(rugGeo, rugMat, [0, FLOOR + 0.03, -8]);
@@ -558,10 +626,10 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
   const bulbGeo = new THREE.BufferGeometry();
   bulbGeo.setAttribute("position", new THREE.Float32BufferAttribute(bulbs, 3));
   const fairy = new THREE.Points(bulbGeo, new THREE.ShaderMaterial({
-    uniforms: { time: { value: 0 }, size: { value: 1 } },
+    uniforms: { time: { value: 0 }, size: { value: 1 }, glow: { value: 1 } },
     // (bright past 1, so the glow takes them; each its own warm tint)
     vertexShader: "uniform float time; uniform float size; varying float vOn; varying vec3 vTint; void main() { float s = fract(sin(dot(position.xy, vec2(12.9898, 78.233))) * 43758.5453); vOn = 0.65 + 0.35 * sin(time * (0.7 + s * 0.9) + s * 40.0); vTint = mix(vec3(1.0, 0.72, 0.38), vec3(1.0, 0.86, 0.6), s); vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = size * 900.0 / -mv.z; gl_Position = projectionMatrix * mv; }",
-    fragmentShader: "varying float vOn; varying vec3 vTint; void main() { float d = length(gl_PointCoord - 0.5); float core = smoothstep(0.09, 0.03, d); float halo = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(vTint * (core * 3.0 + pow(halo, 3.0) * 0.55) * vOn, 1.0); }",
+    fragmentShader: "uniform float glow; varying float vOn; varying vec3 vTint; void main() { float d = length(gl_PointCoord - 0.5); float core = smoothstep(0.09, 0.03, d); float halo = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(vTint * (core * 3.0 + pow(halo, 3.0) * 0.55) * vOn * glow, 1.0); }",
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
@@ -651,7 +719,8 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
   }
   // the table everyone sits at: low and long, oval, in front of them, with
   // a couple of mugs, a teapot and a pot of flowers on it
-  const tableWood = mat(THREE, 0xb98a5e, 0.38, { map: floorTex });
+  // (the boards, warmed: its own wood, whatever the floor is)
+  const tableWood = mat(THREE, 0xc89a6a, 0.38, { map: floorTex });
   const topGeo = new THREE.CylinderGeometry(1, 1, 0.45, 64);
   k.add(topGeo, tableWood, [0, FLOOR + 2.6, TABLE.z], [0, 0, 0], [9, 1, 2.6]);
   const rim = new THREE.TorusGeometry(1, 0.06, 6, 96);
@@ -712,8 +781,66 @@ function furnish(THREE: T, scene: T, merge: (g: T[]) => T, RoundedBox: T): { lam
   tableBlots.renderOrder = 1;
   scene.add(tableBlots);
   k.done(new Set([wood, velvet, leafA, leafB, terracotta, tableWood, darkWood, brass, ...books]));
-  return { lamp, sun, dust, fairy, spot };
+
+  // The room as its maker chose it (packs.ts SCENE_PARTS): the walls, the
+  // floor and the rug in their colours, the view from the window, and the
+  // light that comes in through it. Repainted in place, so a change shows
+  // at once, for everyone in the room, without building it again.
+  const LIGHT: Record<string, { bg: number; sky: [number, number, number]; sun: [number, number]; front: number; bounce: [number, number]; lamp: number; shafts: number; dust: number; fairy: number; exposure: number }> = {
+    dusk: { bg: 0x141824, sky: [0xffe6c8, 0x2a2f45, 0.55], sun: [0xffc68a, 3.2], front: 0.9, bounce: [0xffd9b0, 0.5], lamp: 70, shafts: 0.09, dust: 1, fairy: 1, exposure: 1.05 },
+    day: { bg: 0x1d2433, sky: [0xeef6ff, 0x4a5568, 0.95], sun: [0xfff4e0, 3.6], front: 1.1, bounce: [0xe8f0ff, 0.7], lamp: 25, shafts: 0.06, dust: 0.7, fairy: 0.35, exposure: 1.1 },
+    night: { bg: 0x070a14, sky: [0x8fa0d8, 0x0d1020, 0.32], sun: [0x9fb4ff, 0.7], front: 0.55, bounce: [0x6f7fbf, 0.2], lamp: 140, shafts: 0.04, dust: 0.4, fairy: 1.6, exposure: 1.1 },
+    snow: { bg: 0x1a1f2a, sky: [0xf1f5ff, 0x5a6478, 0.85], sun: [0xf4f7ff, 2.4], front: 1.0, bounce: [0xdfe8ff, 0.6], lamp: 80, shafts: 0.05, dust: 0.3, fairy: 1.2, exposure: 1.08 },
+    sea: { bg: 0x16202c, sky: [0xf4fbff, 0x4a6070, 0.9], sun: [0xfff2d6, 3.4], front: 1.05, bounce: [0xd8f0ff, 0.7], lamp: 25, shafts: 0.07, dust: 0.6, fairy: 0.4, exposure: 1.1 },
+  };
+  let dressed = "";
+  const dress = (sc: Scene): void => {
+    const key = JSON.stringify(sc);
+    if (key === dressed) return;
+    const was = dressed ? (JSON.parse(dressed) as Scene) : null;
+    dressed = key;
+    wall.color.set(SCENE_PARTS.walls.find((x) => x.id === sc.walls)?.colour ?? "#434c66");
+    // (the curtains in the rug's deepest colour, so the room goes together)
+    curtain.color.set(SCENE_PARTS.rug.find((x) => x.id === sc.rug)?.colours[0] ?? "#6b5a52");
+    floor.color.set(SCENE_PARTS.floor.find((x) => x.id === sc.floor)?.colour ?? "#a8774c");
+    if (was?.rug !== sc.rug) {
+      const colours = SCENE_PARTS.rug.find((x) => x.id === sc.rug)?.colours ?? [];
+      const c = rugTex.image as HTMLCanvasElement;
+      const g = c.getContext("2d")!;
+      if (colours.length) rug(g, c.width, c.height, colours);
+      else g.clearRect(0, 0, c.width, c.height);
+      rugTex.needsUpdate = true;
+    }
+    if (was?.sky !== sc.sky) {
+      const c = viewTex.image as HTMLCanvasElement;
+      view(c.getContext("2d")!, c.width, c.height, SKIES[sc.sky] ?? SKIES.dusk);
+      viewTex.needsUpdate = true;
+      const L = LIGHT[sc.sky] ?? LIGHT.dusk;
+      scene.background.set(L.bg);
+      scene.fog.color.set(L.bg);
+      sky.color.set(L.sky[0]);
+      sky.groundColor.set(L.sky[1]);
+      sky.intensity = L.sky[2];
+      sun.color.set(L.sun[0]);
+      sun.intensity = L.sun[1];
+      front.intensity = L.front;
+      bounce.color.set(L.bounce[0]);
+      bounce.intensity = L.bounce[1];
+      lamp.intensity = L.lamp;
+      shaftMat.uniforms.strength.value = L.shafts;
+      shaftMat.uniforms.color.value.set(L.sun[0]);
+      dust.visible = L.dust > 0.35;
+      fairy.material.uniforms.glow = fairy.material.uniforms.glow ?? { value: 1 };
+      fairy.material.uniforms.glow.value = L.fairy;
+      outside.material.color.setScalar(sc.sky === "night" ? 1.1 : 1.35);
+      exposure = L.exposure;
+    }
+  };
+  dress(DEFAULT_SCENE);
+  return { lamp, sun, dust, fairy, spot, dress };
 }
+// how bright the room's drawn, as its sky has it (read when it's drawn)
+let exposure = 1.05;
 
 // A chair for a seat: a soft, rounded armchair, in a colour from a few, on
 // short dark legs, with a soft shadow on the floor under it
@@ -1057,7 +1184,7 @@ function walkerFor(r: Room, who: RoomHead, to: Spot | null, dt: number, THREE: T
       // still reaches the new place in a straight line, and only found
       // again when it doesn't)
       const last = w.path.length > 1 ? w.path[w.path.length - 2] : w.at;
-      w.path = clearLine(w.at, goal, r.chairs) ? [goal] : w.goal && w.path.length && clearLine(last, goal, r.chairs) ? [...w.path.slice(0, -1), goal] : route(w.at, goal, r.chairs);
+      w.path = clearLine(w.at, goal, r.chairs) ? [goal] : w.goal && w.path.length && clearLine(last, goal, r.chairs) ? [...w.path.slice(0, -1), goal] : wayTo(w.at, goal, r.chairs);
       w.goal = key;
     }
     const next = w.path[0] ?? goal;
@@ -1134,6 +1261,16 @@ function sitDown(r: Room, slot: HTMLElement): void {
   r.walkers.delete(slot);
   walking(slot, 0, 0);
 }
+// The way somewhere, or nowhere (staying put) if finding it ever fails,
+// rather than the room stopping: it once threw on every frame, and the
+// picture froze
+function wayTo(from: { x: number; z: number }, to: { x: number; z: number }, chairs: Chair[]): { x: number; z: number }[] {
+  try {
+    return route(from, to, chairs);
+  } catch {
+    return [];
+  }
+}
 // The chairs as walk.ts has them, from the seats where they are this frame
 // (gliding along as the rows change), and the empty step past the ends of
 // a raised row
@@ -1189,7 +1326,7 @@ function walkMine(r: Room, sitting: RoomHead[], dt: number): void {
   // (tapped somewhere: the way there, a corner at a time, until near it or
   // another way's pressed)
   if (going.to) {
-    going.path ??= route(mineAt, going.to, r.chairs);
+    going.path ??= wayTo(mineAt, going.to, r.chairs);
     const next = going.path[0];
     const d = next ? Math.hypot(next.x - mineAt.x, next.z - mineAt.z) : 0;
     if (next && d < (going.path.length > 1 ? 0.6 : 0.3)) going.path.shift();
@@ -1905,7 +2042,19 @@ export const overHead = (slot: HTMLElement): HTMLElement | null => room?.labels.
 // keep its own copy of every head on the GPU for as long as the page is
 // open (three.js keeps a renderer alive while anything it drew is), so each
 // visit to the room would add one.
-let kept: Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post" | "dust" | "fairy" | "spot"> | null = null;
+let kept: (Pick<Room, "THREE" | "renderer" | "scene" | "camera" | "canvas" | "post" | "dust" | "fairy" | "spot"> & { dress: (s: Scene) => void }) | null = null;
+// The look of the room someone's in (client.ts says, from the page and as
+// its maker changes it): put on the room now if it's built, or once it is.
+let sceneWanted: Scene = DEFAULT_SCENE;
+export function setScene(sc: Scene): void {
+  sceneWanted = sc;
+  if (kept) {
+    kept.dress(sc);
+    kept.renderer.toneMappingExposure = exposure;
+    // (the shadows are drawn once and kept: the light's changed)
+    kept.renderer.shadowMap.needsUpdate = true;
+  }
+}
 let roundedBox: T = null;
 // phones and small screens start plain (and work up if they keep up easily)
 // (a phone starts plain, and never shades where things touch: it can, but
@@ -1964,14 +2113,16 @@ export async function showRoom(canvas: HTMLCanvasElement | null, overlay: HTMLEl
       scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
       scene.environmentIntensity = 0.4;
       pmrem.dispose();
-      const { dust, fairy, spot } = furnish(THREE, scene, mergeGeometries, RoundedBoxGeometry);
+      const { dust, fairy, spot, dress } = furnish(THREE, scene, mergeGeometries, RoundedBoxGeometry);
       const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 140);
       const post = await postFor(THREE, renderer, scene, camera);
-      kept = { THREE, renderer, scene, camera, canvas, post, dust, fairy, spot };
+      kept = { THREE, renderer, scene, camera, canvas, post, dust, fairy, spot, dress };
       seatsKept = [];
     }
+    setScene(sceneWanted);
+    const { dress: _, ...k } = kept;
     room = {
-      ...kept,
+      ...k,
       seats: seatsKept,
       eye: null,
       view: savedView(),

@@ -189,6 +189,13 @@ main.room {
   .mine-card .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.3); }
 }
 @media (prefers-reduced-motion: reduce) { .spot:has(.head3d) .spot-avatar { transition: none; } }
+/* on a phone, someone who hasn't said anything lately is only as tall as
+   their head and name, and a thread gets less room than on a wide screen:
+   a screen of empty cards to scroll past is just a gap */
+@media (max-width: 600px) {
+  .stage > .spot:not([data-away]) { --card-h: 236px; }
+  .stage > .spot:not([data-away]):not(:has(.bubble)) { --card-h: 132px; }
+}
 /* and what they're saying stays in front of it, its hand showing round the words */
 .spot:has(.head3d) :is(.spot-name, .spot-word, .thread) { z-index: 2; }
 /* With a head that size, the word being said goes beside it, under their
@@ -541,23 +548,22 @@ main.room {
    element, so it plays for each) */
 .room-word .w { animation: arrive calc(0.2s + var(--style-motion, 0) * 0.2s) cubic-bezier(0.2, calc(1.2 + var(--style-motion, 0) * 0.8), 0.4, 1) both; }
 .room-label:not(.mine) .room-word[data-id] { pointer-events: auto; cursor: pointer; }
-/* In the room, on a wide screen, the room is the place: it takes the wide
-   side, and you (already sitting in it) go to the narrow one, your card
-   shorter, with your controls under it. */
+/* Joined, the page is one shape in either view: the room (or everyone, as
+   cards) takes the wide side, and you the narrow one, your card short, then
+   a panel to say something, then the rest in tabs. In the room, on a wide
+   screen, the room is as tall as the screen allows. */
 @media (min-width: 900px) {
-  main.room.joined.in-room { grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); grid-template-areas: "others me" "record me"; }
-  main.in-room .mine-card .spot { --card-h: 240px; padding: 16px 18px 0 20px; }
-  main.in-room .mine-card .spot-word { font-size: clamp(1.75rem, 1.2rem + 1.4vw, 2.5rem); }
-  main.in-room .room3d { height: min(76vh, 860px); }
-  /* (the narrow side: the emotes as faces alone, two rows of eight, their
-     names on hover) */
-  main.in-room .emotes { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
-  main.in-room .emotes button { justify-content: center; padding: 0; aspect-ratio: 1; min-height: 0; }
-  main.in-room .emote-label { display: none; }
+  main.room.joined { grid-template-columns: minmax(0, 1fr) minmax(330px, 400px); grid-template-areas: "others me" "record me"; }
+  main.room.joined .me { position: sticky; top: 12px; }
+  main.room.joined .mine-card .spot { --card-h: 240px; padding: 16px 18px 0 20px; }
+  main.room.joined .mine-card .spot:not(:has(.bubble)) { --card-h: 200px; }
+  main.room.joined .mine-card .spot-word { font-size: clamp(1.75rem, 1.2rem + 1.4vw, 2.5rem); }
+  main.in-room .room3d { height: min(78vh, 860px); }
 }
-/* On a phone, in the room, the room comes first, where the page opens,
-   with your controls straight under it; your own card goes (you're sitting
-   in the room, and it was a screen of scrolling before it). */
+/* On a phone, in the room, the room first, where the page opens, with your
+   controls straight under it, and your own card gone (you're sitting in
+   the room, and it was a screen of scrolling before it); as cards, you
+   first, then everyone else. */
 @media (max-width: 899px) {
   main.room.joined.in-room { grid-template-areas: "others" "me" "record"; }
   main.room.joined.in-room .mine-card { display: none; }
@@ -981,13 +987,118 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px 
 /* the way there, from the room */
 .customise-link { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 12px 20px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font-weight: 600; text-decoration: none; }
 .customise-link:hover { border-color: var(--accent); color: var(--accent); }
-/* what you can do besides talk, each in a quiet panel of its own with a
-   small heading (the toolbars are named for a screen reader already) */
-.me :is(.type-box, .emotes, .edit-tools) { padding: 12px; border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--surface) 55%, transparent); }
-.me :is(.emotes, .edit-tools)::before { flex-basis: 100%; grid-column: 1 / -1; margin: 0 0 2px 2px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
-.me .emotes::before { content: "Emotes" / ""; }
-.me .edit-tools::before { content: "Change a word" / ""; }
+/* What you can do, in two panels: saying something (the microphone, your
+   hand, typing), and the rest in tabs under it, one at a time. */
+.say-panel, .me-tabs { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); display: grid; gap: 10px; }
+.say-panel .controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.say-panel .talk { min-height: 48px; white-space: nowrap; }
+/* (on a phone, a little smaller, so "Turn on microphone" stays on one line
+   beside the hand) */
+@media (max-width: 600px) {
+  .say-panel .controls .talk { min-height: 48px; font-size: 1rem; padding-inline: 14px; gap: 8px; }
+  .say-panel .controls .hand-toggle { padding-inline: 12px; white-space: nowrap; }
+}
+.say-panel .hand-form { display: contents; }
+.say-panel .type-box { padding: 0; border: 0; background: none; }
 .me .edit-hint { margin-left: 2px; }
+.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 3px; border-radius: 999px; background: color-mix(in oklab, var(--bg) 60%, var(--surface)); border: 1px solid var(--line); }
+.tabs [role="tab"] { min-height: 36px; padding: 6px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.875rem; }
+.tabs [role="tab"]:hover:not([aria-selected="true"]) { color: var(--ink); background: transparent; }
+.tabs [role="tab"][aria-selected="true"] { background: var(--surface-2); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 0 0 1px var(--line); }
+.tab-panel { animation: card-in 0.25s var(--ease) both; }
+.tab-panel[hidden] { display: none; }
+/* the emotes as faces alone, in rows of eight, their names on hover */
+.me .emotes { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+.me .emotes button { justify-content: center; padding: 0; aspect-ratio: 1; min-height: 0; border-radius: 50%; }
+.me .emote-label { display: none; }
+.you-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.you-tools :is(.face-toggle, .voices-toggle) { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 16px; border-radius: 999px; font-size: 0.9375rem; font-weight: 600; background: var(--surface-2); border: 1px solid var(--line); }
+.you-tools .voices-toggle[hidden], .you-tools .face-toggle[hidden] { display: none; }
+.you-tools:has(.face-toggle[aria-pressed="true"]) .hands-toggle { display: inline-flex; }
+
+/* ---- rooms: which one you're in, every room, and a room's settings ---- */
+
+.top { gap: 12px; }
+.top .name { flex: none; }
+.room-switch { position: relative; margin-right: auto; min-width: 0; }
+.room-switch summary { list-style: none; display: inline-flex; align-items: center; gap: 8px; max-width: min(46vw, 320px); padding: 7px 12px 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 0.9375rem; transition: border-color 0.18s; }
+.room-switch summary::-webkit-details-marker { display: none; }
+.room-switch summary:hover { border-color: var(--faint); }
+.room-switch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-switch-caret { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); rotate: 45deg; translate: 0 -2px; flex: none; transition: rotate 0.2s var(--ease); }
+.room-switch[open] .room-switch-caret { rotate: 225deg; translate: 0 2px; }
+.room-switch:not([open]) .room-switch-menu { display: none; }
+.room-switch-menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 240px; max-width: min(calc(100vw - 32px), 340px); padding: 6px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: 0 18px 48px -16px rgb(0 0 0 / 0.6); display: grid; gap: 2px; animation: card-in 0.18s var(--ease) both; }
+.room-switch-menu a { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 12px; border-radius: 10px; color: var(--ink); text-decoration: none; font-size: 0.9375rem; }
+.room-switch-menu a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-switch-menu a small { color: var(--muted); flex: none; }
+.room-switch-menu a:hover { background: var(--surface-2); }
+.room-switch-menu a.all { color: var(--accent); border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; margin-top: 4px; }
+.others-head h2 { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1 1 auto; }
+/* (the room's name gives way first; on a phone, the switch under it if it
+   must) */
+.others-head { flex-wrap: wrap; row-gap: 8px; }
+.room-title { font-family: var(--display); font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; text-transform: none; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-count { font-size: 0.75rem; letter-spacing: 0.08em; color: var(--muted); white-space: nowrap; }
+.room-settings { margin: 10px 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.room-settings summary { cursor: pointer; list-style: none; padding: 10px 16px; font-weight: 600; font-size: 0.875rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.room-settings summary::-webkit-details-marker { display: none; }
+.room-settings summary::before { content: "⚙"; font-size: 1rem; }
+.room-settings[open] summary { color: var(--ink); border-bottom: 1px solid var(--line); }
+.room-settings-body { padding: 12px 16px 16px; display: grid; gap: 12px; }
+.field { display: grid; gap: 6px; font-size: 0.8125rem; color: var(--muted); }
+.field input { font: inherit; font-size: 1rem; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink); min-height: 44px; }
+.field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.scene-pick legend { width: 72px; }
+.pick label > span.tint { gap: 7px; }
+.pick label > span.tint::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(135deg, var(--c) 50%, var(--c2, var(--c)) 50%); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.25) inset, 0 0 0 1px rgb(0 0 0 / 0.25); flex: none; }
+.scene-pick label > span, .make-room .pick label > span { text-transform: none; gap: 6px; }
+/* the settings over the top of the room, so a change shows behind them */
+.others { position: relative; }
+.room-settings[open] { position: absolute; z-index: 6; left: 0; right: 0; top: 44px; max-height: min(70vh, 640px); overflow: auto; box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.7); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.room-settings summary { position: sticky; top: 0; background: inherit; z-index: 1; }
+.room-settings[open] summary::after { content: "Done"; margin-left: auto; color: var(--accent); font-size: 0.8125rem; }
+/* on a phone: the switcher and the way round on one line, the switcher
+   giving way first */
+@media (max-width: 600px) {
+  .room-switch-menu { position: fixed; left: 12px; right: 12px; top: 58px; max-width: none; }
+  .top { padding: 12px 14px 10px; gap: 8px; }
+  .top .name { font-size: 1.25rem; }
+  .top .name::before { width: 12px; height: 12px; }
+  .room-switch summary { max-width: 34vw; padding: 6px 10px 6px 12px; font-size: 0.875rem; }
+  .top nav { gap: 0; font-size: 0.875rem; }
+  .top nav a { padding: 6px 8px; }
+  .room-title { font-size: 1.0625rem; }
+}
+.check { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--ink); cursor: pointer; }
+.check input { accent-color: var(--accent); width: 18px; height: 18px; }
+.room-link { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.room-link code { padding: 2px 8px; border-radius: 6px; background: var(--surface-2); font-size: 0.8125rem; }
+.copy-link { min-height: 34px; padding: 4px 12px; font-size: 0.8125rem; border-radius: 999px; }
+/* every room */
+main.rooms-page { max-width: 1100px; margin: 0 auto; padding: 4px 20px 48px; display: grid; gap: 20px; }
+main.rooms-page h1 { margin: 6px 0 0; font-family: var(--display); font-size: clamp(2rem, 1.4rem + 2vw, 2.75rem); letter-spacing: -0.03em; }
+.lede { margin: 0; color: var(--muted); max-width: 60ch; }
+.room-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 14px; }
+.room-card { display: grid; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; color: var(--ink); text-decoration: none; transition: transform 0.2s var(--ease), border-color 0.2s; }
+.room-card:hover { transform: translateY(-2px); border-color: var(--faint); }
+.room-card-art { position: relative; height: 120px; background: linear-gradient(to bottom, var(--wall) 0 62%, var(--floor) 62%); }
+.room-card-art .win { position: absolute; left: 18%; top: 14%; width: 44%; height: 34%; border-radius: 4px; border: 3px solid rgb(241 230 210 / 0.9); background: linear-gradient(#3d5f9e, #f3c48a); }
+.room-card[data-sky="day"] .win { background: linear-gradient(#3f86d6, #cfe6f7); }
+.room-card[data-sky="night"] .win { background: linear-gradient(#070b1d, #2b3a6b); }
+.room-card[data-sky="snow"] .win { background: linear-gradient(#9fb0c4, #eef2f6); }
+.room-card[data-sky="sea"] .win { background: linear-gradient(#2f7cc4 0 55%, #2a7fae 55% 80%, #e9d7a8 80%); }
+.room-card-art .rugdot { position: absolute; left: 50%; bottom: 8px; width: 46%; height: 26px; translate: -50% 0; border-radius: 50%; background: var(--rug); opacity: 0.9; }
+.room-card-art .sky-emoji { position: absolute; right: 12px; top: 10px; font-size: 1.25rem; }
+.room-card-text { display: grid; gap: 2px; padding: 12px 14px 14px; }
+.room-card-text strong { font-size: 1.0625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-card-text small { color: var(--muted); }
+.make-room { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); display: grid; gap: 14px; max-width: 640px; }
+.make-room h2 { font-size: 0.75rem; }
+.make-room .pick { gap: 6px; }
+.make-room .pick legend { width: auto; float: none; margin-bottom: 6px; }
+button.primary { justify-self: start; background: var(--accent); border-color: var(--accent); color: #0b1020; border-radius: 999px; padding: 12px 24px; }
+@media (prefers-color-scheme: light) { button.primary { color: #fff; } }
 @media (max-width: 860px) {
   main.studio { grid-template-columns: minmax(0, 1fr); padding: 0 12px 32px; gap: 12px; }
   .stage-3d { top: 0; z-index: 5; padding: 8px; border-radius: 0 0 var(--radius) var(--radius); }

@@ -6,11 +6,11 @@ import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
-import { overHead, showRoom, sit, walked, walkSent } from "./room3d.ts";
+import { overHead, setScene, showRoom, sit, walked, walkSent } from "./room3d.ts";
 import type { Spot as Standing } from "./walk.ts";
 import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
 import { toneOf, typedWords, type Tone } from "./typed.ts";
-import { EFFECTS, emoteOf, EMOTES, REACTIONS, STYLES, type Look as PackLook } from "./packs.ts";
+import { EFFECTS, emoteOf, EMOTES, fullScene, REACTIONS, STYLES, type Look as PackLook, type Scene } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
@@ -564,7 +564,7 @@ const showLive = (on: boolean, text: string): void => {
 };
 
 function connect(): void {
-  const stream = new EventSource(`/events?after=${lastSeen}${opened ? "&back" : ""}`);
+  const stream = new EventSource(`events?after=${lastSeen}${opened ? "&back" : ""}`);
   stream.addEventListener("open", () => {
     wait = 1000;
     openedAt = Date.now();
@@ -580,7 +580,10 @@ function connect(): void {
   });
   stream.addEventListener("joined", (e) => {
     const p = JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue"> & { look: Look };
+    // (you, opening this room in another tab: you're here already)
+    if (p.name === myName) return;
     spotFor(p, p.look);
+    cardOf(p.name)?.removeAttribute("data-away");
     showQueue(queueNow);
   });
   stream.addEventListener("face", (e) => {
@@ -600,8 +603,10 @@ function connect(): void {
   });
   // who's on the stage with no page open: shown as away until they're back
   stream.addEventListener("here", (e) => {
-    const { away } = JSON.parse((e as MessageEvent<string>).data) as { away: string[] };
+    const { away, elsewhere } = JSON.parse((e as MessageEvent<string>).data) as { away: string[]; elsewhere?: string[] };
     for (const card of document.querySelectorAll<HTMLElement>("#stage .spot")) card.toggleAttribute("data-away", away.includes(card.dataset.name ?? ""));
+    goneElsewhere(elsewhere ?? []);
+    countHere();
   });
   stream.addEventListener("voice", (e) => {
     const { name, levels } = JSON.parse((e as MessageEvent<string>).data) as { name: string; levels: number[] };
@@ -640,6 +645,11 @@ function connect(): void {
     showReactions(id, index, counts);
   });
   stream.addEventListener("early", (e) => showDraft(JSON.parse((e as MessageEvent<string>).data) as Draft));
+  // the room's maker changed it: its name, how it looks
+  stream.addEventListener("scene", (e) => {
+    const { name, scene } = JSON.parse((e as MessageEvent<string>).data) as { name: string; scene: Scene };
+    showScene(name, scene);
+  });
 }
 
 // The room as it is when a stream opens: whose hands are up and who's away,
@@ -650,6 +660,7 @@ type RoomNow = {
   upTo: number;
   queue: string[];
   away: string[];
+  elsewhere?: string[];
   standing?: Record<string, Standing>;
   people?: (Pick<Phrase, "name" | "hue"> & { look: Look })[];
   from?: number;
@@ -657,6 +668,7 @@ type RoomNow = {
 };
 function caughtUp(now: RoomNow): void {
   if (typeof lastSeen !== "number" || now.upTo > lastSeen) lastSeen = now.upTo;
+  goneElsewhere(now.elsewhere ?? []);
   for (const p of now.people ?? []) {
     if (p.name === myName) continue;
     const had = cardOf(p.name)?.dataset.look;
@@ -905,7 +917,7 @@ function sendVoice(level: number): void {
   // silence goes once, then nothing until there's sound again
   voiceQuiet = levels.every((l) => l < 0.08) ? voiceQuiet + 1 : 0;
   if (voiceQuiet > 1) return;
-  void fetch("/voice", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ levels }) }).catch(() => {});
+  void fetch("voice", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ levels }) }).catch(() => {});
 }
 
 // ---- hearing a phrase early, while it's still being said ----
@@ -943,7 +955,7 @@ function maybeEarly(): void {
       if (forDraft !== draft) return;
       const ws = hear(pcm, RATE, words(chunks, pcm.length / RATE)).words;
       if (ws.length === 0 || invented(ws.map((w) => w.w).join(" "), true)) return;
-      await fetch("/early", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ words: ws, draft: forDraft }) });
+      await fetch("early", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ words: ws, draft: forDraft }) });
     })
     .catch(() => {
       // a missed draft is no loss: the real phrase follows
@@ -1011,7 +1023,7 @@ async function post(words: Word[], voice: Voice | null, forDraft?: number, typed
     let res: Response | null = null;
     for (let i = 0; ; i++) {
       try {
-        res = await fetch("/say", {
+        res = await fetch("say", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ words, voice, draft: forDraft, ...(typed ? { typed } : {}) }),
@@ -1083,7 +1095,7 @@ if (typeBox) {
     saving = window.setTimeout(async () => {
       try {
         const { voice, tune } = voiceNow();
-        const res = await fetch("/look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: { voice, tune: { voicePitch: tune?.voicePitch ?? 0, voiceSpeed: tune?.voiceSpeed ?? 0 } } }) });
+        const res = await fetch("look", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: { voice, tune: { voicePitch: tune?.voicePitch ?? 0, voiceSpeed: tune?.voiceSpeed ?? 0 } } }) });
         if (!res.ok) warn("Your voice didn't save.");
       } catch {
         warn("Your voice didn't save. Check your connection.");
@@ -1123,7 +1135,7 @@ async function change(edit: { text?: string; effect?: string | null; remove?: bo
   if (!chosen) return;
   const target = chosen;
   try {
-    const res = await fetch("/edit", {
+    const res = await fetch("edit", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: target.id, index: target.index, ...edit }),
@@ -1390,7 +1402,7 @@ async function sendFace(e: Expression | null, pose: Pose | null = null): Promise
   lastSent = key;
   lastSentAt = Date.now();
   try {
-    await fetch("/face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ e, pose, body }) });
+    await fetch("face", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ e, pose, body }) });
   } catch {
     // a missed reading is soon replaced by the next
   } finally {
@@ -1575,7 +1587,7 @@ if (faceButton && "mediaDevices" in navigator) {
   faceButton.addEventListener("click", () => void (faceOn ? faceStop() : faceStart()));
   // a face showing when you've left the page would be a lie
   addEventListener("pagehide", () => {
-    if (faceOn) navigator.sendBeacon("/face", new Blob([JSON.stringify({ e: null })], { type: "application/json" }));
+    if (faceOn) navigator.sendBeacon("face", new Blob([JSON.stringify({ e: null })], { type: "application/json" }));
   });
 }
 
@@ -1688,7 +1700,7 @@ async function sendEmote(id: string): Promise<void> {
   showEmote(myName, id);
   heardAloud.textContent = `You: ${emoteOf(id)?.label ?? id}`;
   try {
-    const res = await fetch("/emote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ emote: id }) });
+    const res = await fetch("emote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ emote: id }) });
     if (res.status === 429) warn("That's a lot of emotes. Give it a moment.");
   } catch {
     // a missed emote is no loss
@@ -1744,7 +1756,7 @@ walkSent((at) => {
     while (walkNext !== undefined) {
       const at = walkNext;
       walkNext = undefined;
-      await fetch("/walk", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(at ? { at } : { sit: true }) }).catch(() => {});
+      await fetch("walk", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(at ? { at } : { sit: true }) }).catch(() => {});
     }
     walkSending = false;
   })();
@@ -1876,7 +1888,7 @@ async function raiseHand(up: boolean): Promise<void> {
     while (handWanted !== null) {
       const want = handWanted;
       handWanted = null;
-      const res = await fetch("/hand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ up: want }) });
+      const res = await fetch("hand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ up: want }) });
       if (res.status === 429) warn("Give it a moment before raising your hand again.");
       if (handWanted === null && res.ok) showQueue(((await res.json()) as { queue: string[] }).queue);
     }
@@ -1947,7 +1959,7 @@ picker?.addEventListener("click", async (e) => {
   closePicker();
   if (!reaction || !to) return;
   try {
-    const res = await fetch("/react", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...to, reaction }) });
+    const res = await fetch("react", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...to, reaction }) });
     if (res.ok) showReactions(to.id, to.index, ((await res.json()) as { counts: Record<string, number> }).counts);
     else if (res.status === 429) warn("That's a lot of reactions. Give it a moment.");
   } catch {
@@ -1960,3 +1972,144 @@ addEventListener("click", (e) => {
 addEventListener("keydown", (e) => {
   if (e.key === "Escape" && picker && !picker.hidden) closePicker();
 });
+
+
+// ---- this room: its name, its look, who's here ----
+
+// How many are here (not away), beside the room's name.
+const countEl = document.getElementById("room-count");
+function countHere(): void {
+  if (!countEl) return;
+  const n = [...document.querySelectorAll<HTMLElement>(".spot")].filter((c) => !c.hasAttribute("data-away")).length;
+  countEl.textContent = n ? `${n} here` : "";
+}
+new MutationObserver(countHere).observe(document.getElementById("stage") ?? document.body, { childList: true });
+
+// The room as its maker has it: the name everywhere it's shown, and the 3D
+// room redrawn in its look.
+const mainEl = document.querySelector<HTMLElement>("main.room");
+let sceneNow: Scene = fullScene(JSON.parse(mainEl?.dataset.scene ?? "null"));
+setScene(sceneNow);
+function showScene(name: string, scene: Scene): void {
+  for (const el of document.querySelectorAll(".room-title, .room-switch-name")) el.textContent = name;
+  sceneNow = scene;
+  if (mainEl) mainEl.dataset.scene = JSON.stringify(scene);
+  setScene(scene);
+  // (the form, for its maker on another page, as it now is)
+  if (settings && !settings.contains(document.activeElement)) fillSettings(scene, name);
+}
+
+// Its settings, for whoever made it: each change goes straight to the room
+// (a name once typing stops), for everyone in it.
+const settings = document.querySelector<HTMLFormElement>("[data-room-settings]");
+function fillSettings(scene: Scene, name?: string): void {
+  if (!settings) return;
+  for (const [k, v] of Object.entries(scene)) for (const r of settings.querySelectorAll<HTMLInputElement>(`input[name="${k}"]`)) r.checked = r.value === v;
+  // (a theme's shown as chosen while the room's still exactly it)
+  for (const r of settings.querySelectorAll<HTMLInputElement>('input[name="theme"]')) {
+    const t = JSON.parse(r.dataset.scene ?? "{}") as Record<string, string>;
+    r.checked = Object.entries(scene).every(([k, v]) => t[k] === v);
+  }
+  if (name !== undefined) (settings.elements.namedItem("name") as HTMLInputElement).value = name;
+}
+async function changeRoom(change: Record<string, unknown>): Promise<void> {
+  try {
+    const res = await fetch("room", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(change) });
+    if (!res.ok) warn(res.status === 429 ? "That's a lot of changes. Give it a moment." : "Couldn't change the room.");
+  } catch {
+    warn("Couldn't reach the room to change it.");
+  }
+}
+if (settings) {
+  fillSettings(sceneNow);
+  settings.addEventListener("submit", (e) => e.preventDefault());
+  settings.addEventListener("change", (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.name === "theme") {
+      const scene = JSON.parse(t.dataset.scene ?? "{}") as Scene;
+      showScene((settings.elements.namedItem("name") as HTMLInputElement).value, scene);
+      void changeRoom({ scene });
+    } else if (t.name === "listed") void changeRoom({ listed: t.checked });
+    else if (t.name !== "name") {
+      const scene = { ...sceneNow, [t.name]: t.value } as Scene;
+      showScene((settings.elements.namedItem("name") as HTMLInputElement).value, scene);
+      void changeRoom({ scene });
+    }
+  });
+  let naming: ReturnType<typeof setTimeout> | undefined;
+  const nameBox = settings.elements.namedItem("name") as HTMLInputElement;
+  nameBox.addEventListener("input", () => {
+    clearTimeout(naming);
+    const name = nameBox.value.trim();
+    if (!name) return;
+    naming = setTimeout(() => void changeRoom({ name }), 600);
+  });
+}
+
+// A link to this room, copied, to bring someone in.
+for (const b of document.querySelectorAll<HTMLButtonElement>(".copy-link")) {
+  b.addEventListener("click", async () => {
+    const was = b.textContent;
+    try {
+      await navigator.clipboard.writeText(location.origin + location.pathname);
+      b.textContent = "Copied";
+    } catch {
+      b.textContent = "Copy failed";
+    }
+    setTimeout(() => (b.textContent = was), 1600);
+  });
+}
+
+// The tabs under the say panel: one shown at a time; arrow keys move along
+// them (as tabs do); the one last open is remembered.
+const TAB_KEY = "said-tab";
+const tabs = [...document.querySelectorAll<HTMLButtonElement>('.tabs [role="tab"]')];
+function openTab(t: HTMLButtonElement, focus = false): void {
+  for (const x of tabs) {
+    const on = x === t;
+    x.setAttribute("aria-selected", String(on));
+    x.tabIndex = on ? 0 : -1;
+    const panel = document.getElementById(x.getAttribute("aria-controls") ?? "");
+    if (panel) panel.hidden = !on;
+  }
+  if (focus) t.focus();
+  try {
+    localStorage.setItem(TAB_KEY, t.id);
+  } catch {
+    // (not remembered)
+  }
+}
+for (const t of tabs) {
+  t.addEventListener("click", () => openTab(t));
+  t.addEventListener("keydown", (e) => {
+    const i = tabs.indexOf(t);
+    const to = e.key === "ArrowRight" ? tabs[(i + 1) % tabs.length] : e.key === "ArrowLeft" ? tabs[(i - 1 + tabs.length) % tabs.length] : e.key === "Home" ? tabs[0] : e.key === "End" ? tabs.at(-1) : null;
+    if (!to) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openTab(to, true);
+  });
+}
+try {
+  const kept = document.getElementById(localStorage.getItem(TAB_KEY) ?? "");
+  if (kept && tabs.includes(kept as HTMLButtonElement)) openTab(kept as HTMLButtonElement);
+} catch {
+  // (the first, then)
+}
+// (the room switcher closes when you click elsewhere)
+document.addEventListener("click", (e) => {
+  for (const d of document.querySelectorAll<HTMLDetailsElement>(".room-switch[open]")) if (!d.contains(e.target as Node)) d.open = false;
+});
+
+// Someone in another room now: their card goes from this one (they're
+// talking somewhere else), and comes back with what they say when they're
+// back here (as anyone arriving does).
+function goneElsewhere(names: string[]): void {
+  for (const name of names) {
+    if (name === myName) continue;
+    const card = document.querySelector<HTMLElement>(`#stage .spot[data-name="${CSS.escape(name)}"]`);
+    if (card) card.remove();
+  }
+  const nobody = document.getElementById("nobody");
+  if (nobody) nobody.hidden = !!document.querySelector("#stage .spot");
+}

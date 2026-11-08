@@ -401,3 +401,65 @@ export function randomLook(rnd: () => number = Math.random): Look {
   for (const sl of SLIDERS) if (rnd() < 0.5) tune[sl.id] = Math.round((rnd() * 2 - 1) * 0.6 * 100) / 100;
   return { ...(out as unknown as Look), tune };
 }
+
+// ---- rooms ----
+
+// How a room looks, as its maker chose: a few parts, each one of a set, and
+// themes that set them all at once. room3d.ts draws each by its id.
+export const SCENE_PARTS = {
+  // what's out of the window, which sets the light coming in
+  sky: [
+    { id: "dusk", label: "Golden hour", emoji: "🌇" },
+    { id: "day", label: "Midday", emoji: "☀️" },
+    { id: "night", label: "Night", emoji: "🌙" },
+    { id: "snow", label: "Snow", emoji: "❄️" },
+    { id: "sea", label: "Seaside", emoji: "🌊" },
+  ],
+  walls: [
+    { id: "slate", label: "Slate", colour: "#434c66" },
+    { id: "sage", label: "Sage", colour: "#5d7a63" },
+    { id: "plum", label: "Plum", colour: "#5e3f5c" },
+    { id: "cream", label: "Cream", colour: "#d8cdb6" },
+    { id: "terracotta", label: "Terracotta", colour: "#a65a3f" },
+    { id: "ink", label: "Ink", colour: "#1f2433" },
+  ],
+  floor: [
+    { id: "oak", label: "Oak", colour: "#a8774c" },
+    { id: "walnut", label: "Walnut", colour: "#5f3f2a" },
+    { id: "ash", label: "Pale ash", colour: "#d2b48c" },
+    { id: "slate", label: "Grey", colour: "#6b6f78" },
+  ],
+  rug: [
+    { id: "rose", label: "Rose", colours: ["#7a3443", "#d9a441", "#8c3d4f", "#a8505f"] },
+    { id: "ocean", label: "Ocean", colours: ["#21456b", "#e8c27a", "#2f5f8c", "#4f86b0"] },
+    { id: "moss", label: "Moss", colours: ["#2f5233", "#e8d9a8", "#3f6b44", "#6b9a5b"] },
+    { id: "sun", label: "Sunshine", colours: ["#b8641f", "#fbe3a4", "#d9862e", "#f0b04c"] },
+    { id: "none", label: "None", colours: [] as string[] },
+  ],
+} as const;
+export type ScenePart = keyof typeof SCENE_PARTS;
+export type Scene = { [P in ScenePart]: (typeof SCENE_PARTS)[P][number]["id"] };
+export const DEFAULT_SCENE: Scene = { sky: "dusk", walls: "slate", floor: "oak", rug: "rose" };
+// whole looks at once, to start from
+export const SCENES = [
+  { id: "lounge", label: "Lounge", emoji: "🛋️", scene: DEFAULT_SCENE },
+  { id: "garden", label: "Garden room", emoji: "🌿", scene: { sky: "day", walls: "sage", floor: "ash", rug: "moss" } },
+  { id: "late", label: "Late night", emoji: "🌙", scene: { sky: "night", walls: "ink", floor: "walnut", rug: "ocean" } },
+  { id: "cabin", label: "Cabin", emoji: "❄️", scene: { sky: "snow", walls: "terracotta", floor: "walnut", rug: "sun" } },
+  { id: "beach", label: "Beach house", emoji: "🌊", scene: { sky: "sea", walls: "cream", floor: "ash", rug: "ocean" } },
+  { id: "studio", label: "Studio", emoji: "🎨", scene: { sky: "day", walls: "plum", floor: "slate", rug: "sun" } },
+] as const satisfies readonly (Choice & { emoji: string; scene: Scene })[];
+
+// A scene as sent: each part one on offer, or (for one not mentioned) as it
+// was. Anything else isn't a scene.
+export function cleanScene(input: unknown, base: Scene = DEFAULT_SCENE): Scene | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const out: Record<string, string> = { ...base };
+  for (const [k, v] of Object.entries(input)) {
+    const options = (SCENE_PARTS as Record<string, readonly { id: string }[]>)[k];
+    if (!options || !options.some((o) => o.id === v)) return null;
+    out[k] = v as string;
+  }
+  return out as Scene;
+}
+export const fullScene = (stored: unknown): Scene => cleanScene(stored) ?? DEFAULT_SCENE;

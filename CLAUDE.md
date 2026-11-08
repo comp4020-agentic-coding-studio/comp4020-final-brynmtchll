@@ -80,9 +80,25 @@ be more interesting because others are in the room at the same moment.
   chair and back into it ... never through a chair or the table", "finds
   the way round the table and the chairs"). Right is right, as the camera
   sees it (`walk.test.ts`: "walks the way the stick points"; it went left
-  for a day). Full screen keeps a way to talk. Where someone stands is only ever a place on the
-  floor, kept while they're up and never stored or logged (`room.test.ts`:
-  "shows someone walking about the room").
+  for a day). Full screen keeps a way to talk. Where someone stands is
+  only ever a place on the floor, kept while they're up and never stored or
+  logged (`room.test.ts`: "shows someone walking about the room").
+- There's more than one room, each its own group with its own look
+  ("options to have different rooms / spaces, featuring different groups
+  etc", 8 Nov). What's said, hands, walking and emotes in a room stay in that
+  room, live and stored (`room.test.ts`: "keeps what's said in a room to that
+  room, live and stored"). Who you are and how you look go with you. Only
+  whoever made a room changes it, and only to looks from `src/packs.ts`
+  (`room.test.ts`: "lets only whoever made a room change it, and only to
+  looks on offer"). A room's name is escaped everywhere it shows, and who
+  made it is never sent by id (`room.test.ts`: "escapes a room's name
+  wherever it's shown, and never shows who made it by id").
+- One place for each thing: what you can do sits together beside the room
+  (on a phone, under the 3D room, and above the cards), one panel for
+  saying something, the rest in tabs;
+  the room's own settings open from the room, for whoever made it ("i want
+  the ui to feel more cohesive and intuitive", 8 Nov). Judged from
+  screenshots, both sizes, both themes.
 
 ## Every change
 

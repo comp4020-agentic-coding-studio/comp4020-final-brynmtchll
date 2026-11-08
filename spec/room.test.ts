@@ -385,6 +385,18 @@ describe.skipIf(!writable)("the room", () => {
     later.close();
     expect((await walk({ sit: true })).status).toBe(200);
     await watcher.waitFor(`"name":"${p.name}","at":null`);
+    // a page of their own opened afresh while they're up (a reload, or the
+    // tab closed and opened again) starts them in their chair, so it sits
+    // them down for everyone, not left standing for a minute
+    expect((await walk({ at: { x: -6, z: 9, turn: 0 } })).status).toBe(200);
+    await watcher.waitFor(`"name":"${p.name}","at":{"x":-6`);
+    const after = listen();
+    expect(((await after.waitFor(`"standing"`)) as unknown as { standing: Record<string, unknown> }).standing[p.name]).toBeDefined();
+    const theirs = listen({ cookie: p.cookie });
+    await theirs.ready;
+    await after.waitFor(`"name":"${p.name}","at":null`);
+    after.close();
+    theirs.close();
     expect((await walk({ at: { x: "here", z: 0, turn: 0 } })).status).toBe(400);
     expect((await walk({ at: { x: 1, z: 1, turn: 0 } }, "")).status).toBe(401);
     watcher.close();
@@ -861,6 +873,108 @@ describe.skipIf(!writable)("the room", () => {
     await fresh.waitFor(next);
     await expect(fresh.waitFor(old, 300)).rejects.toThrow();
     fresh.close();
+  });
+
+  // ---- rooms ----
+
+  // a room made by `p` (as JSON), and what came back
+  const makeRoom = async (p: { cookie: string }, body: Record<string, unknown>) => {
+    const res = await fetch(new URL("/rooms", baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+    return { status: res.status, body: (await res.json()) as { room?: { slug: string; name: string; scene: Record<string, string>; listed: boolean } } };
+  };
+  // saying something in a room (its address, /r/<slug>/)
+  const sayIn = (p: { cookie: string }, slug: string, text: string) =>
+    fetch(new URL(`/r/${slug}/say`, baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify({ words: [word(text, 0)] }) });
+  const roomMessages = async (slug: string): Promise<Said[]> =>
+    ((await (await fetch(new URL(`/r/${slug}/api/messages`, baseUrl))).json()) as { messages: Said[] }).messages;
+
+  it("keeps what's said in a room to that room, live and stored", async () => {
+    const a = await person();
+    const b = await person();
+    const { status, body } = await makeRoom(a, { name: `Talk ${Date.now()}` });
+    expect(status).toBe(201);
+    const slug = body.room!.slug;
+    // a page open on the main room, and one on the new room
+    const main = listen({}, "?after=now");
+    const there = listen({}, "?after=now");
+    await Promise.all([main.ready, there.ready]);
+    there.close();
+    const secret = `onlyhere${Date.now()}`;
+    expect((await sayIn(b, slug, secret)).status).toBe(201);
+    expect((await roomMessages(slug)).map((m) => m.text)).toContain(secret);
+    expect((await messages()).map((m) => m.text)).not.toContain(secret);
+    await expect(main.waitFor(secret, 600)).rejects.toThrow();
+    expect(await (await fetch(new URL("/", baseUrl), { headers: { cookie: a.cookie } })).text()).not.toContain(secret);
+    main.close();
+  });
+
+  it("hears in a room what's said there, live", async () => {
+    const a = await person();
+    const { body } = await makeRoom(a, { name: `Live ${Date.now()}` });
+    const slug = body.room!.slug;
+    const controller = new AbortController();
+    const res = await fetch(new URL(`/r/${slug}/events?after=now`, baseUrl), { signal: controller.signal });
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+    const said = `heardhere${Date.now()}`;
+    await sayIn(a, slug, said);
+    let got = "";
+    const until = Date.now() + 2000;
+    while (!got.includes(said) && Date.now() < until) got += (await reader.read()).value ?? "";
+    await reader.cancel().catch(() => {});
+    controller.abort();
+    expect(got).toContain(said);
+  });
+
+  it("lets only whoever made a room change it, and only to looks on offer", async () => {
+    const a = await person();
+    const b = await person();
+    const { body } = await makeRoom(a, { name: `Mine ${Date.now()}`, scene: { sky: "night" } });
+    const slug = body.room!.slug;
+    expect(body.room!.scene.sky).toBe("night");
+    const change = (p: { cookie: string }, c: unknown) => fetch(new URL(`/r/${slug}/room`, baseUrl), { method: "POST", headers: { cookie: p.cookie, "content-type": "application/json" }, body: JSON.stringify(c) });
+    expect((await change(b, { name: "taken over" })).status).toBe(403);
+    expect((await change(a, { scene: { sky: "lava" } })).status).toBe(400);
+    expect((await change(a, { scene: { walls: "url(evil)" } })).status).toBe(400);
+    expect((await change(a, { scene: { sky: "snow" }, name: "Renamed" })).status).toBe(200);
+    const page = await (await fetch(new URL(`/r/${slug}/`, baseUrl), { headers: { cookie: b.cookie } })).text();
+    expect(page).toContain("Renamed");
+    expect(page).toContain("&quot;sky&quot;:&quot;snow&quot;");
+    expect(page).not.toContain("taken over");
+    // (the main room is nobody's to change)
+    expect((await fetch(new URL("/room", baseUrl), { method: "POST", headers: { cookie: a.cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "x" }) })).status).toBe(403);
+  });
+
+  it("escapes a room's name wherever it's shown, and never shows who made it by id", async () => {
+    const a = await person();
+    const name = `<img src=x onerror=alert(1)> ${Date.now()}`.slice(0, 40);
+    const { status, body } = await makeRoom(a, { name });
+    expect(status).toBe(201);
+    expect(JSON.stringify(body)).not.toContain(a.cookie.split("=")[1]);
+    for (const path of [`/r/${body.room!.slug}/`, "/rooms", "/"]) {
+      const page = await (await fetch(new URL(path, baseUrl), { headers: { cookie: a.cookie } })).text();
+      expect(page, path).not.toContain("<img src=x");
+      expect(page, path).not.toContain(a.cookie.split("=")[1]);
+    }
+  });
+
+  it("lists a room for anyone to find, or keeps it to those with the link", async () => {
+    const a = await person();
+    const b = await person();
+    const open = await makeRoom(a, { name: `Open ${Date.now()}` });
+    const hidden = await makeRoom(a, { name: `Hidden ${Date.now()}`, listed: false });
+    const list = async (p: { cookie: string }) => (await fetch(new URL("/rooms", baseUrl), { headers: { cookie: p.cookie } })).text();
+    expect(await list(b)).toContain(`/r/${open.body.room!.slug}/`);
+    expect(await list(b)).not.toContain(`/r/${hidden.body.room!.slug}/`);
+    // (its maker still sees it, and anyone with the link gets in)
+    expect(await list(a)).toContain(`/r/${hidden.body.room!.slug}/`);
+    expect((await fetch(new URL(`/r/${hidden.body.room!.slug}/`, baseUrl), { headers: { cookie: b.cookie } })).status).toBe(200);
+    expect((await fetch(new URL("/r/no-such-room-here/", baseUrl))).status).toBe(404);
+  });
+
+  it("needs a name to make a room, and someone who's joined", async () => {
+    const a = await person();
+    expect((await makeRoom(a, { name: "   " })).status).toBe(400);
+    expect((await makeRoom({ cookie: "" }, { name: "Nobody's" })).status).toBe(401);
   });
 
   it("never shows anyone another person's id, since it doubles as their login", async () => {

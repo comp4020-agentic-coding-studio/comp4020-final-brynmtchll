@@ -270,11 +270,14 @@ function shutFor(chairs: Chair[]): Uint8Array {
 export function route(from: { x: number; z: number }, to: { x: number; z: number }, chairs: Chair[] = []): { x: number; z: number }[] {
   if (clearLine(from, to, chairs)) return [to];
   const shut = shutFor(chairs);
-  // (the nearest open square to a point)
+  // (the nearest open square to a point, however far: only looking a few
+  // squares out, somewhere behind a full back row found none, and asking
+  // again from where anyone could stand near it found none either, round and
+  // round until the page ran out of stack, 120 times a second)
   const near = (p: { x: number; z: number }): number => {
     const cx = Math.round((p.x + FLOOR_AREA.x) / CELL);
     const cz = Math.round((p.z - FLOOR_AREA.back) / CELL);
-    for (let r = 0; r < 10; r++)
+    for (let r = 0; r < Math.max(NX, NZ); r++)
       for (let dz = -r; dz <= r; dz++)
         for (let dx = -r; dx <= r; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
@@ -285,8 +288,7 @@ export function route(from: { x: number; z: number }, to: { x: number; z: number
   };
   const start = near(from);
   const goal = near(to);
-  if (start < 0) return [from];
-  if (goal < 0) return route(from, held(to.x, to.z, chairs), chairs);
+  if (start < 0 || goal < 0) return [from];
   // (A*, eight ways from each square)
   // (at full precision: rounded to a float32, a long way's cost came back
   // less than it went in, and the square was passed over as already done)

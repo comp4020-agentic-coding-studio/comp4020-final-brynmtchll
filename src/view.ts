@@ -1,7 +1,7 @@
-import type { Message, Person } from "./db.ts";
+import type { Message, Person, RoomInfo } from "./db.ts";
 import { ago, esc, handBadge, hueOf, queueHtml, reactionsHtml, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
-import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SLIDERS, STYLES, VOICES_IN_ORDER, type ColourPart, type Look, type Part } from "./packs.ts";
+import { COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SCENE_PARTS, SCENES, SLIDERS, STYLES, VOICES_IN_ORDER, type ColourPart, type Look, type Part, type Scene } from "./packs.ts";
 import { TONES } from "./typed.ts";
 
 // a working title, here so it changes in one place
@@ -26,7 +26,7 @@ const HELP = `<details class="help">
   </div>
 </details>`;
 
-export function layout(title: string, body: string, script = "", help = HELP): string {
+export function layout(title: string, body: string, script = "", help = HELP, middle = ""): string {
   return `<!doctype html>
 <html lang="en-AU">
 <head>
@@ -39,7 +39,7 @@ export function layout(title: string, body: string, script = "", help = HELP): s
 ${script}
 </head>
 <body>
-<header class="top"><a href="/" class="name">${APP}</a><nav><a href="/readme/">About</a>${help}</nav></header>
+<header class="top"><a href="/" class="name">${APP}</a>${middle}<nav><a href="/rooms">Rooms</a><a href="/readme/">About</a>${help}</nav></header>
 ${body}
 </body>
 </html>`;
@@ -50,6 +50,9 @@ const MESSAGES: Record<string, string> = {
   "name-taken": "Someone here already goes by that name.",
   "no-person": "Pick a name first.",
   "too-many-joins": "That's a lot of new names from here at once. Try again in a few minutes.",
+  "room-name-bad": "Give the room a name between 1 and 40 characters.",
+  "too-many-rooms": "You've made a lot of rooms. Use one of yours, or try again later.",
+  "not-a-scene": "That's not one of the looks on offer.",
 };
 
 // A person's thread: what they've said lately as text messages, oldest at
@@ -183,7 +186,7 @@ const savedSlots = (saved: (Look | null)[]): string =>
 // live (turn it, zoom it, have it follow your face, try an emote), and
 // everything about it beside it. Each change shows at once and is saved
 // for everyone a moment later.
-export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: number): string {
+export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: number, from = "/"): string {
   const st = STYLES.find((x) => x.id === look.words) ?? STYLES[0];
   return layout(
     `${APP}: your avatar`,
@@ -205,7 +208,7 @@ export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: 
   </section>
   <section class="editor" aria-label="Choose how you look">
     <div class="editor-head">
-      <a href="/" class="done">Done</a>
+      <a href="${esc(from)}" class="done">Done</a>
       <div class="history"><button type="button" id="undo" disabled aria-label="Undo">↶ Undo</button><button type="button" id="redo" disabled aria-label="Redo">Redo ↷</button></div>
       <button type="button" class="surprise" id="surprise">Surprise me</button>
     </div>
@@ -251,6 +254,44 @@ const HERO = [[w("say", 2, 2), w("it", -2, 0), w("how", -1, -1), w("you", -2, -1
 export const lineHtml = (l: { name: string; seat: number; text: string; until: number; face?: string | null }, now = Date.now()): string =>
   `<li style="--hue:${hueOf(l.seat)}" data-name="${esc(l.name)}" data-until="${l.until}"><strong>${l.face ? `${esc(l.face)} ` : ""}${esc(l.name)}</strong> <span class="said-text">${esc(l.text)}</span> <time data-at="${l.until}">${ago(l.until, now)}</time></li>`;
 
+// The room someone's in, as the switcher at the top shows it: its name,
+// and a menu of the others to go to, and a way to make one.
+type Here = RoomInfo & { mine: boolean };
+const roomHref = (r: { id: number; slug: string }): string => (r.id === 1 ? "/" : `/r/${r.slug}/`);
+function switcher(here: Here, rooms: (RoomInfo & { lately: number })[]): string {
+  const others = rooms.filter((r) => r.id !== here.id).slice(0, 8);
+  return `<details class="room-switch">
+    <summary><span class="room-switch-name">${esc(here.name)}</span><span class="room-switch-caret" aria-hidden="true"></span></summary>
+    <div class="room-switch-menu" role="menu">
+      ${others.map((r) => `<a role="menuitem" href="${roomHref(r)}"><span>${esc(r.name)}</span>${r.lately ? `<small>${r.lately} lately</small>` : ""}</a>`).join("")}
+      <a role="menuitem" class="all" href="/rooms">All rooms · make one</a>
+    </div>
+  </details>`;
+}
+
+// A room's own settings, for whoever made it: its name, its look, whether
+// it's listed. Changes go to everyone in it at once.
+function roomSettings(here: Here): string {
+  if (!here.mine) return "";
+  const part = (p: keyof typeof SCENE_PARTS, label: string): string =>
+    `<fieldset class="pick scene-pick"><legend>${label}</legend>${(SCENE_PARTS[p] as readonly { id: string; label: string; emoji?: string; colour?: string; colours?: readonly string[] }[])
+      .map(
+        (o) =>
+          `<label><input type="radio" name="${p}" value="${o.id}"${here.scene[p] === o.id ? " checked" : ""}><span${o.colour ? ` class="tint" style="--c:${o.colour}"` : o.colours ? ` class="tint" style="--c:${o.colours[0] ?? "transparent"};--c2:${o.colours[1] ?? "transparent"}"` : ""}>${o.emoji ? `<span aria-hidden="true">${o.emoji}</span> ` : ""}${esc(o.label)}</span></label>`,
+      )
+      .join("")}</fieldset>`;
+  return `<details class="room-settings">
+    <summary>Room settings</summary>
+    <form class="room-settings-body" data-room-settings>
+      <label class="field"><span>Name</span><input name="name" maxlength="40" value="${esc(here.name)}" required></label>
+      <fieldset class="pick scene-pick themes"><legend>Start from</legend>${SCENES.map((t) => `<label><input type="radio" name="theme" value="${t.id}" data-scene="${esc(JSON.stringify(t.scene))}"><span><span aria-hidden="true">${t.emoji}</span> ${esc(t.label)}</span></label>`).join("")}</fieldset>
+      ${part("sky", "Outside")}${part("walls", "Walls")}${part("floor", "Floor")}${part("rug", "Rug")}
+      <label class="check"><input type="checkbox" name="listed"${here.listed ? " checked" : ""}><span>Listed for anyone to find (otherwise only those with the link)</span></label>
+      <p class="fine room-link">Link: <code>${esc(roomHref(here))}</code> <button type="button" class="copy-link">Copy link</button></p>
+    </form>
+  </details>`;
+}
+
 export function roomPage(
   people: { name: string; seat: number }[],
   me: (Person & { seat: number }) | undefined,
@@ -263,6 +304,8 @@ export function roomPage(
   queue: string[] = [],
   away: string[] = [],
   upTo = 0,
+  here: Here = { id: 1, slug: "main", name: "The main room", scene: SCENES[0].scene, listed: true, maker: null, made_at: 0, mine: false },
+  rooms: (RoomInfo & { lately: number })[] = [],
 ): string {
   const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
   const myLook = me ? lookOf(me.name) : null;
@@ -273,57 +316,76 @@ export function roomPage(
     .map((p) => spotHtml(p.name, p.seat, lookOf(p.name), false, expressions.get(p.name), threads.get(p.name), place(p.name), away.includes(p.name)))
     .join("");
   const up = me ? queue.includes(me.name) : false;
+  const count = people.filter((p) => !away.includes(p.name)).length;
 
   // a word of someone else's, tapped, offers these
   const picker = me ? `<div id="react-picker" class="react-picker" role="menu" hidden>${REACTIONS.map((r) => `<button type="button" role="menuitem" data-reaction="${r.id}" title="${r.label}">${r.emoji}</button>`).join("")}</div>` : "";
 
-  // Joined: you on the left (your card, your controls, your avatar), everyone
-  // else on the right, and what you've said that's about to go out along the
-  // bottom. Not joined: a way in, and the room to watch.
+  // Joined: the room (or everyone as cards) on the wide side, and you on the
+  // narrow one: your card, a panel to say something, and the rest of what
+  // you can do in tabs under it. The same in either view. Not joined: a way
+  // in, and the room to watch.
+  const tab = (id: string, label: string, on = false): string => `<button type="button" role="tab" id="tab-${id}" aria-controls="panel-${id}" aria-selected="${on}"${on ? "" : ' tabindex="-1"'}>${label}</button>`;
   const centre = me
     ? `<section class="me" aria-label="You">
         <ul class="mine-card">${mine}</ul>
-        <div class="controls">
-          <button id="talk" type="button" class="talk" aria-pressed="false" disabled><span class="dot"></span><span class="label">Turn on microphone</span></button>
-          <button id="face" type="button" class="face-toggle" aria-pressed="false" hidden><span class="label">Show my face</span></button>
-          <video id="face-preview" class="face-preview" muted playsinline hidden></video>
-          <label class="hands-toggle"><input type="checkbox" id="hands"><span>Hands too</span></label>
-          <label class="voices-toggle" hidden><input type="checkbox" id="voices"><span>🔊 Hear voices</span></label>
-          <label class="voices-toggle natural-toggle" hidden title="Natural-sounding voices, the same on every device: a download, once"><input type="checkbox" id="natural"><span>✨ Natural <small class="natural-size"></small></span></label>
-          <form method="post" action="/hand" class="hand-form"><input type="hidden" name="up" value="${up ? "false" : "true"}"><button id="hand" type="submit" class="hand-toggle" aria-pressed="${up}" title="Raise your hand to speak next (Shift+R)"><span aria-hidden="true">✋</span> <span class="label">${up ? "Lower hand" : "Raise hand"}</span></button></form>
+        <div class="say-panel">
+          <div class="controls">
+            <button id="talk" type="button" class="talk" aria-pressed="false" disabled><span class="dot"></span><span class="label">Turn on microphone</span></button>
+            <form method="post" action="hand" class="hand-form"><input type="hidden" name="up" value="${up ? "false" : "true"}"><button id="hand" type="submit" class="hand-toggle" aria-pressed="${up}" title="Raise your hand to speak next (Shift+R)"><span aria-hidden="true">✋</span> <span class="label">${up ? "Lower hand" : "Raise hand"}</span></button></form>
+          </div>
+          <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
+          ${typeBox(myLook!)}
         </div>
-        <p id="status" class="status" aria-live="polite">Speaking needs JavaScript and a microphone.</p>
-        ${typeBox(myLook!)}
-        <div class="emotes" role="toolbar" aria-label="Emotes: your head does it, for everyone">
-          ${EMOTES.map((em) => `<button type="button" data-emote="${em.id}" title="${em.label} (Shift+${em.key})"><span aria-hidden="true">${em.burst || (em.head === "nod" ? "🙂" : "🙅")}</span><span class="emote-label">${em.label}</span></button>`).join("")}
+        <div class="me-tabs">
+          <div class="tabs" role="tablist" aria-label="More you can do">${tab("emotes", "Emotes", true)}${tab("words", "Your words")}${tab("you", "You")}</div>
+          <div class="tab-panel" role="tabpanel" id="panel-emotes" aria-labelledby="tab-emotes">
+            <div class="emotes" role="toolbar" aria-label="Emotes: your head does it, for everyone">
+              ${EMOTES.map((em) => `<button type="button" data-emote="${em.id}" title="${em.label} (Shift+${em.key})"><span aria-hidden="true">${em.burst || (em.head === "nod" ? "🙂" : "🙅")}</span><span class="emote-label">${em.label}</span></button>`).join("")}
+            </div>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-words" aria-labelledby="tab-words" hidden>
+            <div class="edit-tools" role="toolbar" aria-label="Change the chosen word">
+              <p class="edit-hint">Your latest word is chosen; tap any of yours <span class="keys">(or press <kbd>←</kbd> <kbd>→</kbd>)</span> to choose it instead. Type to change it, live, for everyone.</p>
+              ${EFFECTS.map((fx) => `<button type="button" data-key="${fx.key}" title="${fx.label}" class="fx-button"><kbd>${fx.key}</kbd><span class="w fx-${fx.id}">${fx.label}</span></button>`).join("")}
+              <button type="button" data-key="Backspace" title="Delete"><kbd>⌫</kbd><span>Delete</span></button>
+            </div>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-you" aria-labelledby="tab-you" hidden>
+            <div class="you-tools">
+              <button id="face" type="button" class="face-toggle" aria-pressed="false" hidden><span class="label">Show my face</span></button>
+              <video id="face-preview" class="face-preview" muted playsinline hidden></video>
+              <label class="hands-toggle"><input type="checkbox" id="hands"><span>Hands too</span></label>
+              <label class="voices-toggle" hidden><input type="checkbox" id="voices"><span>🔊 Hear voices</span></label>
+              <label class="voices-toggle natural-toggle" hidden title="Natural-sounding voices, the same on every device: a download, once"><input type="checkbox" id="natural"><span>✨ Natural <small class="natural-size"></small></span></label>
+            </div>
+            <a class="customise-link" href="/studio${here.id === 1 ? "" : `?from=${encodeURIComponent(here.slug)}`}">Customise your avatar <span aria-hidden="true">→</span></a>
+          </div>
         </div>
-        <div class="edit-tools" role="toolbar" aria-label="Change the chosen word">
-          <p class="edit-hint">Your latest word is chosen; tap any of yours <span class="keys">(or press <kbd>←</kbd> <kbd>→</kbd>)</span> to choose it instead. Type to change it, live, for everyone.</p>
-          ${EFFECTS.map((fx) => `<button type="button" data-key="${fx.key}" title="${fx.label}" class="fx-button"><kbd>${fx.key}</kbd><span class="w fx-${fx.id}">${fx.label}</span></button>`).join("")}
-          <button type="button" data-key="Backspace" title="Delete"><kbd>⌫</kbd><span>Delete</span></button>
-        </div>
-        <a class="customise-link" href="/studio">Customise your avatar <span aria-hidden="true">→</span></a>
       </section>`
     : `<section class="me join-card" aria-labelledby="join-h">
         <p class="hero-words words" aria-hidden="true">${HERO}</p>
-        <h2 id="join-h">Join the room</h2>
+        <h2 id="join-h">${here.id === 1 ? "Join the room" : `Join ${esc(here.name)}`}</h2>
         <p class="fine">Pick a name and talk. Everyone here sees your words as you say them, drawn the way you said them, and your avatar pulls the faces you pull.</p>
         ${notice}
-        <form method="post" action="/join" class="join">
+        <form method="post" action="join" class="join">
           <label for="name" class="visually-hidden">Your name</label>
           <input id="name" name="name" maxlength="20" required autocomplete="nickname" placeholder="Your name">
           <button>Join</button>
         </form>
       </section>`;
 
-
   return layout(
-    `${APP}: say it how you mean it`,
-    `<main class="room${me ? " joined" : ""}">
-  <h1 class="visually-hidden">${APP}: say it how you mean it</h1>
+    here.id === 1 ? `${APP}: say it how you mean it` : `${here.name} · ${APP}`,
+    `<main class="room${me ? " joined" : ""}" data-room="${here.id}" data-scene="${esc(JSON.stringify(here.scene))}">
+  <h1 class="visually-hidden">${here.id === 1 ? `${APP}: say it how you mean it` : `${esc(here.name)}, in ${APP}`}</h1>
   ${centre}${picker}
   <section class="others" aria-labelledby="others-h">
-    <div class="others-head"><h2 id="others-h">In the room</h2><div class="view-switch" role="radiogroup" aria-label="How to see everyone" hidden><label><input type="radio" name="view" value="cards" checked><span>Cards</span></label><label><input type="radio" name="view" value="room"><span>Room</span></label></div><p id="live" class="live" role="status" hidden></p></div>
+    <div class="others-head">
+      <h2 id="others-h"><span class="room-title">${esc(here.name)}</span> <span class="room-count" id="room-count">${count ? `${count} here` : ""}</span></h2>
+      <div class="view-switch" role="radiogroup" aria-label="How to see everyone" hidden><label><input type="radio" name="view" value="cards" checked><span>Cards</span></label><label><input type="radio" name="view" value="room"><span>Room</span></label></div><p id="live" class="live" role="status" hidden></p>
+    </div>
+    ${roomSettings(here)}
     <p id="queue" class="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
     <div id="room3d" class="room3d" tabindex="0" aria-label="The room, drawn. W, A, S and D, or a tap on the floor, walk you about it. Drag or use the arrow keys to look round, scroll, pinch or press plus and minus to zoom, 0 to put it back." hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div>
       <div class="room-bar"><div class="room-views" role="radiogroup" aria-label="Look at the room">${[["follow", "Everyone"], ["speaker", "Speaker"], ["wide", "Wide"], ["above", "Above"], ["me", "Me"]].map(([v, l]) => `<label${v === "me" ? ' class="room-me"' : ""}><input type="radio" name="room-view" value="${v}"${v === "follow" ? " checked" : ""}><span>${l}</span></label>`).join("")}</div><button type="button" class="room-reset" title="Put the camera back">Reset</button><button type="button" class="room-sit" title="Back to your chair">Sit</button></div>
@@ -337,7 +399,7 @@ export function roomPage(
       <p class="room-hint" aria-hidden="true">W A S D or tap the floor to walk · drag to look round · scroll or pinch to zoom</p>
     </div>
     <ul id="stage" class="stage" data-up-to="${upTo}">${others}</ul>
-    <p id="nobody" class="fine" ${others ? "hidden" : ""}>Nobody else is here yet.</p>
+    <p id="nobody" class="fine" ${others ? "hidden" : ""}>${here.id === 1 ? "Nobody else is here yet." : `Nobody else is here yet. <button type="button" class="copy-link">Copy the link</button> to bring someone.`}</p>
   </section>
   <details class="record-wrap">
     <summary><h2 id="record-h">Lately</h2></summary>
@@ -347,7 +409,49 @@ export function roomPage(
   <p id="heard" class="visually-hidden" aria-live="polite"></p>
 </main>`,
     `<script type="module" src="/js/client.ts"></script>`,
+    HELP,
+    switcher(here, rooms),
   );
+}
+
+// Every room: the ones anyone can find (and yours that aren't), each with
+// how it looks and who's in it, and a way to make another.
+export function roomsPage(rooms: (RoomInfo & { lately: number; here: number; mine: boolean })[], joined: boolean, msg?: string): string {
+  const notice = msg && MESSAGES[msg] ? `<p class="notice" role="alert">${MESSAGES[msg]}</p>` : "";
+  const card = (r: (typeof rooms)[number]): string => {
+    const wall = SCENE_PARTS.walls.find((x) => x.id === r.scene.walls)?.colour ?? "#434c66";
+    const floor = SCENE_PARTS.floor.find((x) => x.id === r.scene.floor)?.colour ?? "#a8774c";
+    const rug = SCENE_PARTS.rug.find((x) => x.id === r.scene.rug)?.colours[0] ?? "transparent";
+    const sky = SCENE_PARTS.sky.find((x) => x.id === r.scene.sky);
+    return `<li><a class="room-card" href="${roomHref(r)}" style="--wall:${wall};--floor:${floor};--rug:${rug}" data-sky="${r.scene.sky}">
+      <span class="room-card-art" aria-hidden="true"><span class="win"></span><span class="rugdot"></span><span class="sky-emoji">${sky?.emoji ?? ""}</span></span>
+      <span class="room-card-text"><strong>${esc(r.name)}</strong><small>${r.here ? `${r.here} here now` : r.lately ? `${r.lately} talked lately` : "Quiet"}${r.listed ? "" : " · link only"}${r.mine ? " · yours" : ""}</small></span>
+    </a></li>`;
+  };
+  const make = joined
+    ? `<form method="post" action="/rooms" class="make-room">
+        <h2>Make a room</h2>
+        ${notice}
+        <label class="field"><span>Name</span><input name="name" maxlength="40" required placeholder="Book club, Team stand-up…"></label>
+        <fieldset class="pick scene-pick themes"><legend>Looks like</legend>${SCENES.map((t, i) => `<label><input type="radio" name="theme" value="${t.id}"${i === 0 ? " checked" : ""}><span><span aria-hidden="true">${t.emoji}</span> ${esc(t.label)}</span></label>`).join("")}</fieldset>
+        <fieldset class="pick"><legend>Who finds it</legend><label><input type="radio" name="listed" value="yes" checked><span>Anyone, listed here</span></label><label><input type="radio" name="listed" value="no"><span>Only those with the link</span></label></fieldset>
+        <button class="primary">Make it</button>
+        <p class="fine">You can change how it looks once you're in it. Everyone in it sees what's said there, and only there.</p>
+      </form>`
+    : `<div class="make-room"><h2>Make a room</h2>${notice}<p class="fine">Join first (pick a name in <a href="/">the main room</a>), then make one of your own here.</p></div>`;
+  return layout(
+    `Rooms · ${APP}`,
+    `<main class="rooms-page">
+  <h1>Rooms</h1>
+  <p class="lede">Each room is its own space: its own people, its own look, and what's said there stays there.</p>
+  <ul class="room-cards">${rooms.map(card).join("")}</ul>
+  ${make}
+</main>`,
+  );
+}
+
+export function notFoundPage(): string {
+  return layout(`Not here · ${APP}`, `<main class="prose"><h1>No room here</h1><p>There's no room at this address. It may have been a typo, or the link's from somewhere else. <a href="/rooms">See every room</a>.</p></main>`);
 }
 
 export function readmePage(html: string): string {

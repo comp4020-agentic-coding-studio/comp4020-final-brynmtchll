@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { compare, textOf, USUAL_OVER, type Usual, type Voice, type Word } from "./voice.ts";
-import { fullLook, lookFor, type Look } from "./packs.ts";
+import { cleanScene, DEFAULT_SCENE, fullLook, fullScene, lookFor, type Look, type Scene } from "./packs.ts";
 
 export type Person = { id: string; name: string; joined_at: number };
 
@@ -9,12 +9,19 @@ export type Person = { id: string; name: string; joined_at: number };
 // sound, as worked out when they said it; and whether it was typed instead
 export type Message = { id: number; name: string; text: string; words: Word[]; usual: Usual | null; at: number; typed?: true };
 
+// A room people talk in. The first, the main room, is everyone's and has no
+// maker; anyone who's joined can make another, with a name, a look, and
+// whether it's listed for anyone to find or only for those given its link.
+// Its slug is its address (/r/<slug>/), made from its name.
+export type RoomInfo = { id: number; slug: string; name: string; scene: Scene; listed: boolean; maker: string | null; made_at: number };
+
 export type JoinResult = { ok: true } | { ok: false; reason: "name-bad" | "name-taken" };
 
 type MessageRow = { id: number; name: string; text: string; words: string; usual: string | null; at: number; typed: number | null };
 
 // The room lives in one SQLite file: who has joined, and everything they've
 // said. `now` is injectable so time can be pinned in a check.
+export const MAIN = 1;
 export function openRoom(file: string, now: () => number = Date.now) {
   const db = new DatabaseSync(file);
   db.exec(`
@@ -45,6 +52,23 @@ export function openRoom(file: string, now: () => number = Date.now) {
   if (!columns.includes("face")) db.exec("ALTER TABLE messages ADD COLUMN face TEXT");
   // 1 for a message typed rather than said (its shape is the one asked for)
   if (!columns.includes("typed")) db.exec("ALTER TABLE messages ADD COLUMN typed INTEGER");
+  // which room it was said in (null, for one from before there were rooms, is
+  // the main room's)
+  if (!columns.includes("room")) db.exec("ALTER TABLE messages ADD COLUMN room INTEGER");
+  db.exec("UPDATE messages SET room = 1 WHERE room IS NULL");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name TEXT NOT NULL,
+      scene TEXT,
+      listed INTEGER NOT NULL DEFAULT 1,
+      maker TEXT REFERENCES people(id),
+      made_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS messages_by_room ON messages (room, id);
+  `);
+  if (!db.prepare("SELECT 1 FROM rooms WHERE id = 1").get()) db.prepare("INSERT INTO rooms (id, slug, name, scene, listed, maker, made_at) VALUES (1, 'main', 'The main room', NULL, 1, NULL, ?)").run(now());
   // a phrase every second or two per person adds up: who's been speaking
   // lately and someone's last few voices are looked up by person, newest first
   db.exec("CREATE INDEX IF NOT EXISTS messages_by_person ON messages (person_id, id)");
@@ -123,8 +147,8 @@ export function openRoom(file: string, now: () => number = Date.now) {
   // theirs, not a change to the word). Returns the word's reactions after,
   // as counts, or null if there's no such word.
   type Counts = Record<string, number>;
-  function react(personId: string, messageId: number, index: number, reaction: string): { counts: Counts; on: boolean; owner: string } | null {
-    const row = db.prepare("SELECT m.words, p.name FROM messages m JOIN people p ON p.id = m.person_id WHERE m.id = ?").get(messageId) as { words: string; name: string } | undefined;
+  function react(personId: string, messageId: number, index: number, reaction: string, room = MAIN): { counts: Counts; on: boolean; owner: string } | null {
+    const row = db.prepare("SELECT m.words, p.name FROM messages m JOIN people p ON p.id = m.person_id WHERE m.id = ? AND m.room = ?").get(messageId, room) as { words: string; name: string } | undefined;
     if (!row || !Number.isInteger(index) || index < 0 || index >= (JSON.parse(row.words) as Word[]).length) return null;
     const had = db.prepare("SELECT reaction FROM reactions WHERE message_id = ? AND word = ? AND person_id = ?").get(messageId, index, personId) as { reaction: string } | undefined;
     const on = had?.reaction !== reaction;
@@ -153,11 +177,11 @@ export function openRoom(file: string, now: () => number = Date.now) {
 
   // words and voice have already been through clean() and cleanVoice()
   // (a typed one has no voice, so isn't compared with their usual)
-  function say(personId: string, words: Word[], voice: Voice | null = null, face: string | null = null, typed = false): Message {
+  function say(personId: string, words: Word[], voice: Voice | null = null, face: string | null = null, typed = false, room = MAIN): Message {
     const usual = voice && !typed ? compare(voice, voices(personId)) : null;
     const { lastInsertRowid } = db
-      .prepare("INSERT INTO messages (person_id, text, words, voice, usual, face, typed, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(personId, textOf(words), JSON.stringify(words), typed ? null : voice && JSON.stringify(voice), usual && JSON.stringify(usual), face, typed ? 1 : null, now());
+      .prepare("INSERT INTO messages (person_id, text, words, voice, usual, face, typed, at, room) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(personId, textOf(words), JSON.stringify(words), typed ? null : voice && JSON.stringify(voice), usual && JSON.stringify(usual), face, typed ? 1 : null, now(), room);
     return toMessage(db.prepare(`${SELECT} WHERE m.id = ?`).get(lastInsertRowid) as MessageRow);
   }
 
@@ -166,8 +190,8 @@ export function openRoom(file: string, now: () => number = Date.now) {
   // the message must be theirs, or nothing changes and null comes back. A
   // message left with no words is removed.
   type Edit = { text?: string; effect?: string | null; remove?: boolean };
-  function edit(personId: string, messageId: number, index: number, change: Edit): Message | "removed" | null {
-    const row = db.prepare("SELECT person_id, words FROM messages WHERE id = ?").get(messageId) as { person_id: string; words: string } | undefined;
+  function edit(personId: string, messageId: number, index: number, change: Edit, room = MAIN): Message | "removed" | null {
+    const row = db.prepare("SELECT person_id, words FROM messages WHERE id = ? AND room = ?").get(messageId, room) as { person_id: string; words: string } | undefined;
     if (!row || row.person_id !== personId) return null;
     const words = JSON.parse(row.words) as Word[];
     if (!Number.isInteger(index) || index < 0 || index >= words.length) return null;
@@ -199,9 +223,9 @@ export function openRoom(file: string, now: () => number = Date.now) {
 
   // each person's last few messages, oldest first: what their thread shows
   // (with the reactions on each word)
-  const threads = (perPerson = 30): Map<string, (Message & { reactions: Record<number, Counts> })[]> => {
+  const threads = (perPerson = 30, room = MAIN): Map<string, (Message & { reactions: Record<number, Counts> })[]> => {
     const out = new Map<string, (Message & { reactions: Record<number, Counts> })[]>();
-    for (const m of (db.prepare(`${SELECT} ORDER BY m.id DESC LIMIT 600`).all() as MessageRow[]).map((r) => ({ ...toMessage(r), reactions: reactionsOn(Number(r.id)) }))) {
+    for (const m of (db.prepare(`${SELECT} WHERE m.room = ? ORDER BY m.id DESC LIMIT 600`).all(room) as MessageRow[]).map((r) => ({ ...toMessage(r), reactions: reactionsOn(Number(r.id)) }))) {
       const list = out.get(m.name) ?? [];
       if (list.length < perPerson) list.unshift(m);
       out.set(m.name, list);
@@ -210,13 +234,13 @@ export function openRoom(file: string, now: () => number = Date.now) {
   };
 
   // the latest messages, newest first
-  const recent = (limit = 50): Message[] =>
-    (db.prepare(`${SELECT} ORDER BY m.id DESC LIMIT ?`).all(limit) as MessageRow[]).map(toMessage);
+  const recent = (limit = 50, room = MAIN): Message[] =>
+    (db.prepare(`${SELECT} WHERE m.room = ? ORDER BY m.id DESC LIMIT ?`).all(room, limit) as MessageRow[]).map(toMessage);
 
   // everything said after a given message, oldest first: what a reconnecting
   // page missed while it was away
-  const since = (id: number, limit = 200): Message[] =>
-    (db.prepare(`${SELECT} WHERE m.id > ? ORDER BY m.id ASC LIMIT ?`).all(id, limit) as MessageRow[]).map(toMessage);
+  const since = (id: number, limit = 200, room = MAIN): Message[] =>
+    (db.prepare(`${SELECT} WHERE m.id > ? AND m.room = ? ORDER BY m.id ASC LIMIT ?`).all(id, room, limit) as MessageRow[]).map(toMessage);
 
   // Who stands on the stage, and where: everyone who has said something in
   // the last WHILE, or joined in that time, most recent first, at most
@@ -224,19 +248,40 @@ export function openRoom(file: string, now: () => number = Date.now) {
   // join order, as `seat`), so nobody moves when someone arrives or leaves,
   // and every page puts them in the same spot.
   const WHILE = 60 * 60_000;
-  const people = (limit = 16): { name: string; seat: number }[] =>
-    (
-      db
-        .prepare(
-          `SELECT p.name, p.rowid AS seat, MAX(COALESCE(MAX(m.at), 0), p.joined_at) AS last FROM people p
-           LEFT JOIN messages m ON m.person_id = p.id
-           GROUP BY p.id HAVING last > ? ORDER BY last DESC LIMIT ?`,
-        )
-        .all(now() - WHILE, limit) as { name: string; seat: number }[]
-    ).map((r) => ({ name: r.name, seat: Number(r.seat) }));
+  // In another room than the main one, it's who's said something there, and
+  // who's in it now (`here`, from the server, which knows whose pages are
+  // open where); joining puts someone in the main room only.
+  const people = (limit = 16, room = MAIN, here: string[] = []): { name: string; seat: number }[] => {
+    const rows = (
+      room === MAIN
+        ? db
+            .prepare(
+              `SELECT p.name, p.rowid AS seat, MAX(COALESCE(MAX(m.at), 0), p.joined_at) AS last FROM people p
+               LEFT JOIN messages m ON m.person_id = p.id AND m.room = 1
+               GROUP BY p.id HAVING last > ? ORDER BY last DESC LIMIT ?`,
+            )
+            .all(now() - WHILE, limit)
+        : db
+            .prepare(
+              `SELECT p.name, p.rowid AS seat, MAX(m.at) AS last FROM people p
+               JOIN messages m ON m.person_id = p.id AND m.room = ?
+               GROUP BY p.id HAVING last > ? ORDER BY last DESC LIMIT ?`,
+            )
+            .all(room, now() - WHILE, limit)
+    ) as { name: string; seat: number }[];
+    const out = rows.map((r) => ({ name: r.name, seat: Number(r.seat) }));
+    // (whoever's in it now and hasn't spoken yet, first: they've just come)
+    for (const name of here) {
+      if (out.some((p) => p.name === name)) continue;
+      const seat = (db.prepare("SELECT rowid AS seat FROM people WHERE name = ?").get(name) as { seat: number } | undefined)?.seat;
+      if (seat !== undefined) out.unshift({ name, seat: Number(seat) });
+    }
+    return out.slice(0, limit);
+  };
   const seatOf = (name: string): number =>
     Number((db.prepare("SELECT rowid AS seat FROM people WHERE name = ?").get(name) as { seat: number } | undefined)?.seat ?? 0);
 
+  // (ids run across every room, so a page's place in one is just the newest)
   const newest = (): number => Number((db.prepare("SELECT COALESCE(MAX(id), 0) AS n FROM messages").get() as { n: number }).n);
 
   // A brief record of what's been said lately: each person's words joined
@@ -245,14 +290,14 @@ export function openRoom(file: string, now: () => number = Date.now) {
   // so this is what makes the room legible to someone who's just arrived.
   const LINE_BREAK = 8_000; // ms
   type Line = { name: string; seat: number; text: string; at: number; until: number; face: string | null };
-  function record(lines = 12, scan = 400): Line[] {
+  function record(lines = 12, scan = 400, room = MAIN): Line[] {
     const rows = (
       db
         .prepare(
           `SELECT p.name, p.rowid AS seat, m.text, m.at, m.face FROM messages m JOIN people p ON p.id = m.person_id
-           ORDER BY m.id DESC LIMIT ?`,
+           WHERE m.room = ? ORDER BY m.id DESC LIMIT ?`,
         )
-        .all(scan) as { name: string; seat: number; text: string; at: number; face: string | null }[]
+        .all(room, scan) as { name: string; seat: number; text: string; at: number; face: string | null }[]
     ).reverse();
     const out: Line[] = [];
     for (const r of rows) {
@@ -267,7 +312,69 @@ export function openRoom(file: string, now: () => number = Date.now) {
     return out.slice(-lines);
   }
 
-  return { findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, savedLooks, saveLook, close: () => db.close() };
+  // ---- rooms ----
+  type RoomRow = { id: number; slug: string; name: string; scene: string | null; listed: number; maker: string | null; made_at: number };
+  const toRoom = (r: RoomRow): RoomInfo => ({ id: Number(r.id), slug: r.slug, name: r.name, scene: fullScene(r.scene ? JSON.parse(r.scene) : null), listed: !!r.listed, maker: r.maker, made_at: Number(r.made_at) });
+  const roomBySlug = (slug: string): RoomInfo | undefined => {
+    const r = db.prepare("SELECT * FROM rooms WHERE slug = ?").get(slug) as RoomRow | undefined;
+    return r && toRoom(r);
+  };
+  const roomById = (id: number): RoomInfo | undefined => {
+    const r = db.prepare("SELECT * FROM rooms WHERE id = ?").get(id) as RoomRow | undefined;
+    return r && toRoom(r);
+  };
+  // the rooms anyone can find, and any of yours that aren't, the main room
+  // first, then the busiest lately; each with how many have spoken in it in
+  // the last WHILE
+  function rooms(personId?: string): (RoomInfo & { lately: number })[] {
+    return (
+      db
+        .prepare(
+          `SELECT r.*, (SELECT COUNT(DISTINCT m.person_id) FROM messages m WHERE m.room = r.id AND m.at > ?) AS lately,
+             (SELECT MAX(m.at) FROM messages m WHERE m.room = r.id) AS last
+           FROM rooms r WHERE r.listed = 1 OR r.maker = ? ORDER BY r.id = 1 DESC, COALESCE(last, r.made_at) DESC LIMIT 60`,
+        )
+        .all(now() - WHILE, personId ?? "") as (RoomRow & { lately: number })[]
+    ).map((r) => ({ ...toRoom(r), lately: Number(r.lately) }));
+  }
+  // A room's address from its name: lower case, letters and digits joined
+  // by dashes, made unique with a number if it's taken.
+  const slugOf = (name: string): string => {
+    const base = name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "room";
+    let slug = base;
+    for (let n = 2; db.prepare("SELECT 1 FROM rooms WHERE slug = ?").get(slug) || slug === "main"; n++) slug = `${base}-${n}`;
+    return slug;
+  };
+  const MOST_ROOMS_EACH = 12;
+  type MakeResult = { ok: true; room: RoomInfo } | { ok: false; reason: "room-name-bad" | "too-many-rooms" | "not-a-scene" };
+  // a name as a person's is cleaned: no invisible characters, 1 to 40 long
+  const cleanName = (raw: string, most: number): string | null => {
+    const name = raw.normalize("NFKC").replace(/[\p{Cf}\p{Cc}]/gu, "").trim().replace(/\s+/g, " ");
+    return name.length >= 1 && name.length <= most ? name : null;
+  };
+  function makeRoom(personId: string, rawName: string, scene: unknown, listed: boolean): MakeResult {
+    const name = cleanName(rawName, 40);
+    if (!name) return { ok: false, reason: "room-name-bad" };
+    const clean = scene === undefined ? DEFAULT_SCENE : cleanScene(scene);
+    if (!clean) return { ok: false, reason: "not-a-scene" };
+    if (Number((db.prepare("SELECT COUNT(*) AS n FROM rooms WHERE maker = ?").get(personId) as { n: number }).n) >= MOST_ROOMS_EACH) return { ok: false, reason: "too-many-rooms" };
+    const { lastInsertRowid } = db.prepare("INSERT INTO rooms (slug, name, scene, listed, maker, made_at) VALUES (?, ?, ?, ?, ?, ?)").run(slugOf(name), name, JSON.stringify(clean), listed ? 1 : 0, personId, now());
+    return { ok: true, room: roomById(Number(lastInsertRowid))! };
+  }
+  // A change to a room: only by whoever made it (the main room has nobody
+  // who did, so it can't be changed). Null if it's not theirs or not a change.
+  function changeRoom(personId: string, id: number, change: { name?: unknown; scene?: unknown; listed?: unknown }): RoomInfo | null {
+    const r = roomById(id);
+    if (!r || !r.maker || r.maker !== personId) return null;
+    const name = change.name === undefined ? r.name : typeof change.name === "string" ? cleanName(change.name, 40) : null;
+    const scene = change.scene === undefined ? r.scene : cleanScene(change.scene, r.scene);
+    const listed = change.listed === undefined ? r.listed : typeof change.listed === "boolean" ? change.listed : null;
+    if (!name || !scene || listed === null) return null;
+    db.prepare("UPDATE rooms SET name = ?, scene = ?, listed = ? WHERE id = ?").run(name, JSON.stringify(scene), listed ? 1 : 0, id);
+    return roomById(id)!;
+  }
+
+  return { findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, savedLooks, saveLook, rooms, roomBySlug, roomById, makeRoom, changeRoom, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;
