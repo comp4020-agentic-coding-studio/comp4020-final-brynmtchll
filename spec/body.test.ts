@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { bodyFrom, cleanBody, GESTURE_ARMS, GESTURES, handFrom, handPoints, RESTING, type Curl, type Seen, type Side } from "../src/body.ts";
+import { bodyFrom, cleanBody, EMOTE_BODIES, GESTURE_ARMS, GESTURES, handFrom, handPoints, RESTING, type Curl, type Seen, type Side } from "../src/body.ts";
 import { EMOTES } from "../src/packs.ts";
 
 // Arms and hands read off a camera, checked on what MediaPipe read from real
@@ -110,6 +110,9 @@ describe("what arms do in an emote", () => {
   it("gives every emote's arm a pose, and every gesture that does an emote is one MediaPipe names", () => {
     for (const em of EMOTES) {
       if ("arm" in em) expect(GESTURE_ARMS[em.arm], em.id).toBeTruthy();
+      if ("body" in em) expect(EMOTE_BODIES[em.body], em.id).toBeTruthy();
+      // (one arm or both, never two things at once)
+      expect("arm" in em && "body" in em, em.id).toBe(false);
       if ("gesture" in em) expect(GESTURES as readonly string[]).toContain(em.gesture);
     }
     const gestures = EMOTES.flatMap((em) => ("gesture" in em ? [em.gesture] : []));

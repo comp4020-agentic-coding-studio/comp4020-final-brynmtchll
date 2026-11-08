@@ -119,27 +119,27 @@ export const voiceOf = (id: unknown): VoiceChoice => VOICES.find((v) => v.id ===
 // `detail` the parts of it the expression alone can't (arkit.ts Detail: eyes
 // crinkled shut with a laugh, one brow up and the mouth to one side for a
 // "hmm", a wink with a peace sign), `arm`
-// what their arm does (body.ts GESTURE_ARMS). Some go off by themselves when
+// what their arm does (body.ts GESTURE_ARMS), or both arms (EMOTE_BODIES). Some go off by themselves when
 // the face does (`when`: an expression held), or a hand does (`gesture`:
 // MediaPipe's name for it, held up to the camera).
 export const EMOTES = [
   { id: "nod", label: "Nod", key: "N", head: "nod", burst: "", face: { smile: 0.3 }, detail: { cheekUp: 0.3, press: 0.3 } },
   { id: "shake", label: "No", key: "X", head: "shake", burst: "", face: { frown: 0.5 }, detail: { press: 0.6, downL: 0.35, downR: 0.35 } },
-  { id: "laugh", label: "Laugh", key: "L", head: "bounce", burst: "😂", face: { smile: 1, open: 0.7 }, when: { smile: 0.85, open: 0.5 }, detail: { squintL: 0.9, squintR: 0.9, cheekUp: 1, lidL: 0.4, lidR: 0.4, innerUp: 0.3 } },
+  { id: "laugh", label: "Laugh", key: "L", head: "bounce", burst: "😂", body: "belly", face: { smile: 1, open: 0.7 }, when: { smile: 0.85, open: 0.5 }, detail: { squintL: 0.9, squintR: 0.9, cheekUp: 1, lidL: 0.4, lidR: 0.4, innerUp: 0.3 } },
   { id: "love", label: "Love", key: "H", head: "tilt", burst: "❤️", face: { smile: 0.8 }, arm: "love", gesture: "ILoveYou", detail: { squintL: 0.5, squintR: 0.5, cheekUp: 0.7, innerUp: 0.4, lidL: 0.2, lidR: 0.2 } },
-  { id: "wow", label: "Wow", key: "W", head: "back", burst: "❗", face: { browUp: 1, open: 0.6, wide: 1 }, when: { browUp: 0.8, open: 0.55 }, detail: { funnel: 0.5 } },
+  { id: "wow", label: "Wow", key: "W", head: "back", burst: "❗", body: "cheeks", face: { browUp: 1, open: 0.6, wide: 1 }, when: { browUp: 0.8, open: 0.55 }, detail: { funnel: 0.5 } },
   { id: "think", label: "Hmm", key: "T", head: "tilt", burst: "💭", face: { brow: 1, smirk: -0.4, lookY: 0.7, lookX: 0.5 }, arm: "chin", detail: { squintL: 0.5, downL: 0.4, press: 0.4, mouthSide: -0.5, rollIn: 0.3 } },
   { id: "idea", label: "Idea", key: "I", head: "back", burst: "💡", face: { browUp: 0.7, smile: 0.6, wide: 0.6 }, arm: "point", gesture: "Pointing_Up", detail: { wideL: 0.9, wideR: 0.9, jaw: 0.25 } },
-  { id: "sad", label: "Sad", key: "S", head: "droop", burst: "🌧️", face: { frown: 1, browUp: 0.6 }, detail: { innerUp: 1, shrug: 0.7, lidL: 0.3, lidR: 0.3, lookY: -0.5 } },
-  { id: "angry", label: "Grr", key: "G", head: "shake", burst: "💢", face: { browDown: 1, frown: 0.7, sneer: 0.6 }, detail: { squintL: 0.5, squintR: 0.5, upperUp: 0.6, stretchL: 0.4, stretchR: 0.4 } },
+  { id: "sad", label: "Sad", key: "S", head: "droop", burst: "🌧️", body: "slump", face: { frown: 1, browUp: 0.6 }, detail: { innerUp: 1, shrug: 0.7, lidL: 0.3, lidR: 0.3, lookY: -0.5 } },
+  { id: "angry", label: "Grr", key: "G", head: "shake", burst: "💢", body: "fists", face: { browDown: 1, frown: 0.7, sneer: 0.6 }, detail: { squintL: 0.5, squintR: 0.5, upperUp: 0.6, stretchL: 0.4, stretchR: 0.4 } },
   { id: "party", label: "Party", key: "P", head: "bounce", burst: "🎉", face: { smile: 1, open: 0.4, wide: 0.5 }, arm: "pump", detail: { cheekUp: 0.8, squintL: 0.4, squintR: 0.4, tongue: 0.3 } },
-  { id: "sleep", label: "Zzz", key: "Z", head: "droop", burst: "💤", face: { blink: 1 }, detail: { jaw: 0.18, rollIn: 0.2 } },
-  { id: "cool", label: "Cool", key: "C", head: "tilt", burst: "😎", face: { smirk: 0.8, smile: 0.4 }, detail: { lidL: 0.45, lidR: 0.45, outerUpL: 0.4, dimpleR: 0.6 } },
+  { id: "sleep", label: "Zzz", key: "Z", head: "droop", burst: "💤", body: "pillow", face: { blink: 1 }, detail: { jaw: 0.18, rollIn: 0.2 } },
+  { id: "cool", label: "Cool", key: "C", head: "tilt", burst: "😎", body: "folded", face: { smirk: 0.8, smile: 0.4 }, detail: { lidL: 0.45, lidR: 0.45, outerUpL: 0.4, dimpleR: 0.6 } },
   { id: "yes", label: "Yes", key: "Y", head: "nod", burst: "👍", face: { smile: 0.6 }, arm: "thumbs", gesture: "Thumb_Up", detail: { press: 0.5, cheekUp: 0.5, innerUp: 0.2 } },
   { id: "boo", label: "Boo", key: "B", head: "shake", burst: "👎", face: { frown: 0.6, browDown: 0.4 }, arm: "boo", gesture: "Thumb_Down", detail: { shrug: 0.8, pucker: 0.3 } },
   { id: "hi", label: "Hi", key: "O", head: "tilt", burst: "👋", face: { smile: 0.7 }, arm: "wave", gesture: "Open_Palm", detail: { cheekUp: 0.6, innerUp: 0.4, wideL: 0.3, wideR: 0.3, jaw: 0.2 } },
   { id: "peace", label: "Peace", key: "V", head: "tilt", burst: "✌️", face: { smile: 0.5, smirk: 0.3 }, arm: "peace", gesture: "Victory", detail: { lidR: 0.95, squintR: 0.6, cheekUp: 0.5, tongue: 0.25 } },
-] as const satisfies readonly (Choice & { key: string; head: string; burst: string; face: Record<string, number>; when?: Record<string, number>; arm?: string; gesture?: string; detail?: Record<string, number> })[];
+] as const satisfies readonly (Choice & { key: string; head: string; burst: string; face: Record<string, number>; when?: Record<string, number>; arm?: string; body?: string; gesture?: string; detail?: Record<string, number> })[];
 export type Emote = (typeof EMOTES)[number];
 export const emoteOf = (id: unknown): Emote | undefined => EMOTES.find((e) => e.id === id);
 

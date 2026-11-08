@@ -277,6 +277,31 @@ export const GESTURE_ARMS: Record<string, Arm> = {
   chin: { upper: unit([-0.05, -0.75, 0.66]), fore: unit([-0.6, 0.78, 0.2]), hand: { curl: [0.3, 0.2, 0.9, 0.95, 0.95], point: unit([-0.35, 0.9, 0.2]), palm: unit([-0.3, 0, -1]) } },
 };
 
+// What an emote does with both arms (packs.ts EMOTES `body`), as drawn: a
+// hand on the belly for a laugh, hands up by the cheeks for a wow, arms
+// hanging low and forward for sad, fists clenched in front for grr, palms
+// together under the chin to sleep on, arms folded for cool.
+const fist = (point: Vec, palm: Vec): Hand => ({ curl: [0.9, 1, 1, 1, 1], point: unit(point), palm: unit(palm) });
+const open = (curl: number, point: Vec, palm: Vec): Hand => ({ curl: [curl, curl, curl, curl, curl], point: unit(point), palm: unit(palm) });
+const both = (right: Arm, left: Arm = mirrored(right)): { left: Arm; right: Arm } => ({ left, right });
+export const EMOTE_BODIES: Record<string, { left: Arm; right: Arm }> = {
+  // (one hand on the belly, the other loose)
+  belly: both({ upper: unit([0.2, -0.95, 0.3]), fore: unit([-0.85, 0.05, 0.5]), hand: open(0.2, [-0.85, 0, 0.5], [0, 0, -1]) }, RESTING.left),
+  cheeks: both({ upper: unit([0.35, -0.65, 0.65]), fore: unit([-0.35, 1, 0.15]), hand: open(0.08, [-0.2, 1, 0.1], [-0.9, 0, -0.3]) }),
+  slump: both({ upper: unit([0.12, -0.95, 0.3]), fore: unit([0, -0.85, 0.55]), hand: open(0.45, [0, -0.9, 0.45], [-1, 0, 0]) }),
+  // (fists clenched in front at the waist, elbows out)
+  fists: both({ upper: unit([0.55, -0.8, 0.25]), fore: unit([-0.35, 0.15, 0.92]), hand: fist([-0.3, 0.15, 0.94], [0, -1, 0]) }),
+  // (palms together under the chin, as a pillow)
+  pillow: both(
+    { upper: unit([0.15, -0.55, 0.8]), fore: unit([-0.55, 0.8, 0.25]), hand: open(0.15, [-0.45, 0.85, 0.2], [-0.9, 0, -0.35]) },
+    { upper: unit([-0.05, -0.6, 0.8]), fore: unit([0.5, 0.82, 0.25]), hand: open(0.15, [0.45, 0.85, 0.2], [0.9, 0, -0.35]) },
+  ),
+  folded: both(
+    { upper: unit([0.3, -0.85, 0.45]), fore: unit([-0.95, 0.1, 0.3]), hand: open(0.35, [-0.95, 0.05, 0.3], [0, 0, -1]) },
+    { upper: unit([-0.3, -0.88, 0.38]), fore: unit([0.95, 0.15, 0.28]), hand: open(0.35, [0.95, 0.1, 0.28], [0, 0, 1]) },
+  ),
+};
+
 // A hand up to speak next (packs.ts has no emote for it: it stays up until
 // it's their turn, or they put it down)
 export const HAND_UP: Arm = { upper: unit([0.42, 0.6, 0.2]), fore: unit([0.04, 1, 0.05]), hand: { curl: [0.15, 0.05, 0.05, 0.05, 0.1], point: unit([0.02, 1, 0]), palm: [0, 0, 1] } };

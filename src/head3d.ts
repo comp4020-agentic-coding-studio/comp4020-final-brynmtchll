@@ -19,7 +19,7 @@ import { STILL, type Expression, type Pose } from "./avatar.ts";
 import { detailFrom, detailOf, easeDetail, overlay, STILL_DETAIL, type Detail, type Face52 } from "./arkit.ts";
 import { mouthAt, mouthFace, visemesOf } from "./visemes.ts";
 import { EFFECT_FACES, type Effect, type Look } from "./packs.ts";
-import { handPoints, HAND_UP, RESTING, GESTURE_ARMS, unit, type Arm, type Body, type Side, type Vec } from "./body.ts";
+import { EMOTE_BODIES, handPoints, HAND_UP, RESTING, GESTURE_ARMS, unit, type Arm, type Body, type Side, type Vec } from "./body.ts";
 import { gestureArm, gestureFor, gestureHead, type Gesture } from "./gestures.ts";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
@@ -110,7 +110,7 @@ type Shown = {
   away: number; // how far they're shown as away (no page open): eyes shut, head down
   // an emote it's doing (packs.ts EMOTES): how its head moves, the face it
   // pulls meanwhile, and since when
-  doing: { head: string; face: Partial<Expression>; detail?: Partial<Detail>; arm?: string; at: number } | null;
+  doing: { head: string; face: Partial<Expression>; detail?: Partial<Detail>; arm?: string; body?: string; at: number } | null;
   // their arms: as read off their camera (null when they aren't sending
   // them), and as drawn, easing towards that, or an emote's, or resting
   arms: { target: Body | null; at: number; busyAt: number; left: Arm; right: Arm; tilt: number; turn: number; shown: number; up: boolean };
@@ -1270,6 +1270,9 @@ function frame(now: number): void {
     let doingAmount = 0;
     // (what its arm does, if anything: kept for after, which may end it)
     const doingArm = s.doing?.arm && GESTURE_ARMS[s.doing.arm] ? { arm: s.doing.arm, t: (now - s.doing.at) / EMOTE_FOR } : null;
+    // (or both arms: a hand on the belly laughing, hands by the cheeks for
+    // a wow, folded for cool)
+    const doingBody = !doingArm && s.doing?.body && EMOTE_BODIES[s.doing.body] ? { pose: EMOTE_BODIES[s.doing.body], kind: s.doing.body, t: (now - s.doing.at) / EMOTE_FOR } : null;
     if (s.doing) {
       // (started by a click, its time can be a moment ahead of this frame's)
       const t = Math.max(0, (now - s.doing.at) / EMOTE_FOR);
@@ -1372,14 +1375,21 @@ function frame(now: number): void {
         const wave = doingArm.arm === "wave" ? Math.sin(doingArm.t * Math.PI * 8) * 0.35 : 0;
         want = { ...want, right: { ...g, fore: unit([g.fore[0] + wave, g.fore[1], g.fore[2]]) } };
       }
+      if (doingBody && doingBody.t < 0.85) {
+        // (a laugh's hand rocks with it, ha, ha, ha; fists shake a little)
+        const b = doingBody.pose;
+        const jig = doingBody.kind === "belly" ? Math.sin(doingBody.t * Math.PI * 10) * 0.12 : doingBody.kind === "fists" ? Math.sin(doingBody.t * Math.PI * 14) * 0.06 : 0;
+        const jiggled = (a: Arm): Arm => (jig ? { ...a, fore: unit([a.fore[0], a.fore[1] + jig, a.fore[2]]) } : a);
+        want = { ...want, left: jiggled(b.left), right: s.arms.up ? want.right : jiggled(b.right) };
+      }
       // talking: a beat, the forearm up in front and down, or a palm
       // turned up for a question (not while their camera's reading their
       // arms, an emote has one, or that hand's up)
       // (only where the arms are drawn anyway: in the room, the studio; a
       // card isn't widened for a word)
-      const beating = !calm && !read && !doingArm && now < s.beat.until && (!!roomDraw || always.has(slot));
+      const beating = !calm && !read && !doingArm && !doingBody && now < s.beat.until && (!!roomDraw || always.has(slot));
       // (a word that's a gesture of its own wins over a beat)
-      const gesturing = !calm && !read && !doingArm && !!s.gesture?.g.arm && now < s.gesture.until && (!!roomDraw || always.has(slot));
+      const gesturing = !calm && !read && !doingArm && !doingBody && !!s.gesture?.g.arm && now < s.gesture.until && (!!roomDraw || always.has(slot));
       if (gesturing) {
         const gs = s.gesture!;
         const since = now - gs.at;
@@ -1407,7 +1417,7 @@ function frame(now: number): void {
         want = { ...want, [s.beat.side]: talkingArm(s.beat.side, amt, s.beat.open) };
       }
       // doing something: read off a camera, or an emote's arm, lately
-      if (read || s.arms.up || (doingArm && doingArm.t < 0.85)) s.arms.busyAt = now;
+      if (read || s.arms.up || (doingArm && doingArm.t < 0.85) || (doingBody && doingBody.t < 0.85)) s.arms.busyAt = now;
       armsBusy = now - s.arms.busyAt < ARMS_DOWN;
       const kk = k(read ? 24 : beating || gesturing ? 16 : 9);
       s.arms.left = easeArm(s.arms.left, want.left, kk);
@@ -1674,9 +1684,9 @@ const MOVES: Record<string, (t: number, amount: number) => Pose> = {
 };
 
 // An emote, for a head: its head moves and its face is pulled for a moment.
-export function emote(slot: HTMLElement, e: { head: string; face: Partial<Expression>; detail?: Partial<Detail>; arm?: string }): void {
+export function emote(slot: HTMLElement, e: { head: string; face: Partial<Expression>; detail?: Partial<Detail>; arm?: string; body?: string }): void {
   const s = heads.get(slot);
-  if (s) s.doing = { head: e.head, face: e.face, detail: e.detail, arm: e.arm, at: performance.now() };
+  if (s) s.doing = { head: e.head, face: e.face, detail: e.detail, arm: e.arm, body: e.body, at: performance.now() };
 }
 
 // A hand held up to speak next, or put down: it stays up till then (unless
