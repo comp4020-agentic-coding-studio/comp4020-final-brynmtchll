@@ -526,8 +526,10 @@ export function spacePage(me: (InSpace & { look: Look }) | undefined, people: (I
   );
 }
 
-export function notFoundPage(): string {
-  return layout(`Not here · ${APP}`, `<main class="prose"><h1>No room here</h1><p>There's no room at this address. It may have been a typo, or the link's from somewhere else. <a href="/rooms">See every room</a>.</p></main>`);
+export function notFoundPage(room = true): string {
+  return room
+    ? layout(`Not here · ${APP}`, `<main class="prose"><h1>No room here</h1><p>There's no room at this address. It may have been a typo, or the link's from somewhere else. <a href="/rooms">See every room</a>.</p></main>`)
+    : layout(`Not here · ${APP}`, `<main class="prose"><h1>Nothing here</h1><p>There's no page at this address. It may have been a typo. <a href="/">Back to the main room</a>, or <a href="/rooms">see every room</a>.</p></main>`);
 }
 
 export function readmePage(html: string): string {

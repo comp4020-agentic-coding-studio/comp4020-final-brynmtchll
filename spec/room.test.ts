@@ -1014,6 +1014,16 @@ describe.skipIf(!writable)("the room", () => {
     expect((await fetch(new URL("/r/no-such-room-here/", baseUrl))).status).toBe(404);
   });
 
+  it("answers a page asked for at no address with a page that leads back, and anything else plainly", async () => {
+    const page = await fetch(new URL("/no-such-page", baseUrl), { headers: { accept: "text/html" } });
+    expect(page.status).toBe(404);
+    expect(page.headers.get("content-type")).toMatch(/text\/html/);
+    expect(await page.text()).toContain(`href="/"`);
+    const other = await fetch(new URL("/js/no-such-script.ts", baseUrl));
+    expect(other.status).toBe(404);
+    expect(other.headers.get("content-type")).toMatch(/text\/plain/);
+  });
+
   it("needs a name to make a room, and someone who's joined", async () => {
     const a = await person();
     expect((await makeRoom(a, { name: "   " })).status).toBe(400);

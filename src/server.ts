@@ -929,6 +929,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return json(res, 201, { id: m.id });
   }
 
+  // (a page asked for at an address that isn't one: a page saying so, with
+  // the way back; anything else, plain)
+  if (req.method === "GET" && /text\/html/.test(req.headers.accept ?? "")) return send(res, 404, "text/html; charset=utf-8", notFoundPage(false));
   send(res, 404, "text/plain; charset=utf-8", "Not found");
 }
 
