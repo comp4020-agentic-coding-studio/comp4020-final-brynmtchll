@@ -86,7 +86,16 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   could be anything (`packs.test.ts`).
 - The avatar is them: it follows their face, head, hands and voice closely
   enough to feel live ("i need the head to be more responsive", 20 Oct).
-  Judged by Brynly, with Brynly's own face and voice.
+  Judged by Brynly, with Brynly's own face and voice. Each side of the face
+  is its own, as the camera's 52 scores have it (`arkit.ts`): a wink, one
+  brow, one corner of the mouth, on the same side the 15-number face puts
+  them (`arkit.test.ts`: "puts a wink, a raised brow, a smirk and a glance
+  on the same side…"). A head a camera reads blinks only when its person
+  does. A glare narrows the eyes; it doesn't shut them. Judged from the
+  twelve faces sent from one page and drawn on another (probe `faces.mjs`),
+  before a change to how a head is drawn is kept. An avatar never shows a
+  feeling its person didn't: others' heads only glance at someone who
+  emotes or comes in; nobody's face is pulled for them.
 - The room is a place to be in, not only to look at: you can walk your
   avatar about it, everyone sees you there, and it can fill the screen
   ("make it so that you can control your avatar and move around, also i
