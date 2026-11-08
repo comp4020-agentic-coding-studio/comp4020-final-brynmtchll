@@ -6,7 +6,7 @@
 import "./popout.ts";
 import { avatarSvg, fromShapes, resting, REST, smoother, type Expression, type Pose } from "./avatar.ts";
 import { ARKIT, face52, faceFilter, type ArkitName } from "./arkit.ts";
-import { arms, emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
+import { arms, emote, head3d, sayWord, turnedByHand, webgl, withBody, zoom } from "./head3d.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { emoteOf, MORE_EXTRAS, randomLook, SLIDERS, STYLES, type Look } from "./packs.ts";
 import { wordHtml } from "./voice.ts";
@@ -320,13 +320,29 @@ document.getElementById("surprise")?.addEventListener("click", () => {
 // ---- how your words sound ----
 
 // The sample sentence, said in your voice the way the sample's drawn: "oh
-// this is" quietly, "SO" loud and high, "good" drawn out.
-const hearSample = (): void =>
+// this is" quietly, "SO" loud and high, "good" drawn out. Your head says it
+// too, a word at a time, as everyone else would see it: the mouth, a hand
+// on "SO", a brow up on "good".
+const SAMPLE = [
+  { w: "oh", loud: -3, pitch: 1, d: 0.22 },
+  { w: "this", loud: 0, pitch: 0, d: 0.22 },
+  { w: "is", loud: -2, pitch: -1, d: 0.18 },
+  { w: "SO", loud: 9, pitch: 5, d: 0.38 },
+  { w: "good", loud: 2, pitch: 2, d: 0.7, held: true },
+];
+const hearSample = (): void => {
   tryVoice(look, [
     { text: "oh this is", loud: -3, pitch: 0, stretch: 0 },
     { text: "so", loud: 9, pitch: 5, stretch: 0 },
     { text: "good", loud: 2, pitch: 2, stretch: 1.6 },
   ]);
+  if (!webgl || following) return;
+  let at = 0;
+  for (const x of SAMPLE) {
+    window.setTimeout(() => sayWord(slot, { seconds: x.d, loud: x.loud, pitch: x.pitch, held: x.held, syllables: 1, effect: null, text: x.w }), at * 1000);
+    at += x.d + 0.06;
+  }
+};
 document.getElementById("hear-voice")?.addEventListener("click", hearSample);
 // a voice chosen (or mixed in, or how much) is heard straight away, so they
 // can be gone through by ear
@@ -548,6 +564,7 @@ faceButton.addEventListener("click", async () => {
 limitMore();
 // the studio shows your shoulders and arms all the time, so you see your top
 withBody(slot);
+turnedByHand(slot);
 zoom(slot, near);
 draw();
 sample();

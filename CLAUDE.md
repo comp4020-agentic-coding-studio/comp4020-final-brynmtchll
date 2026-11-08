@@ -95,7 +95,12 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   twelve faces sent from one page and drawn on another (probe `faces.mjs`),
   before a change to how a head is drawn is kept. An avatar never shows a
   feeling its person didn't: others' heads only glance at someone who
-  emotes or comes in; nobody's face is pulled for them. How a word was said
+  emotes, comes in or puts a hand up; nobody's face is pulled for them.
+  Listening eyes aren't fixed: they move about the speaker's face and now
+  and then away and back (probe `listen-eyes.mjs`). A head turned by hand
+  (the studio, dragged) is still its own face: it blinks, and says the
+  sample with its mouth and a hand when "Hear it" plays (probe
+  `studio-say.mjs`: it stood mute, taken for a camera's, on 9 Nov). How a word was said
   shows on its speaker's own face as it's said, both ways (loud, quiet, high,
   low, a question, drawn out), and so does an effect they put on it, enough
   to read across a room (`packs.test.ts`: "the faces a word's effect pulls

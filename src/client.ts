@@ -1937,6 +1937,8 @@ function showQueue(queue: string[]): void {
     if (place) card.querySelector(".who")?.insertAdjacentHTML("afterend", handBadge(place));
     const slot = card.querySelector<HTMLElement>(".spot-avatar");
     if (slot && webgl) handUp(slot, place > 0);
+    // (a hand going up: the room glances at it, as it would at an emote)
+    if (slot && place && !still.matches && card.dataset.name !== myName) noticed(slot);
   }
   if (queueLine) {
     queueLine.innerHTML = queueHtml(queue, myName);

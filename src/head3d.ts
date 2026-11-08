@@ -146,6 +146,11 @@ const NEAREST = 4.3; // the closest the camera comes, from the head's middle
 // studio's preview); elsewhere it shows only while they are
 const always = new Set<HTMLElement>();
 export const withBody = (slot: HTMLElement, on = true): void => void (on ? always.add(slot) : always.delete(slot));
+// slots whose pose is turned by hand (the studio's preview, dragged round),
+// not read off a camera: posed as given, but the face its own, as a head
+// with no camera's is (it blinks, and its mouth says its words)
+const byHand = new Set<HTMLElement>();
+export const turnedByHand = (slot: HTMLElement, on = true): void => void (on ? byHand.add(slot) : byHand.delete(slot));
 // how long arms read off a camera are kept after the last reading, and
 // how long an emote's arm takes to go back down
 const ARMS_FOR = 1500; // ms
@@ -1162,7 +1167,7 @@ function frame(now: number): void {
     // A head its owner's camera steers follows it closely: what's sent is
     // already smoothed, so easing much more only adds lag. One left to
     // itself eases more gently.
-    const live = s.target.pose !== null;
+    const live = s.target.pose !== null && !(byHand.has(slot) && !s.target.f);
     for (const key of Object.keys(s.e) as (keyof Expression)[]) s.e[key] = ease(s.e[key], s.target.e[key], k(live ? 30 : 14));
     // their voice, a level at a time, opening fast and closing a little slower
     // (as many as are due since the last frame, the loudest of them, so a
@@ -1188,7 +1193,18 @@ function frame(now: number): void {
     const me = roomDraw ? centre(slot) : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     let look = { x: s.glance.x, y: s.glance.y };
     if (live) look = s.target.f ? { x: s.detail.lookX, y: s.detail.lookY } : { x: s.e.lookX, y: s.e.lookY };
-    else if (talker && lookAt !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
+    else if (talker && lookAt !== slot) {
+      look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
+      // (not fixed on them: from eyes to mouth and back, a hair aside, as
+      // listening eyes go, every half second or so; and now and then away
+      // for a moment, thinking, then back)
+      if (!calm) {
+        if (now > s.glance.at) s.glance = Math.random() < 0.12
+          ? { x: (Math.random() - 0.5) * 0.7, y: -0.15 - Math.random() * 0.2, at: now + 500 + Math.random() * 500 }
+          : { x: (Math.random() - 0.5) * 0.08, y: Math.random() < 0.5 ? -0.06 : 0.02, at: now + 380 + Math.random() * 520 };
+        look = { x: look.x + s.glance.x, y: look.y + s.glance.y };
+      }
+    }
     // (the one talking, if they're answering someone: at them)
     else if (replyTo?.from === slot && lookAt === slot && heads.has(replyTo.to)) {
       const them = centre(replyTo.to);
@@ -1237,7 +1253,10 @@ function frame(now: number): void {
     const wordRock = s.accent.move === "wave" ? Math.sin(since * Math.PI * 3) * 0.09 * a : 0;
     // (a word that's a nod or a shake of its own: yes, no, maybe)
     const gh = !calm && s.gesture && now < s.gesture.until ? gestureHead(s.gesture.g, (now - s.gesture.at) / (s.gesture.until - s.gesture.at), 1) : { pitch: 0, yaw: 0, roll: 0 };
-    const to: Pose = s.target.pose ?? {
+    // (turned by hand, in the studio: where it's turned, and a word's nod or
+    // shake on top)
+    const turned = s.target.pose && !live ? { ...s.target.pose, pitch: s.target.pose.pitch + s.accent.nod * a + gh.pitch, yaw: s.target.pose.yaw + wordMove + gh.yaw, roll: s.target.pose.roll + s.accent.tilt * a + wordRock + gh.roll } : null;
+    const to: Pose = turned ?? s.target.pose ?? {
       ...sway,
       pitch: -s.gaze.y * 0.15 + sway.pitch + s.voice.level * 0.05 + s.accent.nod * a + gh.pitch,
       yaw: s.gaze.x * 0.3 + sway.yaw + wordMove + gh.yaw,
