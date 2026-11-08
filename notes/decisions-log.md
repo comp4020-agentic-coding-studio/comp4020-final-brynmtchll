@@ -556,7 +556,7 @@ led to. Claude chose how to build each; what to build was yours.
       ([`561c29f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/561c29f)); the caption fix stayed. The
       overnight plan is kept, marked superseded.
 
-13. **Avatars from a toolkit made for it, cartoony and very expressive.**
+13. **Avatars: toolkits tried, the cartoon heads kept, made far more expressive.**
     Brynly, 8 November, in turn:
     - "i want to scrap the stretched spheres and go with either rocketbox or
       three js";
@@ -570,12 +570,31 @@ led to. Claude chose how to build each; what to build was yours.
         automatically from face bones.
       - The three.js Face Cap head: no licence stated.
       - Ready Player Me: shut down 31 January 2026.
-      - VRoid "perfect sync" VRM models: cartoony, with all 52 ARKit face
-        shapes hand-made. Their README allows any use and redistribution,
-        with no credit needed.
-      Chosen: the VRoid perfect-sync models, so that every one of the 52
-      scores MediaPipe reads from a face can move the avatar (until now they
-      were squeezed into 15 numbers).
+      - VRoid "perfect sync" VRM models, cartoony, with all 52 ARKit face
+        shapes hand-made.
+    - Brynly, on VRoid: "wait those are really anime esque i dont want
+      that". (The model files' own metadata also said
+      "Redistribution_Prohibited", against their README.) "are there other
+      options": MakeHuman (MPFB, CC0, a full rigged body) and the Face Cap
+      head were rendered in a browser in six expressions, then a cartoonier
+      MakeHuman ("show me a made cartoonier") and Face Cap with hair and
+      colouring ("can B be given features hair etc").
+    - Brynly: "ok no lets keep the silly cartoons that you did i thiink
+      theyre more fun and with all the customiseability i just want more
+      sophisticated expression out of them and more responsiveness i want you
+      to work on the site now as much as can be done to refine it and extend
+      it in fun ways and make it feel complete". The heads Said already had
+      stay, with all their customisation; what changes is how much of a
+      face they show and how quickly.
+    - Built: a camera's 52 scores sent with each face (as numbers only) and
+      a mouth shaped from each word's letters
+      ([`bb91970`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/bb91970));
+      the heads given lower lids, cheek apples, each side's lid, brow and
+      mouth corner on its own, a tongue, and squash and stretch
+      ([`b99a482`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b99a482)).
+      Twelve faces sent from one page and drawn on another: a glare first
+      shut the eyes (lids closed by angle), fixed by closing them by how
+      much of the eye they cover.
 
 ### What the three spikes measured (22 October, for the next decisions)
 

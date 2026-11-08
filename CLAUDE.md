@@ -21,8 +21,10 @@ really the core idea of this website", 8 Nov); new ways sit alongside what's
 there, not instead of it. The captions-only rethink is scrapped ("i don't
 like the rethink at all, scrap it", 8 Nov): avatars, the room and everything
 built on them stay. No games ("i dont want to gamify it", 8 Nov): the push is
-seamlessness and expression, avatars made with a toolkit made for it, cartoony
-but very expressive ("cartoony but still as expressive / face like", 8 Nov).
+seamlessness and expression. Avatar toolkits were tried and set aside; the
+cartoon heads stay, with all their customisation, made far more expressive
+and responsive ("lets keep the silly cartoons … i just want more
+sophisticated expression out of them and more responsiveness", 8 Nov).
 
 ## Never
 
