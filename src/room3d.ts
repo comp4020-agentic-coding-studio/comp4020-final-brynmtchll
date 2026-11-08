@@ -1402,12 +1402,14 @@ function inTheWay(look: Vec3, cam: Vec3): number {
   }
   return 1;
 }
-function behind(at: Spot, aspect: number, t: Turn): Shot {
+// (`up`: how high the floor is where you are, on a raised row's step: from
+// the floor, the camera looked at your knees and cut your head off)
+function behind(at: Spot, aspect: number, t: Turn, up = 0): Shot {
   const dist = (aspect < 1 ? 17 : 15) * Math.max(0.55, Math.min(1.6, t.zoom));
   const yaw = t.yaw;
   const rise = Math.max(0.12, Math.min(1.25, 0.42 + t.pitch));
-  const look: Vec3 = [at.x - Math.sin(yaw) * 2.5, 0.8, at.z - Math.cos(yaw) * 2.5];
-  const at3 = (r: number): Vec3 => [at.x + Math.sin(yaw) * Math.cos(r) * dist, 0.8 + Math.sin(r) * dist, at.z + Math.cos(yaw) * Math.cos(r) * dist];
+  const look: Vec3 = [at.x - Math.sin(yaw) * 2.5, 0.8 + up, at.z - Math.cos(yaw) * 2.5];
+  const at3 = (r: number): Vec3 => [at.x + Math.sin(yaw) * Math.cos(r) * dist, 0.8 + up + Math.sin(r) * dist, at.z + Math.cos(yaw) * Math.cos(r) * dist];
   // (squeezed against a wall, or something in the way: up higher, looking
   // down, rather than right up against your back or in it)
   for (let r2 = rise; r2 < 1.36; r2 += 0.08) {
@@ -1533,7 +1535,7 @@ function draw(heads: RoomHead[], THREE: T): void {
   // shouldn't shrink everyone else to fit them in)
   const widest = Math.max(4, ...places.map((p) => Math.abs(p.x))) + 5;
   const about = [...r.walkers.values()].map((w) => ({ x: Math.max(-widest, Math.min(widest, w.at.x)), y: 0, z: w.at.z, turn: w.at.turn, row: 0 }));
-  const framed = r.view === "me" && mineW ? behind(mineW.at, r.camera.aspect, r.turn) : r.view === "speaker" ? shotFor("speaker", places.map((p, i) => { const w = r.walkers.get(sitting[i]?.slot); return w ? { x: w.at.x, y: STAND, z: w.at.z, turn: w.at.turn, row: 0 } : p; }), r.camera.aspect, talking, focus) : shotFor(r.view === "me" ? "follow" : r.view, [...places, ...about], r.camera.aspect, talking, focus);
+  const framed = r.view === "me" && mineW ? behind(mineW.at, r.camera.aspect, r.turn, mineW.up) : r.view === "speaker" ? shotFor("speaker", places.map((p, i) => { const w = r.walkers.get(sitting[i]?.slot); return w ? { x: w.at.x, y: STAND, z: w.at.z, turn: w.at.turn, row: 0 } : p; }), r.camera.aspect, talking, focus) : shotFor(r.view === "me" ? "follow" : r.view, [...places, ...about], r.camera.aspect, talking, focus);
   r.framed = framed;
   // the light on whoever's talking: over to them, and up, as they start;
   // down, where it was, after they stop
@@ -1561,7 +1563,7 @@ function draw(heads: RoomHead[], THREE: T): void {
   // its arc, never across it, through a wall.)
   // (following you: where you are is sprung, and the turn, and the shot
   // worked out from them after, so it swings round you on its arc)
-  const goal = following ? [mineW.at.x, 0, mineW.at.z, 0, 0, 0, r.turn.yaw, r.turn.pitch, r.turn.zoom] : [...framed.at, ...framed.look, r.turn.yaw, r.turn.pitch, r.turn.zoom];
+  const goal = following ? [mineW.at.x, mineW.up, mineW.at.z, 0, 0, 0, r.turn.yaw, r.turn.pitch, r.turn.zoom] : [...framed.at, ...framed.look, r.turn.yaw, r.turn.pitch, r.turn.zoom];
   // (into or out of following, the springs start from where the camera is)
   if (r.eye && !!following !== r.eyeFollowing) {
     r.eye = null;
@@ -1580,7 +1582,7 @@ function draw(heads: RoomHead[], THREE: T): void {
     else [now9[i], r.eye.v[i]] = sprung(now9[i], r.eye.v[i], goal[i], i < 6 ? stiff : byHand, dt);
   }
   r.eye = { at: now9.slice(0, 3), look: now9.slice(3, 6), turn: now9.slice(6), v: r.eye.v };
-  const shot = following ? behind({ x: now9[0], z: now9[2], turn: 0 }, r.camera.aspect, { yaw: now9[6], pitch: now9[7], zoom: now9[8] }) : turned({ at: r.eye.at as Vec3, look: r.eye.look as Vec3 }, { yaw: now9[6], pitch: now9[7], zoom: now9[8] });
+  const shot = following ? behind({ x: now9[0], z: now9[2], turn: 0 }, r.camera.aspect, { yaw: now9[6], pitch: now9[7], zoom: now9[8] }, now9[1]) : turned({ at: r.eye.at as Vec3, look: r.eye.look as Vec3 }, { yaw: now9[6], pitch: now9[7], zoom: now9[8] });
   // (handing over between following you and not: from where it was)
   if (r.handover) {
     r.handover.t = still.matches ? 1 : Math.min(1, r.handover.t + dt / 0.7);
@@ -1800,8 +1802,9 @@ function control(r: Room, box: HTMLElement): void {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     pressed = pointers.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
     // (a finger on a phone: one scrolls the page, two turn and zoom; a
-    // mouse or pen drags with one)
-    if (e.pointerType !== "touch" || pointers.size >= 2) {
+    // mouse or pen drags with one; and full screen, with no page to scroll,
+    // drags with one finger too)
+    if (e.pointerType !== "touch" || pointers.size >= 2 || box.classList.contains("full")) {
       canvas.setPointerCapture(e.pointerId);
       dragging = true;
       box.classList.add("dragging");
@@ -1923,6 +1926,14 @@ function control(r: Room, box: HTMLElement): void {
   box.querySelector(".room-reset")?.addEventListener("click", () => {
     if (room) (room.turn = LEVEL), (room.spin = { yaw: 0, pitch: 0 });
     turnedByHand();
+    // (it hides itself, and the keys went nowhere)
+    box.focus({ preventScroll: true });
+  });
+  // a view clicked or tapped hands the keys back to the room, so the arrows
+  // walk rather than pick the next view (picked with the keyboard, they stay
+  // in the bar, to go on through it)
+  box.querySelector(".room-views")?.addEventListener("click", (e) => {
+    if ((e as MouseEvent).detail > 0) box.focus({ preventScroll: true });
   });
 }
 // Where on the floor a point on the screen is, if it's on the floor: walk
@@ -1940,9 +1951,15 @@ function walkTo(cx: number, cy: number): void {
   const t = (FLOOR - o.y) / d.y;
   const x = o.x + d.x * t;
   const z = o.z + d.z * t;
-  // (your own chair, tapped while you're up: back to it)
+  // (your own chair, tapped while you're up: back to it; where the tap
+  // meets the chair's own height, as one on a raised row is well above the
+  // floor the tap would otherwise land on, behind it)
   const own = r.chairs[r.mineChair];
-  if (mineAt && own && Math.hypot(x - own.x + Math.sin(own.turn) * 1.5, z - own.z + Math.cos(own.turn) * 1.5) < 2.6) return void sit();
+  if (mineAt && own) {
+    const ts = (FLOOR + own.up + 1 - o.y) / d.y;
+    const [sx, sz] = [o.x + d.x * ts, o.z + d.z * ts];
+    if (Math.hypot(sx - own.x + Math.sin(own.turn) * 1.5, sz - own.z + Math.cos(own.turn) * 1.5) < 2.6) return void sit();
+  }
   going.to = heldTo(x, z, r.chairs);
   going.path = null;
 }

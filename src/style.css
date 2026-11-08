@@ -444,6 +444,7 @@ main.room {
 .room3d[hidden] { display: none; }
 @media (max-width: 899px) { .room3d { height: min(62vh, 112vw, 640px); } }
 .room3d canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
+.room3d.full canvas { touch-action: none; }
 /* (faded up once it's drawn, rather than a moment of empty box first) */
 .room3d canvas:not([data-drawn]) { opacity: 0; }
 /* (and meanwhile, the room's own dusk colours, slowly moving, so the box

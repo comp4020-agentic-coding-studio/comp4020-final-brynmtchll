@@ -80,9 +80,14 @@ be more interesting because others are in the room at the same moment.
   chair and back into it ... never through a chair or the table", "finds
   the way round the table and the chairs"). Right is right, as the camera
   sees it (`walk.test.ts`: "walks the way the stick points"; it went left
-  for a day). W A S D walk whatever in the room was last clicked, except a
-  box being typed in (they did nothing after picking a view, 8 Nov; judged
-  in a browser: click a view, press W). Full screen keeps a way to talk.
+  for a day). Keys pressed in the room are the room's: W A S D walk
+  whatever in it was last clicked (a view, Reset, Sit), except a box being
+  typed in, and never type over a word (walking once typed "wwww" over
+  your last word, and Enter sent it to everyone, 8 Nov). Judged in a
+  browser: say something, click a view, hold W, press Enter. Full screen
+  keeps a way to talk, and one finger looks round in it. Anyone who closes
+  their page while up is back in their chair within a minute and a bit
+  (`walk.test.ts`: "sits back down whoever closed their page while up").
   Where someone stands is only ever a place on the floor, kept while
   they're up and never stored or logged (`room.test.ts`: "shows someone
   walking about the room").

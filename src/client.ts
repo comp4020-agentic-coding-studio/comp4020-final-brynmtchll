@@ -1198,11 +1198,13 @@ function key(k: string): boolean {
   return false;
 }
 
-// While you've something chosen, the keyboard is for it, except in a text box.
+// While you've something chosen, the keyboard is for it, except in a text box
+// or the room (whose keys walk, turn and zoom: walking once typed "wwww" over
+// your last word, and Enter sent it to everyone)
 addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const t = e.target as HTMLElement;
-  if (t.closest("input, textarea, [contenteditable]")) return;
+  if (t.closest("input, textarea, [contenteditable], .room3d")) return;
   // Space and Enter on a focused button press the button, as they should
   if ((e.key === " " || e.key === "Enter") && t.closest("button")) return;
   if (key(e.key)) e.preventDefault();
@@ -1983,7 +1985,9 @@ function countHere(): void {
   const n = [...document.querySelectorAll<HTMLElement>(".spot")].filter((c) => !c.hasAttribute("data-away")).length;
   countEl.textContent = n ? `${n} here` : "";
 }
-new MutationObserver(countHere).observe(document.getElementById("stage") ?? document.body, { childList: true });
+// (whenever a card comes, goes, or is marked away or back: counted only on
+// some of those, a page already open was a person short)
+new MutationObserver(countHere).observe(document.getElementById("stage") ?? document.body, { childList: true, subtree: true, attributeFilter: ["data-away"] });
 
 // The room as its maker has it: the name everywhere it's shown, and the 3D
 // room redrawn in its look.

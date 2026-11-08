@@ -12,6 +12,7 @@ import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./
 import { cleanBody, type Body } from "./body.ts";
 import { cleanLook, emoteOf, isEffect, reactionOf, SCENES, stylesCss, type Look } from "./packs.ts";
 import { cleanSpot, type Spot } from "./walk.ts";
+import { overdue } from "./gone.ts";
 
 // What's live in each room, in memory: the pages open on it (each a
 // stream), whose they are, whose hand is up, who's up and walking about, and
@@ -85,18 +86,19 @@ const showExpression = (name: string, e: Expression | null, pose: Pose | null = 
 // for GONE_FOR (a hand left up after someone's gone shouldn't keep its
 // place; one waiting a long turn should). Every page in the room hears the
 // whole queue each time it changes, so they all show it in the same order.
-const GONE_FOR = 60_000;
 const JUST_RAISED = 3_000; // ms: about how late a phrase can arrive after its last word
 const handQueue = (l: Live): string[] => [...l.hands.keys()];
 const showHands = (l: Live): void => tell(l, `event: hand\ndata: ${JSON.stringify({ queue: handQueue(l) })}\n\n`);
 const handDown = (l: Live, name: string): void => {
   if (l.hands.delete(name)) showHands(l);
 };
+// (gone a minute: hand down, back in their chair; see gone.ts)
 setInterval(() => {
-  const now = Date.now();
   for (const l of lives.values()) {
-    for (const name of l.hands.keys()) if (!l.pagesOf.get(name) && now - (l.goneSince.get(name) ?? l.hands.get(name)!) > GONE_FOR) handDown(l, name);
-    for (const [name, since] of l.goneSince) if (now - since > GONE_FOR) l.goneSince.delete(name);
+    const due = overdue(l, Date.now());
+    for (const name of due.hands) handDown(l, name);
+    for (const name of due.sit) showWalk(l, name, null);
+    for (const name of due.forget) l.goneSince.delete(name);
   }
 }, 10_000).unref();
 // Who's in a room with no page open on it (a closed tab, a phone put away)
@@ -124,14 +126,13 @@ setInterval(() => {
 // back down, gone for GONE_FOR, or into another room, they're in their seat
 // again.
 const showWalk = (l: Live, name: string, at: Spot | null): void => {
+  // (up with no page open here, as one whose stream hasn't connected: the
+  // same minute as anyone gone, from now)
+  if (at && !l.pagesOf.get(name) && !l.goneSince.has(name)) l.goneSince.set(name, Date.now());
   if (at) l.standing.set(name, at);
   else if (!l.standing.delete(name)) return;
   tell(l, `event: walk\ndata: ${JSON.stringify({ name, at })}\n\n`);
 };
-setInterval(() => {
-  const now = Date.now();
-  for (const l of lives.values()) for (const name of l.standing.keys()) if (!l.pagesOf.get(name) && now - (l.goneSince.get(name) ?? now) > GONE_FOR) showWalk(l, name, null);
-}, 10_000).unref();
 setInterval(() => {
   const now = Date.now();
   for (const [name, seen] of faceSeen) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seatPlaces, stepsBeside } from "../src/seats.ts";
+import { GONE_FOR, overdue } from "../src/gone.ts";
 import { blocked, cleanSpot, clearLine, FLOOR_AREA, held, inSeat, onFloor, route, seatSpot, step, THINGS, turnedTo, wayOut, type Chair } from "../src/walk.ts";
 
 // Walking about the room: on the floor, round the furniture, never through it.
@@ -173,4 +174,22 @@ describe("walking about the room", () => {
     }
     expect(slowest).toBeLessThan(50);
   }, 30_000);
+
+  it("sits back down whoever closed their page while up, a minute after, and nobody with a page open", () => {
+    // (two timers once raced: the one forgetting when people went ran
+    // first, so the other found no time gone and left them standing for good)
+    const t = 1_000_000;
+    const l = {
+      pagesOf: new Map([["here", 1]]),
+      goneSince: new Map([["closed", t], ["reloading", t + GONE_FOR - 5_000]]),
+      hands: new Map([["closed", t - 10]]),
+      standing: new Map<string, unknown>([["closed", {}], ["here", {}], ["reloading", {}]]),
+    };
+    expect(overdue(l, t + GONE_FOR - 1).sit).toEqual([]);
+    const due = overdue(l, t + GONE_FOR + 1);
+    expect(due.sit).toEqual(["closed"]);
+    expect(due.hands).toEqual(["closed"]);
+    // (sat down in the same sweep that forgets when they went, not after it)
+    expect(due.forget).toEqual(["closed"]);
+  });
 });
