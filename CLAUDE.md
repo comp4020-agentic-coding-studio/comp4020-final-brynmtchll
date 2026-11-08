@@ -100,7 +100,9 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   low, a question, drawn out), and so does an effect they put on it, enough
   to read across a room (`packs.test.ts`: "the faces a word's effect pulls
   on its speaker"). Eyes get somewhere before the head does (probe
-  `eyes-lead.mjs`).
+  `eyes-lead.mjs`). Where arms are drawn, a speaker's hand moves with their
+  own words (a beat on a word leaned on, a palm up on a question), never
+  with anyone else's (probe `beats.mjs`).
 - The room is a place to be in, not only to look at: you can walk your
   avatar about it, everyone sees you there, and it can fill the screen
   ("make it so that you can control your avatar and move around, also i

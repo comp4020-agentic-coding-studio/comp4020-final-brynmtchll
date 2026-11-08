@@ -113,6 +113,10 @@ type Shown = {
   // their arms: as read off their camera (null when they aren't sending
   // them), and as drawn, easing towards that, or an emote's, or resting
   arms: { target: Body | null; at: number; busyAt: number; left: Arm; right: Arm; tilt: number; turn: number; shown: number; up: boolean };
+  // a hand that moves with what they say, as people's do talking: a beat
+  // on a word that's leaned on, a palm up on a question, then down again.
+  // Only from their own words, never read off anyone else.
+  beat: { at: number; until: number; open: number; firm: number; side: Side };
   // what it was last drawn as, so a head that hasn't moved isn't drawn again
   drawn: string;
   cardDrawn?: string; // (in the room: what yours was last drawn as on your card)
@@ -1060,6 +1064,22 @@ function swung({ phase, amount }: { phase: number; amount: number }): Record<Sid
   return { left: arm("left", 1), right: arm("right", -1) };
 }
 
+// A hand moving with what's said, `amount` of the way (0 to 1): the forearm
+// up in front from the elbow, the hand loosely open, palm in for a beat and
+// turned up for a question (`open`, 0 to 1).
+function talkingArm(side: Side, amount: number, open: number): Arm {
+  const r = RESTING[side];
+  const sign = side === "right" ? 1 : -1;
+  // (up as well as forward: pointing straight at whoever's looking, a
+  // forearm hardly shows)
+  const fore = unit([r.fore[0] - 0.3 * sign * amount, r.fore[1] + 1.55 * amount, r.fore[2] + 0.75 * amount]);
+  const palmUp: Vec = unit([-0.2 * sign, 1, 0.1]);
+  const palmIn: Vec = [-sign, 0, 0];
+  const palm = unit([ease(palmIn[0], palmUp[0], open), ease(palmIn[1], palmUp[1], open), ease(palmIn[2], palmUp[2], open)]);
+  const curl = ease(0.35, 0.12, Math.max(amount, open));
+  return { upper: unit([r.upper[0], r.upper[1], r.upper[2] + 0.18 * amount]), fore, hand: { curl: [curl, curl, curl, curl, curl], point: fore, palm } };
+}
+
 // A head as the room draws it: its slot (the card it belongs to), its
 // meshes, posed for this frame, and its shoulders and arms.
 export type RoomHead = { slot: HTMLElement; root: T; body: T | null; top: number; speaking: boolean; mine: boolean };
@@ -1149,7 +1169,15 @@ function frame(now: number): void {
       const them = centre(replyTo.to);
       look = { x: clamp((them.x - me.x) / 500, -1, 1), y: clamp((me.y - them.y) / 500, -1, 1) };
     }
-    else if (!calm && now > s.glance.at) s.glance = { x: (Math.random() - 0.5) * 0.8, y: (Math.random() - 0.5) * 0.4, at: now + 1800 + Math.random() * 3500 };
+    else if (!calm && now > s.glance.at) {
+      // (now and then at someone else here, briefly, as people in a group
+      // glance at each other; otherwise about)
+      const others = Math.random() < 0.35 ? [...heads.keys()].filter((o) => o !== slot) : [];
+      const other = others.length ? centre(others[Math.floor(Math.random() * others.length)]) : null;
+      s.glance = other
+        ? { x: clamp((other.x - me.x) / 500, -1, 1), y: clamp((me.y - other.y) / 500, -1, 1), at: now + 900 + Math.random() * 1400 }
+        : { x: (Math.random() - 0.5) * 0.8, y: (Math.random() - 0.5) * 0.4, at: now + 1800 + Math.random() * 3500 };
+    }
     // (an emote that looks somewhere, up and aside for a "hmm", looks there
     // while it lasts)
     if (s.doing && !live) {
@@ -1317,10 +1345,21 @@ function frame(now: number): void {
         const wave = doingArm.arm === "wave" ? Math.sin(doingArm.t * Math.PI * 8) * 0.35 : 0;
         want = { ...want, right: { ...g, fore: unit([g.fore[0] + wave, g.fore[1], g.fore[2]]) } };
       }
+      // talking: a beat, the forearm up in front and down, or a palm
+      // turned up for a question (not while their camera's reading their
+      // arms, an emote has one, or that hand's up)
+      // (only where the arms are drawn anyway: in the room, the studio; a
+      // card isn't widened for a word)
+      const beating = !calm && !read && !doingArm && now < s.beat.until && (!!roomDraw || always.has(slot));
+      if (beating && !(s.arms.up && s.beat.side === "right")) {
+        const bt = (now - s.beat.at) / (s.beat.until - s.beat.at);
+        const amt = Math.sin(Math.PI * clamp(bt, 0, 1)) * (0.55 + s.beat.firm * 0.45);
+        want = { ...want, [s.beat.side]: talkingArm(s.beat.side, amt, s.beat.open) };
+      }
       // doing something: read off a camera, or an emote's arm, lately
       if (read || s.arms.up || (doingArm && doingArm.t < 0.85)) s.arms.busyAt = now;
       armsBusy = now - s.arms.busyAt < ARMS_DOWN;
-      const kk = k(read ? 24 : 9);
+      const kk = k(read ? 24 : beating ? 16 : 9);
       s.arms.left = easeArm(s.arms.left, want.left, kk);
       s.arms.right = easeArm(s.arms.right, want.right, kk);
       s.arms.tilt = ease(s.arms.tilt, want.tilt, kk);
@@ -1418,10 +1457,10 @@ function drawCard(slot: HTMLElement, s: Shown): void {
 
 // how a head is turned, and its mouth open, as drawn: for the checks that
 // time it
-export const drawn = (slot: HTMLElement): { pose: Pose; open: number; eyes: { x: number; y: number }; blinking: boolean; answering: boolean } | null => {
+export const drawn = (slot: HTMLElement): { pose: Pose; open: number; eyes: { x: number; y: number }; blinking: boolean; answering: boolean; arms: { left: Arm; right: Arm; shown: number } } | null => {
   const s = heads.get(slot);
   const now = performance.now();
-  return s ? { pose: { ...s.pose }, open: s.open, eyes: { ...s.eyes }, blinking: now >= s.blinkAt && now < s.blinkAt + BLINK, answering: replyTo?.from === slot } : null;
+  return s ? { pose: { ...s.pose }, open: s.open, eyes: { ...s.eyes }, blinking: now >= s.blinkAt && now < s.blinkAt + BLINK, answering: replyTo?.from === slot, arms: { left: s.arms.left, right: s.arms.right, shown: s.arms.shown } } : null;
 };
 
 // Draw (or redraw) a person's head in their avatar's slot, in their look,
@@ -1475,6 +1514,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       away: known?.away ?? (slot.closest(".spot[data-away]") ? 1 : 0),
       doing: known?.doing ?? null,
       // (a hand already up, as its card says, is up from the start)
+      beat: known?.beat ?? { at: -Infinity, until: -Infinity, open: 0, firm: 0, side: "right" },
       arms: known?.arms ?? { target: null, at: -Infinity, busyAt: -Infinity, left: RESTING.left, right: RESTING.right, tilt: 0, turn: 0, shown: 0, up: !!slot.closest<HTMLElement>(".spot")?.dataset.hand },
       drawn: "",
       open: 0,
@@ -1526,6 +1566,14 @@ export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; p
       down: low * 0.5,
       tilt: rising * 0.14,
     };
+  }
+  // a hand with it, on a word leaned on (loud, high, drawn out, an effect)
+  // or a question: the hand they talk with, now and then the other
+  // (and now and then a lighter one on a plain word, as hands go talking)
+  const lean = Math.max(loud, high * 0.8, rising, held * 0.7, w.effect ? 0.6 : 0, w.syllables > 1 && Math.random() < 0.3 ? 0.2 : 0);
+  if (lean > 0.15 && (now > s.beat.until || lean > s.beat.firm + 0.2)) {
+    const side: Side = Math.random() < 0.75 ? (s.seed % 2 < 1 ? "right" : "left") : (s.seed % 2 < 1 ? "left" : "right");
+    s.beat = { at: now, until: now + clamp(w.seconds * 1000, 350, 900) + 350, open: rising, firm: lean, side: now < s.beat.until ? s.beat.side : side };
   }
   if (now - s.voice.loudAt < 1500) return; // their voice is moving it already
   // one opening per syllable, back to back, so a word of three moves three times
