@@ -1242,7 +1242,7 @@ main.space-page > .visually-hidden { position: absolute; }
 .being.gliding { transition: left 0.45s var(--ease), top 0.45s var(--ease), transform 0.4s var(--ease); }
 .being.mine { cursor: grab; z-index: 3; }
 .being.mine.held { cursor: grabbing; transition: transform 0.4s var(--ease); }
-.being-words { font-family: var(--display, inherit); font-size: clamp(1.125rem, 0.9rem + 0.8vw, 1.625rem); line-height: 1.2; text-align: center; color: var(--ink); overflow-wrap: anywhere; min-height: 1.2em; min-width: 1.5em; padding: 6px 10px; border-radius: 14px; }
+.being-words { font-family: var(--display, inherit); font-size: clamp(1.125rem, 0.9rem + 0.8vw, 1.625rem); line-height: 1.2; text-align: center; color: var(--ink); overflow-wrap: anywhere; min-height: 1.2em; min-width: 1.5em; padding: calc(6px + var(--up, 0em)) 10px calc(6px + var(--down, 0em)); border-radius: 14px; }
 .being-words:empty::before { content: "…"; color: var(--faint); }
 .being-name { font-size: 0.75rem; font-weight: 650; color: var(--person); padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--person) 12%, transparent); white-space: nowrap; }
 .being.mine .being-words { box-shadow: 0 0 0 2px var(--person); background: color-mix(in srgb, var(--person) 8%, transparent); }

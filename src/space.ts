@@ -127,6 +127,14 @@ function draw(name: string): void {
   if (!el || !ws) return;
   const box = el.querySelector(".being-words")!;
   box.innerHTML = lens === "words" ? ws.map((w) => w.html).join(" ") : ws.map(lens === "colour" ? colourOf : emojiWord).join("");
+  // (a word said high sits higher than the line, and rose out of the top
+  // of its pill: the pill grows up as far as the highest goes, and down as
+  // far as the lowest)
+  const lift = lens === "words" ? 0.07 : 0;
+  const hi = Math.max(0, ...ws.map((w) => w.pitch)) * lift;
+  const lo = Math.max(0, ...ws.map((w) => -w.pitch)) * lift;
+  (box as HTMLElement).style.setProperty("--up", `${Math.min(1.2, hi).toFixed(2)}em`);
+  (box as HTMLElement).style.setProperty("--down", `${Math.min(1.2, lo).toFixed(2)}em`);
   hearFrom();
 }
 const lenses = document.querySelector<HTMLFieldSetElement>(".lenses");
