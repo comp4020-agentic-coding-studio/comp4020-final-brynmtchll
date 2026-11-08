@@ -184,7 +184,14 @@ Candidates:
   7 Nov
   ([`df22520`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/df22520)).
   **You answer:** what that cost, or what you'd do differently.
-- The size of spec/ now: 201 checks in 17 files.
+- Captions in a crowd flickered 100 to 240 times in 120 frames: a cut-down
+  caption was measured at its cut size, came back whole, and was cut
+  again. Fixed, and a CLAUDE.md rule names the probe that counted it
+  ([`118e3c1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/118e3c1)).
+- Word gestures first fired on one word in five of ordinary talk, measured
+  on a paragraph; now one in twenty, and the rule says so
+  ([`3148db2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/3148db2)).
+- The size of spec/ now: 231 checks in 21 files (9 Nov).
 
 ## 6. Stack and why (~150 words; link the ADRs instead of restating them)
 
