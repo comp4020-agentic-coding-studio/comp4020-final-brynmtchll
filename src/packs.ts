@@ -467,9 +467,9 @@ export const DEFAULT_SCENE: Scene = { sky: "dusk", walls: "slate", floor: "oak",
 export const SCENES = [
   { id: "lounge", label: "Lounge", emoji: "🛋️", scene: DEFAULT_SCENE },
   { id: "garden", label: "Garden room", emoji: "🌿", scene: { sky: "day", walls: "sage", floor: "ash", rug: "moss" } },
-  { id: "late", label: "Night", emoji: "🌙", scene: { sky: "night", walls: "ink", floor: "walnut", rug: "ocean" } },
+  { id: "late", label: "Late night", emoji: "🌙", scene: { sky: "night", walls: "ink", floor: "walnut", rug: "ocean" } },
   { id: "cabin", label: "Cabin", emoji: "❄️", scene: { sky: "snow", walls: "terracotta", floor: "walnut", rug: "sun" } },
-  { id: "beach", label: "Seaside", emoji: "🌊", scene: { sky: "sea", walls: "cream", floor: "ash", rug: "ocean" } },
+  { id: "beach", label: "Beach house", emoji: "🌊", scene: { sky: "sea", walls: "cream", floor: "ash", rug: "ocean" } },
   { id: "studio", label: "Studio", emoji: "🎨", scene: { sky: "day", walls: "plum", floor: "slate", rug: "sun" } },
 ] as const satisfies readonly (Choice & { emoji: string; scene: Scene })[];
 

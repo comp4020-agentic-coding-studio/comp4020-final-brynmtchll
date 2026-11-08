@@ -745,9 +745,11 @@ led to. Claude chose how to build each; what to build was yours.
         the full-screen dock) show a microphone, not a bare dot;
       - the same thing had two names: "Follow my face" in the studio is now
         "Show my face" as README.md has it, "Say it" is "Say", "Start from"
-        is "Looks like", "Copy link" is "Copy the link", "Late night" is
-        "Night", "Beach house" is "Seaside" (each matches the scene parts),
-        and wow is 😮 as an emote as it is as a reaction (it was ❗);
+        is "Looks like", "Copy link" is "Copy the link", and wow is 😮 as
+        an emote as it is as a reaction (it was ❗). "Late night" and "Beach
+        house" were renamed "Night" and "Seaside" and put back in the next
+        commit: room settings show the whole looks and the skies together,
+        and two chips of one name doing different things read as a mistake;
       - the studio's "As well" row repeated the one worn above; it now
         leaves that one out and is called "Add more", the Face tab's second
         "Shape" heading is "Adjust", a filled saved slot says "Replace",
