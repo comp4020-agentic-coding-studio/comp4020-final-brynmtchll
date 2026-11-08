@@ -258,6 +258,23 @@ describe.skipIf(!writable)("the room", () => {
     watcher.close();
   });
 
+  it("carries all 52 of a face's scores to every open page, each pulled into range, and nothing else", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    const f = Array.from({ length: 52 }, (_, i) => (i === 24 ? 0.8 : i === 0 ? 7 : 0));
+    expect((await sendFace(p.cookie, { e: grin, f })).status).toBe(200);
+    const got = (await watcher.waitFor(`"name":"${p.name}","e":{"smile":0.9`)) as unknown as { f: number[] };
+    expect(got.f).toHaveLength(52);
+    expect(got.f[24]).toBe(0.8);
+    expect(got.f[0]).toBe(1);
+    // not 52 numbers: not a face
+    expect((await sendFace(p.cookie, { e: grin, f: f.slice(1) })).status).toBe(400);
+    expect((await sendFace(p.cookie, { e: grin, f: [...f.slice(1), "data:image/png"] })).status).toBe(400);
+    expect((await sendFace(p.cookie, { e: null })).status).toBe(200);
+    watcher.close();
+  });
+
   it("turns someone's avatar the way their head is turned, as three numbers within a head's reach", async () => {
     const watcher = listen();
     await watcher.ready;

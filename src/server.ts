@@ -13,6 +13,7 @@ import { cleanBody, type Body } from "./body.ts";
 import { cleanLook, emoteOf, isEffect, reactionOf, SCENES, stylesCss, type Look } from "./packs.ts";
 import { cleanSpot, type Spot } from "./walk.ts";
 import { overdue } from "./gone.ts";
+import { cleanFace52, type Face52 } from "./arkit.ts";
 import { freeSpot } from "./hearing.ts";
 
 // What's live in each room, in memory: the pages open on it (each a
@@ -70,7 +71,7 @@ const FACE_FOR = 6_000;
 const expressions = new Map<string, Expression>();
 const faces = new Map<string, Face | null>(); // the emoji each expression reads as, for the record
 const faceSeen = new Map<string, number>();
-const showExpression = (name: string, e: Expression | null, pose: Pose | null = null, body: Body | null = null): void => {
+const showExpression = (name: string, e: Expression | null, pose: Pose | null = null, body: Body | null = null, f: Face52 | null = null): void => {
   if (e) expressions.set(name, e);
   else expressions.delete(name);
   const face = e ? readExpression(e) : null;
@@ -78,7 +79,9 @@ const showExpression = (name: string, e: Expression | null, pose: Pose | null = 
     console.log(`${name.padEnd(18)} face      face="${face ?? "none"}"`);
     faces.set(name, face);
   }
-  tellAll(`event: face\ndata: ${JSON.stringify({ name, e: e ?? REST, pose: e ? pose : null, body: e ? body : null })}\n\n`);
+  // (all 52 of the face's scores too, for the avatars that show every one:
+  // arkit.ts)
+  tellAll(`event: face\ndata: ${JSON.stringify({ name, e: e ?? REST, pose: e ? pose : null, body: e ? body : null, ...(e && f ? { f } : {}) })}\n\n`);
 };
 // Who has a hand up to speak next, in each room, in the order they raised
 // it: for now, like a face, so in memory. A hand goes down when its owner
@@ -174,7 +177,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // time each is asked for (not at boot, so a server waking up answers sooner)
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
-const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "camera.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts", "walk.ts", "hearing.ts", "space.ts", "listen.ts", "lens.ts", "tones.ts"]);
+const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "camera.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts", "walk.ts", "hearing.ts", "space.ts", "listen.ts", "lens.ts", "tones.ts", "arkit.ts", "visemes.ts", "alive.ts"]);
 const stripped = new Map<string, string>();
 const scriptOf = (f: string): string | undefined => {
   if (!SCRIPTS.has(f)) return undefined;
@@ -561,9 +564,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     let raw: unknown;
     let rawPose: unknown;
     let rawBody: unknown;
+    let rawF: unknown = null;
     try {
       // (arms and hands too: a few dozen numbers more)
-      const sent = JSON.parse((await body(req, 2048)) ?? "{}") as { e?: unknown; pose?: unknown; body?: unknown };
+      const sent = JSON.parse((await body(req, 4096)) ?? "{}") as { e?: unknown; pose?: unknown; body?: unknown; f?: unknown };
+      rawF = sent.f ?? null;
       raw = sent.e ?? null;
       rawPose = sent.pose ?? null;
       rawBody = sent.body ?? null;
@@ -573,13 +578,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const e = raw === null ? null : cleanExpression(raw);
     const pose = rawPose === null ? null : cleanPose(rawPose);
     const arms = rawBody === null ? null : cleanBody(rawBody);
-    if ((raw !== null && !e) || (rawPose !== null && !pose) || (rawBody !== null && !arms)) {
+    const f = rawF === null ? null : cleanFace52(rawF);
+    if ((raw !== null && !e) || (rawPose !== null && !pose) || (rawBody !== null && !arms) || (rawF !== null && !f)) {
       log(me, "refused", { why: "not-a-face" });
       return json(res, 400, { error: "not-a-face" });
     }
     if (e) faceSeen.set(me.name, Date.now());
     else faceSeen.delete(me.name);
-    showExpression(me.name, e, pose, arms);
+    showExpression(me.name, e, pose, arms, f);
     return json(res, 200, {});
   }
 
