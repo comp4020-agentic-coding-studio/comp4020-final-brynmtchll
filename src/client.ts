@@ -198,6 +198,7 @@ function play(spot: Spot): void {
       syllables: vowels(shown.textContent ?? "").length,
       effect: /fx-(\w+)/.exec(shown.className)?.[1] ?? null,
       text: shown.textContent ?? "",
+      alone: phrase.words.length <= 2,
     });
   };
   // `at` is when each word goes up on the page; `due` is when it was said,

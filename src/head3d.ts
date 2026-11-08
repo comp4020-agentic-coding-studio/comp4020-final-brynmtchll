@@ -20,6 +20,7 @@ import { detailFrom, detailOf, easeDetail, overlay, STILL_DETAIL, type Detail, t
 import { mouthAt, mouthFace, visemesOf } from "./visemes.ts";
 import { EFFECT_FACES, type Effect, type Look } from "./packs.ts";
 import { handPoints, HAND_UP, RESTING, GESTURE_ARMS, unit, type Arm, type Body, type Side, type Vec } from "./body.ts";
+import { gestureArm, gestureFor, gestureHead, type Gesture } from "./gestures.ts";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
 // three.js as loaded from the CDN, untyped: this file only builds meshes
@@ -119,6 +120,9 @@ type Shown = {
   // (a word's effect, with both hands: claws for spooky, jazz hands for
   // sparkle, a hand swaying for wave)
   beat: { at: number; until: number; open: number; firm: number; side: Side; both?: "claws" | "jazz" | "sway" };
+  // a word that's a gesture of its own (gestures.ts): "hi" waves, "me" a
+  // hand to the chest, "maybe" a shrug, "no" a shake of the head
+  gesture: { g: Gesture; at: number; until: number; side: Side } | null;
   // what it was last drawn as, so a head that hasn't moved isn't drawn again
   drawn: string;
   cardDrawn?: string; // (in the room: what yours was last drawn as on your card)
@@ -1231,12 +1235,14 @@ function frame(now: number): void {
     // wave, it rocks side to side)
     const wordMove = s.accent.move === "shake" ? Math.sin(since * Math.PI * 9) * 0.07 * a : 0;
     const wordRock = s.accent.move === "wave" ? Math.sin(since * Math.PI * 3) * 0.09 * a : 0;
+    // (a word that's a nod or a shake of its own: yes, no, maybe)
+    const gh = !calm && s.gesture && now < s.gesture.until ? gestureHead(s.gesture.g, (now - s.gesture.at) / (s.gesture.until - s.gesture.at), 1) : { pitch: 0, yaw: 0, roll: 0 };
     const to: Pose = s.target.pose ?? {
       ...sway,
-      pitch: -s.gaze.y * 0.15 + sway.pitch + s.voice.level * 0.05 + s.accent.nod * a,
-      yaw: s.gaze.x * 0.3 + sway.yaw + wordMove,
+      pitch: -s.gaze.y * 0.15 + sway.pitch + s.voice.level * 0.05 + s.accent.nod * a + gh.pitch,
+      yaw: s.gaze.x * 0.3 + sway.yaw + wordMove + gh.yaw,
       z: s.accent.lean * a,
-      roll: sway.roll + s.accent.tilt * a + wordRock,
+      roll: sway.roll + s.accent.tilt * a + wordRock + gh.roll,
     };
     for (const key of Object.keys(s.pose) as (keyof Pose)[]) s.pose[key] = ease(s.pose[key], to[key], k(live ? 30 : 10));
     const e = { ...s.e };
@@ -1372,7 +1378,19 @@ function frame(now: number): void {
       // (only where the arms are drawn anyway: in the room, the studio; a
       // card isn't widened for a word)
       const beating = !calm && !read && !doingArm && now < s.beat.until && (!!roomDraw || always.has(slot));
-      if (beating && s.beat.both) {
+      // (a word that's a gesture of its own wins over a beat)
+      const gesturing = !calm && !read && !doingArm && !!s.gesture?.g.arm && now < s.gesture.until && (!!roomDraw || always.has(slot));
+      if (gesturing) {
+        const gs = s.gesture!;
+        const since = now - gs.at;
+        const amt = Math.min(1, since / 220, (gs.until - now) / 320);
+        for (const side of gs.g.hands === "both" ? (["left", "right"] as const) : [gs.side]) {
+          if (s.arms.up && side === "right") continue;
+          const arm = gestureArm(gs.g, side, amt, since / 1000);
+          if (arm) want = { ...want, [side]: arm };
+        }
+      }
+      else if (beating && s.beat.both) {
         // (up quickly, held, and down: a third of a second each way)
         const since = now - s.beat.at;
         const amt = Math.min(1, since / 250, (s.beat.until - now) / 300);
@@ -1391,7 +1409,7 @@ function frame(now: number): void {
       // doing something: read off a camera, or an emote's arm, lately
       if (read || s.arms.up || (doingArm && doingArm.t < 0.85)) s.arms.busyAt = now;
       armsBusy = now - s.arms.busyAt < ARMS_DOWN;
-      const kk = k(read ? 24 : beating ? 16 : 9);
+      const kk = k(read ? 24 : beating || gesturing ? 16 : 9);
       s.arms.left = easeArm(s.arms.left, want.left, kk);
       s.arms.right = easeArm(s.arms.right, want.right, kk);
       s.arms.tilt = ease(s.arms.tilt, want.tilt, kk);
@@ -1489,10 +1507,10 @@ function drawCard(slot: HTMLElement, s: Shown): void {
 
 // how a head is turned, and its mouth open, as drawn: for the checks that
 // time it
-export const drawn = (slot: HTMLElement): { pose: Pose; open: number; eyes: { x: number; y: number }; blinking: boolean; answering: boolean; arms: { left: Arm; right: Arm; shown: number } } | null => {
+export const drawn = (slot: HTMLElement): { pose: Pose; open: number; eyes: { x: number; y: number }; blinking: boolean; answering: boolean; arms: { left: Arm; right: Arm; shown: number }; gesturing: boolean } | null => {
   const s = heads.get(slot);
   const now = performance.now();
-  return s ? { pose: { ...s.pose }, open: s.open, eyes: { ...s.eyes }, blinking: now >= s.blinkAt && now < s.blinkAt + BLINK, answering: replyTo?.from === slot, arms: { left: s.arms.left, right: s.arms.right, shown: s.arms.shown } } : null;
+  return s ? { pose: { ...s.pose }, open: s.open, eyes: { ...s.eyes }, blinking: now >= s.blinkAt && now < s.blinkAt + BLINK, answering: replyTo?.from === slot, arms: { left: s.arms.left, right: s.arms.right, shown: s.arms.shown }, gesturing: !!s.gesture && now < s.gesture.until } : null;
 };
 
 // Draw (or redraw) a person's head in their avatar's slot, in their look,
@@ -1547,6 +1565,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       doing: known?.doing ?? null,
       // (a hand already up, as its card says, is up from the start)
       beat: known?.beat ?? { at: -Infinity, until: -Infinity, open: 0, firm: 0, side: "right" },
+      gesture: known?.gesture ?? null,
       arms: known?.arms ?? { target: null, at: -Infinity, busyAt: -Infinity, left: RESTING.left, right: RESTING.right, tilt: 0, turn: 0, shown: 0, up: !!slot.closest<HTMLElement>(".spot")?.dataset.hand },
       drawn: "",
       open: 0,
@@ -1564,7 +1583,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
 // for a Whisper, a smile for a Glow. And if their voice isn't coming
 // through to move its mouth, the mouth moves for as long as the word was
 // said, opening once per syllable, wider the louder it was.
-export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; rise?: number; held?: boolean; syllables: number; effect: string | null; text?: string }): void {
+export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; rise?: number; held?: boolean; syllables: number; effect: string | null; text?: string; alone?: boolean }): void {
   const s = heads.get(slot);
   if (!s) return;
   const now = performance.now();
@@ -1609,6 +1628,11 @@ export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; p
   }
   const both = w.effect === "spooky" ? "claws" : w.effect === "sparkle" ? "jazz" : w.effect === "wave" ? "sway" : undefined;
   if (both) s.beat = { at: now, until: now + Math.max(w.seconds * 1000, 500) + 700, open: 0, firm: 1, side: s.beat.side, both };
+  // a word that's a gesture of its own: held for the word and a little
+  // after (a nod or a shake for as long as one takes); an effect's hands
+  // win over it
+  const g = !both && w.text ? gestureFor(w.text, lean > 0.15 || !!w.alone) : null;
+  if (g) s.gesture = { g, at: now, until: now + Math.max(w.seconds * 1000, g.arm ? 450 : 700) + (g.arm ? 650 : 450), side: s.seed % 2 < 1 ? "right" : "left" };
   if (now - s.voice.loudAt < 1500) return; // their voice is moving it already
   // one opening per syllable, back to back, so a word of three moves three times
   const each = Math.max(0.12, w.seconds / Math.max(1, w.syllables));
