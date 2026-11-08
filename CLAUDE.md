@@ -134,7 +134,10 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   `src/hearing.ts` (`hearing.test.ts`: "reads someone clearly close to,
   fainter further off, and not at all past their reach", "carries a loud word
   further and a quiet one less far, within bounds"). Judged in a browser with
-  two groups talking at once at opposite ends of the room.
+  two groups talking at once at opposite ends of the room. No caption over a
+  head covers another, nor the room's controls, nor runs off its edge: in a
+  crowd they step down to a line, then a name (judged with six talking at
+  once, desk and phone: probe `crowd/room1.mjs`; it piled up on 9 Nov).
 - Space (`/r/space/`) is you as your words, moved about a plain field
   ("you are the text and you can move that toward or away from others",
   8 Nov). It's the same floor for everyone, so whoever can read you, you can

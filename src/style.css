@@ -591,6 +591,13 @@ main.room {
 .room-said .draft-said .w { opacity: calc((0.25 + var(--clear, 1) * 0.75) * 0.6); font-style: italic; }
 /* too far even to see they're talking */
 .room-label.far .room-said { display: none; }
+.room-label[data-crowd] .room-said { -webkit-line-clamp: 2; max-width: min(17em, calc(var(--room-w, 100vw) - 24px)); }
+/* crowded, a caption that would cover another's steps down (room3d.ts):
+   its last line only, then just that they're talking */
+.room-label[data-fit="line"] .room-said { -webkit-line-clamp: 1; font-size: calc(clamp(0.9rem, 0.75rem + 0.5vw, 1.125rem) * var(--far, 1)); padding: 3px 10px 4px; max-width: min(14em, calc(var(--room-w, 100vw) - 24px)); }
+.room-label[data-fit="line"] .room-said > .said-part:not(:last-child) { display: none; }
+.room-label[data-fit="name"] .room-said { display: none; }
+.room-label[data-fit="name"].speaking .room-name::before { content: "• • • "; letter-spacing: 0.1em; }
 /* Joined, the page is one shape in either view: the room (or everyone, as
    cards) takes the wide side, and you the narrow one, your card short, then
    a panel to say something, then the rest in tabs. In the room, on a wide

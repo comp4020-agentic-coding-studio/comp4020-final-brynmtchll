@@ -1050,9 +1050,10 @@ function captionOf(card: HTMLElement, talking: boolean): string {
   // (the bubble's newest phrase is at its top; the one before it under it)
   const phrases = fresh ? [...latest.querySelectorAll(":scope > .phrase")].slice(0, 2).reverse() : [];
   const words = (el: Element): string => throughLens(lens, [...el.querySelectorAll(".w")]);
-  const parts = phrases.map(words);
-  if (draft) parts.push(`<span class="draft-said">${words(draft)}</span>`);
-  return parts.filter(Boolean).slice(-2).join(" ");
+  // (each phrase its own span, so a crowded room can show just the last)
+  const parts = phrases.map(words).filter(Boolean).map((p) => `<span class="said-part">${p}</span>`);
+  if (draft) parts.push(`<span class="said-part draft-said">${words(draft)}</span>`);
+  return parts.slice(-2).join(" ");
 }
 
 // How captions are read: as words, or as colour or emoji (lens.ts), the
@@ -1779,23 +1780,69 @@ function draw(heads: RoomHead[], THREE: T): void {
   // about a name's height, all told: lifted over someone's word, a name in
   // a crowded room ended up rows above its head, over someone else's. One
   // that can't clear stays by its head, under the other (words are on top).
+  //
+  // A caption that still lands on one already placed steps down rather than
+  // cover it: to its last line only, then to just its name and that they're
+  // talking. Whoever's talking now is placed first, so theirs is the one
+  // kept whole. (Six talking at once piled up, a long line hiding the rest.)
+  // None goes under the room's own controls at the top, nor off its sides.
   placed.sort((a, b) => Number(b.el.classList.contains("speaking")) - Number(a.el.classList.contains("speaking")) || b.y - a.y);
   const done: { x: number; y: number; w: number; h: number }[] = [];
+  // (the controls along the top: the hint, the lenses, full screen)
+  const top = r.overlay.parentElement?.querySelector<HTMLElement>(".room-lens")?.getBoundingClientRect();
+  const clearTop = top && top.height ? top.bottom - rect.top + 6 : 0;
+  // (as wide as its widest part: a caption can be wider than its label's
+  // own box, and ran off the room's edge on a phone)
+  const box = (el: HTMLElement): { w: number; h: number } => ({ w: Math.min(Math.max(el.offsetWidth, ...[...el.children].map((c) => (c as HTMLElement).offsetWidth)), rect.width - 12), h: el.offsetHeight });
+  const hits = (x: number, y: number, w: number, h: number) => done.find((d) => Math.abs(d.x - x) < (d.w + w) / 2 + 2 && y > d.y - d.h - 2 && y - h < d.y + 2);
+  // (in a crowd, three or more saying something, even the one talking now
+  // keeps to two lines: a long line in three hid everyone round it)
+  const saying = placed.filter((l) => !l.el.classList.contains("quiet") && l.el.querySelector(".room-said:not(:empty)")).length;
   for (const l of placed) {
+    const quiet = l.el.classList.contains("quiet");
     const most = (l.el.firstElementChild as HTMLElement).offsetHeight * 1.3 + 2;
-    let y = l.y;
-    for (let tries = 0; tries < 2; tries++) {
-      if (l.el.classList.contains("quiet")) break;
-      const hit = done.find((d) => Math.abs(d.x - l.x) < (d.w + l.w) / 2 + 2 && y > d.y - d.h - 2 && y - l.h < d.y + 2 && l.y - (d.y - d.h - 2) <= most);
+    // (from the fullest it can be, each frame, so one that stepped down
+    // comes back once there's room)
+    let step = 0;
+    if (saying >= 3) l.el.dataset.crowd = "";
+    else delete l.el.dataset.crowd;
+    let { w, h } = box(l.el);
+    let x = Math.min(Math.max(l.x, w / 2 + 6), rect.width - w / 2 - 6);
+    let y = Math.max(l.y, clearTop + h);
+    for (;;) {
+      if (quiet) break;
+      // lifted a little clear of one it touches, if that clears it
+      let hit = hits(x, y, w, h);
+      if (hit && y - (hit.y - hit.h - 2) <= most) {
+        const up = hit.y - hit.h - 2;
+        if (up - h >= clearTop && !hits(x, up, w, h)) y = up;
+      }
+      hit = hits(x, y, w, h);
       if (!hit) break;
-      y = hit.y - hit.h - 2;
+      if (step === 2) {
+        // just a name, and still on another: up clear of all it touches,
+        // or failing that, down below its head instead
+        for (let tries = 0; tries < 4 && hit; tries++) {
+          const up = hit.y - hit.h - 2;
+          if (up - h < clearTop) break;
+          y = up;
+          hit = hits(x, y, w, h);
+        }
+        if (hit) {
+          let down = l.y + h + 4;
+          for (let tries = 0; tries < 4 && hits(x, down, w, h); tries++) down = hits(x, down, w, h)!.y + h + 2;
+          if (!hits(x, down, w, h) && down < rect.height - 60) y = down;
+        }
+        break;
+      }
+      step++;
+      l.el.dataset.fit = step === 1 ? "line" : "name";
+      ({ w, h } = box(l.el));
+      x = Math.min(Math.max(l.x, w / 2 + 6), rect.width - w / 2 - 6);
+      y = Math.max(l.y, clearTop + h);
     }
-    if (!l.el.classList.contains("quiet")) done.push({ x: l.x, y, w: l.w, h: l.h });
-    // (kept inside the room's edges: a caption by someone at the side ran off it)
-    // (measured now, after this frame's words are in it: one that just grew
-    // was measured narrower; and never wider than the room)
-    const w = Math.min(l.el.offsetWidth, rect.width - 12);
-    const x = Math.min(Math.max(l.x, w / 2 + 6), rect.width - w / 2 - 6);
+    if (step === 0 && l.el.dataset.fit) delete l.el.dataset.fit;
+    if (!quiet) done.push({ x, y, w, h });
     l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
   }
   for (const [slot, el] of r.labels) {
