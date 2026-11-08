@@ -18,11 +18,11 @@ for "a good use for being able to walk around as an avatar with live
 captions"). The avatars stay ("no i still want the avatars", 8 Nov). The
 core is creative ways to communicate ("creative ways to communicate is
 really the core idea of this website", 8 Nov); new ways sit alongside what's
-there, not instead of it. And a reason to come: something to do together,
-games played by talking that are only fun because everyone sees how each
-thing was said ("give users a reason to visit it", 8 Nov). The captions-only
-rethink is scrapped ("i don't like the rethink at all, scrap it", 8 Nov):
-avatars, the room and everything built on them stay.
+there, not instead of it. The captions-only rethink is scrapped ("i don't
+like the rethink at all, scrap it", 8 Nov): avatars, the room and everything
+built on them stay. No games ("i dont want to gamify it", 8 Nov): the push is
+seamlessness and expression, avatars made with a toolkit made for it, cartoony
+but very expressive ("cartoony but still as expressive / face like", 8 Nov).
 
 ## Never
 
@@ -140,14 +140,6 @@ avatars, the room and everything built on them stay.
   when turned on. Judged
   from screenshots, both sizes and both themes, joined and not; on a phone
   the field is shown turned, and right on the screen is still right.
-- A room's games (`src/rounds.ts`) are played by talking: what you say
-  during a round is your take, with nothing extra to press. One round at a
-  time per room, kept in memory only. Nobody votes for themselves. In Guess
-  how the secret goes only to whoever says it, until the round's done. Votes
-  show only as a count until it ends. Names only, never ids (`rounds.test.ts`;
-  `room.test.ts`: "plays a round in a room…", "tells only whoever says it how
-  a Guess how round is to be said…"). Judged by playing a whole round in
-  three browsers at both sizes.
 - One place for each thing: what you can do sits together beside the room
   (on a phone, under the 3D room, and above the cards), one panel for
   saying something, the rest in tabs;

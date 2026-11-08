@@ -1063,14 +1063,6 @@ export function readAs(l: Lens): void {
   saveLens(l);
 }
 
-// The round going at the table (play.ts), as a sign over it in the room:
-// what's asked, so anyone looking at the room sees there's a game on and
-// where. Drawn (and escaped) by the page that sets it.
-const tableSign = { text: "" };
-export function signOverTable(html: string): void {
-  tableSign.text = html;
-}
-
 // who's near enough to you to read, as names, whenever that changes (the
 // page shows what they've said, as "near you")
 let nearNow: string[] = [];
@@ -1682,26 +1674,6 @@ function draw(heads: RoomHead[], THREE: T): void {
     meHead.root.getWorldPosition(v);
     [ear.x, ear.z] = [v.x, v.z];
   }
-  // the round going at the table, if any, on a sign over it
-  if (tableSign.text) {
-    let sign = r.overlay.querySelector<HTMLElement>(".table-sign");
-    if (!sign) {
-      sign = document.createElement("div");
-      sign.className = "table-sign";
-      sign.setAttribute("aria-hidden", "true"); // (the round's card says it all)
-      r.overlay.append(sign);
-    }
-    if (sign.dataset.text !== tableSign.text) {
-      sign.dataset.text = tableSign.text;
-      sign.innerHTML = tableSign.text;
-      sign.classList.remove("arrive");
-      void sign.offsetWidth;
-      sign.classList.add("arrive");
-    }
-    v.set(0, FLOOR + 6.2, TABLE.z).project(r.camera);
-    sign.style.translate = `${((v.x * 0.5 + 0.5) * rect.width).toFixed(1)}px ${((-v.y * 0.5 + 0.5) * rect.height).toFixed(1)}px`;
-    sign.hidden = v.z > 1;
-  } else r.overlay.querySelector(".table-sign")?.remove();
   const nearby: string[] = [];
   for (const who of sitting) {
     seen.add(who.slot);

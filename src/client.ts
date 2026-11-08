@@ -6,11 +6,9 @@ import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL
 import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
-import { onNear, overHead, setScene, showRoom, signOverTable, sit, walked, walkSent } from "./room3d.ts";
+import { onNear, overHead, setScene, showRoom, sit, walked, walkSent } from "./room3d.ts";
 import type { Spot as Standing } from "./walk.ts";
-import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearingVoices, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
-import { play as playAt, type RoundShown } from "./play.ts";
-import { chime } from "./tones.ts";
+import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
 import { KEEP_AFTER, toneOf, typedWords, typing as lineTyping, type Tone } from "./typed.ts";
 import { EFFECTS, emoteOf, EMOTES, fullScene, REACTIONS, STYLES, type Look as PackLook, type Scene } from "./packs.ts";
 import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
@@ -574,7 +572,6 @@ function connect(): void {
     showLive(true, "Live");
   });
   stream.addEventListener("room", (e) => caughtUp(JSON.parse((e as MessageEvent<string>).data) as RoomNow));
-  stream.addEventListener("round", (e) => showRound(JSON.parse((e as MessageEvent<string>).data) as RoundShown | null));
   stream.addEventListener("error", () => {
     showLive(false, "Reconnecting…");
     if (stream.readyState !== EventSource.CLOSED) return;
@@ -668,11 +665,9 @@ type RoomNow = {
   people?: (Pick<Phrase, "name" | "hue"> & { look: Look })[];
   from?: number;
   phrases?: Phrase[];
-  round?: RoundShown | null;
 };
 function caughtUp(now: RoomNow): void {
   if (typeof lastSeen !== "number" || now.upTo > lastSeen) lastSeen = now.upTo;
-  showRound(now.round ?? null);
   goneElsewhere(now.elsewhere ?? []);
   for (const p of now.people ?? []) {
     if (p.name === myName) continue;
@@ -2175,26 +2170,3 @@ new MutationObserver(() => {
     markNear();
   }
 }).observe(document.querySelector("main") ?? document.body, { attributes: true, attributeFilter: ["class"] });
-
-// ---- the game at the table (play.ts, rounds.ts) ----
-
-const roundCard = document.getElementById("round");
-const roundSaid = document.getElementById("round-said");
-const showRoundNow = roundCard
-  ? playAt({
-      me: document.querySelector<HTMLElement>(".spot.mine")?.dataset.name ?? "",
-      card: roundCard,
-      starter: document.getElementById("game-starts"),
-      hueOf: (name) => cardOf(name)?.style.getPropertyValue("--hue") ?? "0",
-      announce: (text) => roundSaid && (roundSaid.textContent = text),
-      sign: signOverTable,
-      chime: (phase) => hearingVoices() && chime(phase !== "done"),
-    })
-  : null;
-let roundWaiting: RoundShown | null | undefined;
-function showRound(r: RoundShown | null): void {
-  // (the stream can say so before this part of the page has run)
-  if (showRoundNow) showRoundNow(r);
-  else roundWaiting = r;
-}
-if (showRoundNow && roundWaiting !== undefined) showRoundNow(roundWaiting);

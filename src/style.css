@@ -610,8 +610,6 @@ main.room {
 @media (max-width: 899px) {
   main.room.joined.in-room { grid-template-areas: "others" "me" "record"; }
   main.room.joined.in-room .mine-card { display: none; }
-  /* (a round going: it first, where everyone can see it, as cards too) */
-  body.round-on main.room.joined { grid-template-areas: "others" "me" "record"; }
 }
 main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .live { margin: 0; font-size: 0.8125rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
@@ -1240,62 +1238,3 @@ main.space-page > .visually-hidden { position: absolute; }
   .space-say select { width: 52px; padding: 0 6px; }
 }
 @media (prefers-reduced-motion: reduce) { .being, .being.gliding { transition: none; } .being.speaking .being-words { animation: none; } .ripple { display: none; } }
-
-/* ---- the game at the table (play.ts) ---- */
-.round { position: relative; display: grid; gap: 8px; padding: 14px 18px 16px; border-radius: calc(var(--radius) + 2px); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 10%, var(--surface)), var(--surface) 60%); box-shadow: var(--shadow); animation: card-in 0.4s var(--ease) both; }
-.round[hidden] { display: none; }
-.round-head { display: flex; align-items: center; gap: 10px; font-size: 0.8125rem; color: var(--muted); }
-.round-game { font-weight: 700; color: var(--accent); letter-spacing: 0.01em; }
-.round-by { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.round-clock { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); }
-.round-bar { height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
-.round-bar::after { content: ""; display: block; height: 100%; width: calc(var(--left, 0) / var(--total, 1) * 100%); background: var(--accent); border-radius: inherit; transition: width 0.5s linear; }
-.round[data-phase="done"] .round-bar { display: none; }
-.round-line { margin: 2px 0 0; font-family: var(--display, inherit); font-size: clamp(1.25rem, 1rem + 1vw, 1.75rem); line-height: 1.25; font-weight: 650; color: var(--ink); text-wrap: balance; }
-.round-ask { margin: 0; font-size: 0.9375rem; color: var(--muted); }
-.round-note, .take-wait { margin: 2px 0 0; font-size: 0.875rem; color: var(--faint); }
-.takes { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 8px; }
-.take { --person: oklch(var(--person-l) var(--person-c) var(--hue)); position: relative; display: grid; gap: 6px; align-content: start; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); animation: card-in 0.35s var(--ease) both; }
-.take.solo { margin-top: 4px; }
-.take-name { font-size: 0.75rem; font-weight: 650; color: var(--person); }
-.take-words { font-size: 1.125rem; line-height: 1.35; overflow-wrap: anywhere; }
-.take-pick { justify-self: start; min-height: 36px; padding: 0 14px; border-radius: 999px; font-size: 0.8125rem; font-weight: 650; }
-.take.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.take-pick[aria-pressed="true"], .take-pick[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #0b1020; }
-.take-votes { font-size: 0.8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-.take.won { border-color: color-mix(in srgb, gold 70%, var(--line)); box-shadow: 0 0 0 1px color-mix(in srgb, gold 60%, transparent), 0 10px 30px -14px color-mix(in srgb, gold 60%, transparent); }
-.take.won::before { content: "🏆"; position: absolute; top: -10px; right: 10px; font-size: 1.25rem; }
-.guesses { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 8px; margin-top: 4px; }
-.guess { min-height: 44px; padding: 8px 12px; border-radius: 12px; text-align: left; font-size: 0.875rem; display: flex; align-items: center; gap: 8px; }
-.guess b { margin-left: auto; font-variant-numeric: tabular-nums; }
-.guess.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.guess.right { border-color: color-mix(in srgb, #22c55e 70%, var(--line)); background: color-mix(in srgb, #22c55e 12%, var(--surface)); }
-.guess:disabled { opacity: 1; cursor: default; }
-.round[data-phase="done"] .guess:not(.right) { opacity: 0.6; }
-/* the Play tab: the games to start, or that one's going */
-.play-lede { margin: 0 0 10px; font-size: 0.875rem; color: var(--muted); }
-.game-starts { display: grid; gap: 8px; }
-.game-starts[hidden] { display: none; }
-.game-start { display: grid; gap: 2px; text-align: left; padding: 10px 14px; border-radius: 14px; }
-.game-start strong { font-size: 0.9375rem; }
-.game-start small { font-size: 0.8125rem; color: var(--muted); font-weight: 400; line-height: 1.35; }
-.play-on { display: none; margin: 0; font-size: 0.875rem; color: var(--accent); }
-body.round-on .play-on { display: block; }
-body.round-on .play-lede { display: none; }
-@media (max-width: 720px) {
-  .round { padding: 12px 14px 14px; }
-  .take-words { font-size: 1rem; }
-}
-@media (prefers-reduced-motion: reduce) { .round, .take { animation: none; } .round-bar::after { transition: none; } }
-/* the round's sign over the table in the 3D room */
-.table-sign { position: absolute; left: 0; top: 0; z-index: 2; display: grid; justify-items: center; gap: 2px; max-width: min(26em, 60%); padding: 8px 14px 9px; margin: 0; transform: translate(-50%, -100%); border-radius: 14px; background: rgb(12 15 24 / 0.78); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); color: #f4f1ea; text-align: center; pointer-events: none; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.6); }
-.table-sign[hidden] { display: none; }
-/* (on a phone the round's card is just above the room: the sign would only
-   cover faces) */
-@media (max-width: 720px) { .table-sign { display: none; } }
-.table-sign.arrive { animation: sign-in 0.5s var(--ease) both; }
-@keyframes sign-in { from { opacity: 0; scale: 0.9; } }
-.table-sign-game { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8ab4ff; }
-.table-sign-line { font-family: var(--display, inherit); font-size: clamp(0.9375rem, 0.8rem + 0.5vw, 1.125rem); font-weight: 650; line-height: 1.25; }
-.table-sign-win { font-size: 0.8125rem; color: #fde68a; }
-@media (prefers-reduced-motion: reduce) { .table-sign.arrive { animation: none; } }
