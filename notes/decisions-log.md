@@ -424,6 +424,25 @@ led to. Claude chose how to build each; what to build was yours.
      separately by a check over taps everywhere); a reload, or a tab closed
      and opened again, while standing left you standing on everyone else's
      page for up to a minute while your own had you sitting. 197 checks.
+   - The new way-finding check took 7.7 s on CI's runner (0.8 s here), past
+     its 5 s limit, so CI was red for three pushes and the site stayed on
+     the walking rebuild until it was trimmed
+     ([`6c79269`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/6c79269)).
+   - W A S D did nothing after a view was picked from the room's bar, until
+     the room was clicked again
+     ([`18896f9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/18896f9)).
+   - Found by a bug-hunting subagent that used the room in a browser for
+     two hours, and fixed ([`b74e452`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b74e452)): walking typed over your last word
+     ("see you wwwwwww"), and Enter or Space sent it to everyone; someone
+     who closed their tab while up stood there for good (two timers raced);
+     after Reset, or a view clicked, the keys went nowhere or the arrows
+     picked views; in phone full screen one finger didn't look round; the
+     Me camera looked at the floor below a raised row and cut your head
+     off; tapping your own raised chair walked you behind it; the "here"
+     count was a person short on pages already open. Reported but left: in
+     a headless browser Esc didn't leave full screen (a real browser's own
+     Esc does); walkers pass through seated people's knees; nothing shows
+     the tone chips scroll sideways on a phone.
 
 ### What the three spikes measured (22 October, for the next decisions)
 
