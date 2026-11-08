@@ -2,22 +2,24 @@
 
 ## Status
 
-Accepted 21 October 2026 (crit 10). Extended 8 November for rooms.
+Accepted 21 October 2026, for crit 10. Extended on 8 November for rooms.
 
 ## Context
 
-A word in Said carries how it was said, so editing someone's word changes
-what they appear to have said and how. Crit 10 requires the server to enforce
-who may see and change what.
+A word in Said carries how it was said. Editing someone's word changes what
+they seem to have said, and how. Crit 10 requires the server to enforce who
+may see and change what.
 
 A person is:
-- **a chosen name**
-- **a random id in an HttpOnly cookie**, which page scripts can't read. It's
-  never shown to anyone. Logs show `name#tag` instead
-  ([`e0386ef`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e0386ef)).
+- **a name they choose**
+- **a random id in an HttpOnly cookie**
+  - Page scripts can't read it.
+  - Nobody is ever shown it.
+  - Logs show `name#tag` instead
+    ([`e0386ef`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e0386ef)).
 
-Name plus cookie was Claude's choice in the first build. The decisions log
-lists it as one for Brynly to own.
+Claude chose name plus cookie in the first build. The decisions log lists it
+for Brynly to own.
 
 > *Brynly: what "good" asks of permissions in a room like this.*
 
@@ -27,36 +29,38 @@ lists it as one for Brynly to own.
 
 | Option | Gain | Cost |
 |---|---|---|
-| Accounts with passwords | Identity survives a cleared browser | A sign-up before anyone can speak; a barrier at a walk-up showcase |
-| **Name + cookie** (chosen) | No sign-up | Clearing your cookies makes you a new person, and your old name can't be recovered |
-| Fully anonymous | Nothing to identify you | You can't tell who said what, in a room built on each person having a place |
+| Accounts with passwords | You keep your identity if you clear your browser | You must sign up before speaking. That's a barrier at a walk-up showcase. |
+| **Name + cookie** (chosen) | No sign-up | Clearing your cookies makes you a new person. Your old name is lost. |
+| Fully anonymous | Nothing identifies you | Nobody can tell who said what. The room needs a place for each person. |
 
 ### What others may do to your words
 
 | Option | Effect |
 |---|---|
-| Nothing | Your words are only ever yours |
-| **React** (chosen, 20 Oct) | A reaction belongs to the reactor and sits under your word. The word is unchanged. |
-| Edit, annotate or remove | Others can change what you appear to have said |
+| Nothing | Your words stay only yours |
+| **React** (chosen, 20 Oct) | A reaction belongs to the reactor and sits under your word. The word doesn't change. |
+| Edit, annotate or remove | Others can change what you seem to have said |
 
 ## Decision
 
-**Anyone can watch. Joining lets you speak. Only you can change what's
-yours. Anyone who has joined can react to any word.**
+- **Anyone can watch.**
+- **Joining lets you speak.**
+- **Only you can change what's yours.**
+- **Anyone who has joined can react to any word.**
 
-Where this came from:
+Where it came from:
 
 - **Brynly asked for live editing** ("options to modify text be done live
-  without a buffer", 20 Oct). That forced the question of whose words a
+  without a buffer", 20 Oct). That raised the question of whose words a
   person may edit
   ([`0102513`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0102513)).
-- **Identity comes from the cookie alone.** A name sent in a request is
+- **Identity comes from the cookie only.** A name sent in a request is
   ignored
   ([`f08fca8`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/f08fca8)).
 - **Reactions came with "really maximise expressiveness"** (20 Oct;
   [`2a52afe`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/2a52afe)).
-  Letting anyone react to any word was Claude's call. It's flagged for Brynly
-  to own.
+  Claude chose to let anyone react to any word. The decisions log flags this
+  for Brynly to own.
 
 | | Anyone with the URL | Joined | Only the person |
 |---|---|---|---|
@@ -65,7 +69,7 @@ Where this came from:
 | Edit, add an effect to, or delete a word | | | own words |
 | Face, hands, voice level, head turn, position | | | own avatar |
 | Avatar, word style, voice | | | own |
-| Emote, raise hand | | | own |
+| Emote or raise a hand | | | own |
 | React to a word | | any word, one reaction each | |
 | Rename a room or change its look | | | the room's maker |
 
@@ -82,27 +86,30 @@ What the server refuses:
 
 ## Consequences
 
-- **Joining is one step, typing a name.** Markers and showcase visitors get
-  in from the URL alone.
-- **Identity is fragile.** A cleared browser loses it for good, and
-  there's no way to moderate someone who rejoins under a new name.
-- **Nobody can put words in your mouth.** Checked against the running app in
-  `spec/room.test.ts`:
+- **Joining is one step.** You type a name. Markers and showcase visitors
+  get in from the URL alone.
+- **Identity is fragile.** Clearing your browser loses it for good. Nobody
+  can moderate someone who rejoins under a new name.
+- **Nobody can put words in your mouth.** `spec/room.test.ts` checks this
+  against the running app:
   - "credits what's said to whoever's cookie sent it"
   - "refuses a change to anyone else's words"
   - "lets anyone react to anyone's word…"
-- **A reaction is someone else's mark next to your words.** It sits under
-  the word, not on it.
-- **Rooms (8 Nov).** Only a room's maker can change it, and only to looks on
-  offer. The maker is never sent by id. What's said stays in its room
-  ([`a15b5d9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/a15b5d9);
-  `spec/room.test.ts`, "lets only whoever made a room change it, and only to
-  looks on offer").
-- **Position is held in memory only.** It's never stored or logged, and never
-  sent with an id in Space.
-- **Visible in the logs.** `mise exec -- flyctl logs -a
-  comp4020-final-brynmtchll` prints one line per action: `name#tag action
-  detail`.
+- **A reaction is someone else's mark next to your words.** It sits under the
+  word, not on it.
+- **Rooms (8 Nov):**
+  - Only a room's maker can change it.
+  - They can only pick looks on offer.
+  - The maker is never sent by id.
+  - What's said stays in its room
+    ([`a15b5d9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/a15b5d9);
+    `spec/room.test.ts`: "lets only whoever made a room change it, and only
+    to looks on offer").
+- **Position lives in memory only.** It's never stored or logged. In Space,
+  it's never sent with an id.
+- **The logs show every action.** `mise exec -- flyctl logs -a
+  comp4020-final-brynmtchll` prints one line per action:
+  `name#tag action detail`.
 
-> *Brynly: what you'd revisit (is a reaction on your words or beside them;
-> what a moderator would need).*
+> *Brynly: what you'd revisit. Is a reaction on your words or beside them?
+> What would a moderator need?*
