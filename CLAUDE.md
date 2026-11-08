@@ -80,9 +80,12 @@ be more interesting because others are in the room at the same moment.
   chair and back into it ... never through a chair or the table", "finds
   the way round the table and the chairs"). Right is right, as the camera
   sees it (`walk.test.ts`: "walks the way the stick points"; it went left
-  for a day). Full screen keeps a way to talk. Where someone stands is
-  only ever a place on the floor, kept while they're up and never stored or
-  logged (`room.test.ts`: "shows someone walking about the room").
+  for a day). W A S D walk whatever in the room was last clicked, except a
+  box being typed in (they did nothing after picking a view, 8 Nov; judged
+  in a browser: click a view, press W). Full screen keeps a way to talk.
+  Where someone stands is only ever a place on the floor, kept while
+  they're up and never stored or logged (`room.test.ts`: "shows someone
+  walking about the room").
 - There's more than one room, each its own group with its own look
   ("options to have different rooms / spaces, featuring different groups
   etc", 8 Nov). What's said, hands, walking and emotes in a room stay in that

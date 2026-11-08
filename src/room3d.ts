@@ -1873,9 +1873,13 @@ function control(r: Room, box: HTMLElement): void {
     return null;
   };
   box.addEventListener("keydown", (e) => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) return;
+    // (not while typing; but a view picked from the bar, or Sit, keeps W A S
+    // D walking: having clicked "Wide", the keys did nothing until the room
+    // was clicked again)
+    const typing = e.target instanceof HTMLInputElement && e.target.type === "text";
     const k = walkKey(e);
-    if (!k) return;
+    if (!k || typing) return;
+    if (e.target !== box && k.startsWith("arrow")) return;
     e.preventDefault();
     going.keys.add(k);
   });
