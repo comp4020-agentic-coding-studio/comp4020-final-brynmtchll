@@ -448,6 +448,60 @@ led to. Claude chose how to build each; what to build was yours.
      same in `990b708`. Your card no longer fades in
      ([`0478f98`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0478f98)).
 
+10. **A purpose: a party you can read; and Space.** Brynly, 8 November: "it
+    sucks, the room customiseability needs a lot more work, more over the
+    whole site feels a bit goofy and purposeless we need to completely big
+    picture the site and think about how it can be slick, streamlined and
+    useful (and not clunky) if this might entail some radical change then
+    thats ok".
+    - Claude built a captions-only version with no avatars or 3D room. It's
+      kept on the branch `rethink` (`fd005d2`, `aa5eebf`), not merged; the
+      site as it was before is tagged `before-rethink` (`d627070`). Brynly:
+      "no i still want the avatars", then "i feel like i just need a good
+      purpose for the site, what s a good use for being able to walk around
+      as an avatar with live captions". Of the purposes Claude offered,
+      Brynly picked the first, a party you can read: "ok lets go with the
+      first".
+    - The party ([`e047277`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e047277)): over each head in the
+      room, their last two phrases, each word as clear as you are close. Clear
+      to 6 floor units (a chair is about 3 wide), gone by 10; a word said
+      louder than the speaker's usual carries further, up to 1.8 times as far,
+      and a whisper a third as far. Further off, a murmur (• • •) shows only
+      that they're talking; past 30, nothing. While you're in the room, Lately
+      dims what was said out of your reach.
+    - Space, same commit. Brynly: "and lets also trial, in a seperate window,
+      texting your text is your avatar that you move around a space (no need
+      for decorations or so forth) its like you are the text and you can
+      move that toward or away from others". At `/r/space/`, linked from the
+      header and not on the rooms list: each person is their latest words on
+      a plain field, moved by dragging, a tap or the keys. The same hearing
+      rules apply. The floor is the same size for everyone (25 by 15 units), so
+      reading goes both ways. On a phone held upright it's shown turned a
+      quarter. Someone new starts clear of everyone there. Where you are is
+      two numbers, kept, and sent to every page in Space.
+    - Colour and emoji, same commit. Brynly: "im looking for creative ways to
+      communicate is really the core idea of this website, so any further
+      ideas are also welcome (iimplemented alongside whats already there so
+      far) maybe with communication through non text mediums where speech /
+      text is mapped directly to emojis or colors or some other more nuanced
+      / abstract kind of expression". In Space you choose how to read what's
+      said:
+      - as words;
+      - as colour: a shape per word, warmer for higher and louder, bigger for
+        louder, longer for drawn out;
+      - as emoji: about 180 words become their emoji, sized by how loud; the
+        rest become a dot.
+      Space only; the room is unchanged.
+    - Found while building: the first Space measured distance from each
+      viewer's own screen shape, so on a laptop you could read someone on a
+      phone who couldn't read you. On a phone everyone bunched in the
+      middle, and newcomers started on top of each other. Fixed before the
+      commit, with checks ("lays Space over one floor for everyone…",
+      "starts someone new in Space clear of everyone there…"). 206 checks.
+    - Gap for the README: "What good means" still describes the room before
+      the party and Space; the purpose, and whether Space stays, are yours to
+      write.
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Brynly's M4 Pro in headless Chrome.

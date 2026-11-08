@@ -12,6 +12,14 @@ People in one room, talking, and everyone seeing *how* each thing was said,
 not just what: louder heavier, higher higher, drawn out drawn out. It should
 be more interesting because others are in the room at the same moment.
 
+A party you can read: several conversations at once, and you follow the one
+you walk up to ("ok lets go with the first", 8 Nov, of the purposes offered
+for "a good use for being able to walk around as an avatar with live
+captions"). The avatars stay ("no i still want the avatars", 8 Nov). The
+core is creative ways to communicate ("creative ways to communicate is
+really the core idea of this website", 8 Nov); new ways sit alongside what's
+there, not instead of it.
+
 ## Never
 
 - Never send or keep audio, or a picture of anyone's face. Only words, and
@@ -101,6 +109,26 @@ be more interesting because others are in the room at the same moment.
   looks on offer"). A room's name is escaped everywhere it shows, and who
   made it is never sent by id (`room.test.ts`: "escapes a room's name
   wherever it's shown, and never shows who made it by id").
+- Words are as clear as you are close: clear near, fading further off, and
+  past reading only that someone's talking; a loud word carries further and
+  a whisper less far, within bounds. The same rules everywhere, in
+  `src/hearing.ts` (`hearing.test.ts`: "reads someone clearly close to,
+  fainter further off, and not at all past their reach", "carries a loud word
+  further and a quiet one less far, within bounds"). Judged in a browser with
+  two groups talking at once at opposite ends of the room.
+- Space (`/r/space/`) is you as your words, moved about a plain field
+  ("you are the text and you can move that toward or away from others",
+  8 Nov). It's the same floor for everyone, so whoever can read you, you can
+  read (`hearing.test.ts`: "lays Space over one floor for everyone…").
+  Someone new starts clear of everyone there ("starts someone new in Space
+  clear of everyone there…", in `hearing.test.ts` and `room.test.ts`).
+  Where you are is two numbers on the floor, only your own, and never sent
+  with an id (`room.test.ts`: "puts each person in Space where they move
+  themselves…"). Names are escaped there (`room.test.ts`: "escapes names in
+  Space…"). Space never shows in the rooms list. Words, colour and emoji
+  are ways to read the same words as said, drawn from their numbers. Judged
+  from screenshots, both sizes and both themes, joined and not; on a phone
+  the field is shown turned, and right on the screen is still right.
 - One place for each thing: what you can do sits together beside the room
   (on a phone, under the 3D room, and above the cards), one panel for
   saying something, the rest in tabs;
