@@ -45,6 +45,8 @@ type Head = {
   lowL: T; // the lower lids, which rise with a squint or a real smile
   lowR: T;
   lift: T[]; // the apples of the cheeks, pushed up by a smile
+  hair: T; // which trails a moment behind the head as it moves
+  pupils: T[];
   nose: T;
   puffs: T[];
   jaw: T;
@@ -94,6 +96,8 @@ type Shown = {
   accent: { at: number; hold: number; brows: number; wide: number; nod: number; lean: number; smile: number; squint: number; down: number; tilt: number };
   // their own rhythm (breathing, idle sway), so a roomful don't move as one
   seed: number;
+  // where the head was turned a moment ago, which the hair follows
+  lag: { pitch: number; yaw: number; roll: number };
   gaze: { x: number; y: number };
   glance: { x: number; y: number; at: number };
   blinkAt: number;
@@ -681,6 +685,7 @@ function build(THREE: T, look: Look): Head {
     }
     return n ?? g;
   })();
+  let hair: T;
   // hair fuller or flatter, from the middle of the head out
   // fuller from the top out (never smaller than the skull, which would hide
   // it), and a taller head lifts it to stay on top
@@ -689,7 +694,7 @@ function build(THREE: T, look: Look): Head {
     // (flatter only a little: hair sits just outside the skull, so much
     // flatter and the head shows through it)
     const lift = (shape.h - base.h) * 0.5 + Math.max(0, v) * 0.06;
-    into(pick(HAIR, look.hair), [0, lift, 0], [1 + Math.max(0, v) * 0.12, 1 + Math.max(0, v) * 0.12 + Math.min(0, v) * 0.02, 1 + Math.max(0, v) * 0.1]);
+    hair = into(pick(HAIR, look.hair), [0, lift, 0], [1 + Math.max(0, v) * 0.12, 1 + Math.max(0, v) * 0.12 + Math.min(0, v) * 0.02, 1 + Math.max(0, v) * 0.1]);
   }
   pick(BEARDS, look.beard)(k);
   // cheeks that puff out: balls of skin just under the face's surface,
@@ -709,6 +714,7 @@ function build(THREE: T, look: Look): Head {
   const irises: T[] = [];
   const lids: T[] = [];
   const lows: T[] = [];
+  const pupils: T[] = [];
   for (const side of [-1, 1]) {
     const g = new THREE.Group();
     g.position.set(side * eyeX, eyeY, 0.82);
@@ -723,6 +729,7 @@ function build(THREE: T, look: Look): Head {
     const pupil = new THREE.Mesh(new THREE.CircleGeometry(eyeR * 0.26, 24), ink);
     pupil.position.z = eyeR * 0.99;
     iris.add(pupil);
+    pupils.push(pupil);
     if (eyeStyle === "sparkle" || eyeStyle === "big") {
       const shine = new THREE.Mesh(new THREE.CircleGeometry(eyeR * 0.13, 16), mat(THREE, 0xffffff, 0.1, { emissive: 0xffffff, emissiveIntensity: 0.6 }));
       shine.position.set(eyeR * 0.18, eyeR * 0.18, eyeR * 1.0);
@@ -845,7 +852,7 @@ function build(THREE: T, look: Look): Head {
   const squash = new THREE.Group();
   for (const child of [...root.children]) squash.add(child);
   root.add(squash);
-  return { body, root, squash, lowL: lows[0], lowR: lows[1], lift, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush" || (look.more ?? []).includes("blush"), sleepy: look.eyes === "sleepy", browY: 0.44 + t("browHeight") * 0.07 + t("eyeHeight") * 0.08, browX: eyeX, look: JSON.stringify(look), fit };
+  return { body, root, squash, lowL: lows[0], lowR: lows[1], lift, hair: hair!, pupils, nose, puffs, jaw, lidL: lids[0], lidR: lids[1], browL: brows[0], browR: brows[1], irisL: irises[0], irisR: irises[1], mouth, lipTop, lipBottom, cheeks, blush: look.extra === "blush" || (look.more ?? []).includes("blush"), sleepy: look.eyes === "sleepy", browY: 0.44 + t("browHeight") * 0.07 + t("eyeHeight") * 0.08, browX: eyeX, look: JSON.stringify(look), fit };
 }
 
 // Set a head's face, turn, place and gaze (-1 to 1 across and up), from the
@@ -853,7 +860,7 @@ function build(THREE: T, look: Look): Head {
 // its own), as drawn in the mirror. A cartoon shows a face bigger than a face
 // does: brows travel further, lids squeeze, the whole face stretches tall
 // with a gasp and squashes with a laugh.
-function pose(h: Head, given: Detail, at: Pose, look: { x: number; y: number }): void {
+function pose(h: Head, given: Detail, at: Pose, look: { x: number; y: number }, trail: { pitch: number; yaw: number; roll: number } = STILL): void {
   // a number that isn't one, anywhere, would put the whole head nowhere
   // (three.js draws nothing, and says nothing), so it's taken as 0
   const fin = <O extends Record<string, number>>(o: O): O => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Number.isFinite(v) ? v : 0])) as O;
@@ -890,6 +897,13 @@ function pose(h: Head, given: Detail, at: Pose, look: { x: number; y: number }):
   // eyes: the irises turn in their sockets, less far up than down, so
   // looking up doesn't take them under the lid
   for (const iris of [h.irisL, h.irisR]) iris.rotation.set(-gaze.y * (gaze.y > 0 ? 0.22 : 0.38), gaze.x * 0.65, 0);
+  // pupils: pinpricks in a fright or a shock, a little wider for someone
+  // they're pleased to see
+  const wideNow = Math.max(d.wideL, d.wideR);
+  for (const pupil of h.pupils) pupil.scale.setScalar(clamp(1 - wideNow * 0.4 + smile * d.cheekUp * 0.12, 0.55, 1.15));
+  // hair trails the head a moment as it turns or nods, and settles
+  const tr = fin(trail);
+  h.hair.rotation.set(tr.pitch, tr.yaw, tr.roll);
   // brows, each end on its own: the inner end up (worry, surprise) or down
   // and in (a glare), the outer end up (a raised brow), so a brow can tilt
   // either way and arch; down also draws them together
@@ -1189,8 +1203,10 @@ function frame(now: number): void {
         }
       }
     }
-    // and a blink every few seconds, BLINK long
-    if (!calm && now >= s.blinkAt) {
+    // and a blink every few seconds, BLINK long (not while a camera's
+    // reading their face: their own blinks come with it, and one of its own
+    // on top would blink at them out of time)
+    if (!calm && !live && now >= s.blinkAt) {
       if (now < s.blinkAt + BLINK) e.blink = 1;
       else s.blinkAt = now + 2200 + Math.random() * 4000;
     }
@@ -1270,13 +1286,17 @@ function frame(now: number): void {
     if (slot.hasAttribute("data-arms") !== roomy) slot.toggleAttribute("data-arms", roomy);
     // drawn only if it's moved enough to see
     const armKey = body && s.arms.shown > 0.01 ? [s.arms.shown, s.arms.tilt, s.arms.turn, ...armNumbers(s.arms.left), ...armNumbers(s.arms.right)] : [];
-    const looks = [...Object.values(dd), ...Object.values(moved), s.gaze.x, s.gaze.y, ...armKey].map((v) => Math.round(v * 200)).join(",");
+    // the hair a moment behind: as far as the head's got ahead of where it
+    // was, a little, and only so far (calm: none)
+    for (const key of ["pitch", "yaw", "roll"] as const) s.lag[key] = ease(s.lag[key], moved[key], k(7));
+    const trail = calm ? STILL : { ...STILL, pitch: clamp((s.lag.pitch - moved.pitch) * 0.35, -0.07, 0.07), yaw: clamp((s.lag.yaw - moved.yaw) * 0.3, -0.07, 0.07), roll: clamp((s.lag.roll - moved.roll) * 0.35, -0.06, 0.06) };
+    const looks = [...Object.values(dd), ...Object.values(moved), trail.pitch, trail.yaw, trail.roll, s.gaze.x, s.gaze.y, ...armKey].map((v) => Math.round(v * 200)).join(",");
     if (roomDraw) {
       // posed in place, and drawn with everyone after
       if (looks !== s.drawn) {
         s.drawn = looks;
         s.open = dd.jaw;
-        pose(s.head, dd, moved, s.gaze);
+        pose(s.head, dd, moved, s.gaze, trail);
         if (body) {
           body.root.rotation.set(0, s.arms.turn, s.arms.tilt);
           poseArm(THREE_, body.left, s.arms.left);
@@ -1298,7 +1318,7 @@ function frame(now: number): void {
     if (looks === s.drawn) continue;
     s.drawn = looks;
     s.open = dd.jaw;
-    pose(s.head, dd, moved, s.gaze);
+    pose(s.head, dd, moved, s.gaze, trail);
     drawCard(slot, s);
   }
   roomDraw?.draw(inRoom, THREE_);
@@ -1399,6 +1419,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       voice: known?.voice ?? { level: 0, to: 0, queue: [], nextAt: 0, loudAt: -Infinity, since: 0 },
       accent: known?.accent ?? { at: -Infinity, hold: 0, brows: 0, wide: 0, nod: 0, lean: 0, smile: 0, squint: 0, down: 0, tilt: 0 },
       seed: known?.seed ?? Math.random() * 100,
+      lag: known?.lag ?? { pitch: 0, yaw: 0, roll: 0 },
       gaze: known?.gaze ?? { x: 0, y: 0 },
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
