@@ -649,6 +649,17 @@ led to. Claude chose how to build each; what to build was yours.
         word raises one brow; the first values were too slight to see on a
         contact sheet, so a check now holds each to at least half way
         ([`f85ef30`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/f85ef30)).
+      - whoever answers someone within 20 seconds of them finishing looks at
+        them while they say it, and everyone else looks at whoever's talking
+        ([`a71040b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/a71040b));
+      - a reaction rises from the head of whoever said the word as it lands,
+        in the room and on the cards; none when one is taken off, or with
+        motion turned down ([`b357327`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/b357327)).
+    - Captions in a crowd, again: a cut-down caption was measured next frame
+      at its cut size, fitted, came back whole and was cut again, flickering
+      every frame (a probe counted 100 to 240 flips in 120 frames; now one or
+      two as it settles); and a long caption hung off the right of the room
+      on a phone ([`118e3c1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/118e3c1)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
