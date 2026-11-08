@@ -680,6 +680,31 @@ led to. Claude chose how to build each; what to build was yours.
       ([`37fe0c2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/37fe0c2)). A mistyped address got a bare black "Not
       found", 980 wide on a phone; now a page that leads back
       ([`0801f53`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/0801f53)).
+      The rest of that sweep:
+      - the room's settings on a phone reach the screen's bottom edge with
+        their title kept in sight; the help panel's foot fades while there's
+        more below; an away card's latest line stays on one line; no "…"
+        over a raised hand ([`69bfaa1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/69bfaa1));
+      - in Space, a word said high or low no longer pokes out of its pill
+        ([`7bdaf36`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/7bdaf36));
+      - on a phone, Live is a dot on the corner of the Cards/Room switch
+        rather than a line of its own; Reconnecting still shows in words
+        ([`162e9d1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/162e9d1));
+      - Lately opened on its oldest lines and was cut mid-row; it now opens
+        on the newest, keeps them in sight unless scrolled back, and fades
+        where it's cut ([`21e5c50`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/21e5c50));
+      - the studio's tools under the preview on a phone, two by two, none
+        alone on a row ([`3d074eb`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/3d074eb));
+      - alone in the cards view: three empty seats and a line on what'll
+        happen there, in place of one grey line ([`8c241ba`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/8c241ba));
+      - each room on /rooms drawn small from its own looks (window and
+        view, curtains, lights, rug, table, chairs), with someone in a chair
+        for each person there now ([`591783c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/591783c));
+      - a phone's walking stick faint and see-through until it's held
+        ([`dd94437`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/dd94437)).
+      Left as they were: the phone header drops "Rooms" when the room
+      switcher shows (the switcher lists every room); /readme/ has no "?"
+      (the page is the explanation).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
