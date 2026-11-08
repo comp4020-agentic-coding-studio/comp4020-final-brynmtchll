@@ -476,6 +476,8 @@ main.room {
 .room-hint { position: absolute; top: 12px; left: 50%; translate: -50% 0; margin: 0; padding: 4px 12px; border-radius: 999px; background: rgb(12 15 24 / 0.45); color: rgb(255 255 255 / 0.75); font-size: 0.75rem; pointer-events: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: opacity 0.6s; animation: hint-out 0.6s 6s forwards; z-index: 3; }
 @keyframes hint-out { to { opacity: 0; } }
 .room3d[data-turned] .room-hint { opacity: 0; }
+/* (walking is for whoever's joined: before, the room is only to look at) */
+.room:not(.joined) .room-hint { display: none; }
 /* up and walking: the "Me" view (over your shoulder) and the way back to
    your chair, shown only then */
 .room-me, .room-sit { display: none; }
@@ -509,7 +511,7 @@ main.room {
 .room-stick:active, .room3d[data-up] .room-stick { opacity: 1; }
 .room-knob { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: rgb(255 255 255 / 0.9); box-shadow: 0 4px 14px rgb(0 0 0 / 0.35); transition: transform 0.12s var(--ease); pointer-events: none; }
 .room-stick:active .room-knob { transition: none; }
-@media (pointer: coarse) { .room-stick { display: block; } }
+@media (pointer: coarse) { .room.joined .room-stick { display: block; } }
 /* up, on a phone: six in the bar, so each a little narrower */
 @media (max-width: 600px) {
   .room3d[data-up] .room-views span { padding: 6px 7px; font-size: 0.75rem; }

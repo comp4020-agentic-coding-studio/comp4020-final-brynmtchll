@@ -122,9 +122,11 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   keeps a way to talk, and one finger looks round in it. Anyone who closes
   their page while up is back in their chair within a minute and a bit
   (`walk.test.ts`: "sits back down whoever closed their page while up").
-  Where someone stands is only ever a place on the floor, kept while
-  they're up and never stored or logged (`room.test.ts`: "shows someone
-  walking about the room").
+  Before joining, an empty room shows its chairs, not a teapot close up,
+  and nothing about walking, which only someone joined can do (probe
+  `landing-room.mjs`). Where someone stands is only ever a place on the
+  floor, kept while they're up and never stored or logged (`room.test.ts`:
+  "shows someone walking about the room").
 - There's more than one room, each its own group with its own look
   ("options to have different rooms / spaces, featuring different groups
   etc", 8 Nov). What's said, hands, walking and emotes in a room stay in that

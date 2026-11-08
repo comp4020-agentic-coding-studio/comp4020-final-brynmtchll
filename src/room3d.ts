@@ -1494,8 +1494,12 @@ function draw(heads: RoomHead[], THREE: T): void {
   const places = seatPlaces(sitting.length, ROOM_SHAPE);
   chairsFor(r, sitting, places);
   walkMine(r, sitting, dt);
+  // (nobody here yet, not even you, as someone sees it before joining: a
+  // few empty chairs round the table, and the room framed for them, not
+  // the teapot close up)
+  const empty = sitting.length === 0 ? seatPlaces(4, ROOM_SHAPE) : [];
   // seats: as many as there are people, made as needed
-  while (r.seats.length < sitting.length) {
+  while (r.seats.length < Math.max(sitting.length, empty.length)) {
     const group = new THREE.Group();
     const c = chair(THREE, r.seats.length, roundedBox);
     // a step under a raised row's chair, as a lecture theatre's (side by
@@ -1510,13 +1514,23 @@ function draw(heads: RoomHead[], THREE: T): void {
   }
   r.seats.forEach((seat, i) => {
     const who = sitting[i];
-    seat.group.visible = !!who;
+    seat.group.visible = !!who || i < empty.length;
     // whoever sat here before is put back where head3d keeps them
     if (seat.holds && seat.holds !== who) {
       seat.holds.root.parent?.remove(seat.holds.root);
       seat.holds.body?.parent?.remove(seat.holds.body);
     }
-    if (!who) return void (seat.holds = null);
+    if (!who) {
+      seat.holds = null;
+      const p = empty[i];
+      if (p) {
+        seat.group.position.set(p.x, p.y, p.z);
+        seat.group.rotation.y = p.turn;
+        seat.group.scale.setScalar(1);
+        seat.riser.visible = false;
+      }
+      return;
+    }
     const p = places[i];
     // (someone new: comes up where they sit; someone moved along, as the
     // rows fill or close up: glides there, chair and all)
@@ -1576,7 +1590,7 @@ function draw(heads: RoomHead[], THREE: T): void {
   // shouldn't shrink everyone else to fit them in)
   const widest = Math.max(4, ...places.map((p) => Math.abs(p.x))) + 5;
   const about = [...r.walkers.values()].map((w) => ({ x: Math.max(-widest, Math.min(widest, w.at.x)), y: 0, z: w.at.z, turn: w.at.turn, row: 0 }));
-  const framed = r.view === "me" && mineW ? behind(mineW.at, r.camera.aspect, r.turn, mineW.up) : r.view === "speaker" ? shotFor("speaker", places.map((p, i) => { const w = r.walkers.get(sitting[i]?.slot); return w ? { x: w.at.x, y: STAND, z: w.at.z, turn: w.at.turn, row: 0 } : p; }), r.camera.aspect, talking, focus) : shotFor(r.view === "me" ? "follow" : r.view, [...places, ...about], r.camera.aspect, talking, focus);
+  const framed = r.view === "me" && mineW ? behind(mineW.at, r.camera.aspect, r.turn, mineW.up) : r.view === "speaker" ? shotFor("speaker", places.map((p, i) => { const w = r.walkers.get(sitting[i]?.slot); return w ? { x: w.at.x, y: STAND, z: w.at.z, turn: w.at.turn, row: 0 } : p; }), r.camera.aspect, talking, focus) : shotFor(r.view === "me" ? "follow" : r.view, [...places, ...empty, ...about], r.camera.aspect, talking, focus);
   r.framed = framed;
   // the light on whoever's talking: over to them, and up, as they start;
   // down, where it was, after they stop
