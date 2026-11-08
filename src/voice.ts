@@ -302,3 +302,7 @@ export const handBadge = (place: number): string => (place ? `<span class="hand-
 const ordinal = (n: number): string => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 export const queueHtml = (queue: string[], me?: string): string =>
   queue.length ? `<span aria-hidden="true">✋</span> Next: ${queue.map((n) => (n === me ? "<strong>you</strong>" : esc(n))).join(", then ")}` : "";
+
+// How many are here beside a room's name, and how many stepped away (their
+// cards still show: "1 here" beside three cards read as a mistake).
+export const hereCount = (here: number, away: number): string => [here ? `${here} here` : "", away ? `${away} away` : ""].filter(Boolean).join(" · ");

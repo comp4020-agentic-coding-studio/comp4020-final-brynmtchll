@@ -201,7 +201,16 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   screenshots, both sizes, both themes. A list that scrolls fades where it's
   cut, and Lately opens on the newest and keeps them in sight unless you've
   scrolled back (probe `lately.mjs`: it opened on the oldest, cut mid-row,
-  on 9 Nov).
+  on 9 Nov). A panel over the page is solid enough to read, fading only its
+  words where there's more (probe `help-panel.mjs`: a mask on the help let
+  the page show through). One name for each thing wherever it shows ("Show
+  my face", "Say", "Looks like", "Copy the link"; one emoji for wow), and
+  the count beside a room's name counts who's away as well as who's here
+  (probe `counts.mjs`). On a phone in full screen every view, Sit and the
+  ways to read it are in reach, none over another (probe `full-bar.mjs`:
+  the lenses covered "Above", and "Me" and "Sit" once up, on 9 Nov). A
+  button with no room for its words still says what it's for (a
+  microphone, not a bare dot).
 
 ## Every change
 

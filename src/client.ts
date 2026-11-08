@@ -12,7 +12,7 @@ import type { Spot as Standing } from "./walk.ts";
 import { canNatural, canSpeak, duck, echoOf, gpuAdapter, hearVoices, naturalSize, naturalVoices, speak, speaking as voicesSpeaking, tryVoice, type Natural, type Spoken, type Voiced } from "./speech.ts";
 import { KEEP_AFTER, toneOf, typedWords, typing as lineTyping, type Tone } from "./typed.ts";
 import { EFFECTS, emoteOf, EMOTES, fullScene, REACTIONS, STYLES, type Look as PackLook, type Scene } from "./packs.ts";
-import { handBadge, queueHtml, reactionsHtml } from "./voice.ts";
+import { handBadge, hereCount, queueHtml, reactionsHtml } from "./voice.ts";
 import { phraser, type Phraser } from "./phrases.ts";
 import { hear, invented, near, spoke, voiceLevel, words, type Heard } from "./prosody.ts";
 import { ago, vowels, wordHtml, type Voice, type Word } from "./voice.ts";
@@ -2128,8 +2128,8 @@ addEventListener("keydown", (e) => {
 const countEl = document.getElementById("room-count");
 function countHere(): void {
   if (!countEl) return;
-  const n = [...document.querySelectorAll<HTMLElement>(".spot")].filter((c) => !c.hasAttribute("data-away")).length;
-  countEl.textContent = n ? `${n} here` : "";
+  const cards = [...document.querySelectorAll<HTMLElement>(".spot")];
+  countEl.textContent = hereCount(cards.filter((c) => !c.hasAttribute("data-away")).length, cards.filter((c) => c.hasAttribute("data-away")).length);
 }
 // (whenever a card comes, goes, or is marked away or back: counted only on
 // some of those, a page already open was a person short)

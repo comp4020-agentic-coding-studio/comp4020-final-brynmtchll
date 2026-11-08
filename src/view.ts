@@ -1,5 +1,5 @@
 import type { Message, Person, RoomInfo } from "./db.ts";
-import { ago, esc, handBadge, hueOf, queueHtml, reactionsHtml, wordHtml, type Word } from "./voice.ts";
+import { ago, esc, handBadge, hereCount, hueOf, queueHtml, reactionsHtml, wordHtml, type Word } from "./voice.ts";
 import { avatarSvg, REST, type Expression } from "./avatar.ts";
 import { COLOUR_NAMES, COLOURS, EFFECTS, EMOTES, lookFor, MORE_EXTRAS, PARTS, REACTIONS, SCENE_PARTS, SCENES, SLIDERS, STYLES, VOICES_IN_ORDER, type ColourPart, type Look, type Part, type Scene } from "./packs.ts";
 import { TONES } from "./typed.ts";
@@ -280,7 +280,7 @@ function switcher(here: Here, rooms: (RoomInfo & { lately: number })[]): string 
   return `<details class="room-switch">
     <summary><span class="room-switch-name">${esc(here.name)}</span><span class="room-switch-caret" aria-hidden="true"></span></summary>
     <div class="room-switch-menu" role="menu">
-      ${others.map((r) => `<a role="menuitem" href="${roomHref(r)}"><span>${esc(r.name)}</span>${r.lately ? `<small>${r.lately} lately</small>` : ""}</a>`).join("")}
+      ${others.map((r) => `<a role="menuitem" href="${roomHref(r)}"><span>${esc(r.name)}</span>${r.lately ? `<small>${r.lately} talked lately</small>` : ""}</a>`).join("")}
       <a role="menuitem" class="all" href="/rooms">All rooms · make one</a>
     </div>
   </details>`;
@@ -334,6 +334,7 @@ export function roomPage(
     .join("");
   const up = me ? queue.includes(me.name) : false;
   const count = people.filter((p) => !away.includes(p.name)).length;
+  const awayCount = people.length - count;
 
   // a word of someone else's, tapped, offers these
   const picker = me ? `<div id="react-picker" class="react-picker" role="menu" hidden>${REACTIONS.map((r) => `<button type="button" role="menuitem" data-reaction="${r.id}" title="${r.label}">${r.emoji}</button>`).join("")}</div>` : "";
@@ -399,7 +400,7 @@ export function roomPage(
   ${centre}${picker}
   <section class="others" aria-labelledby="others-h">
     <div class="others-head">
-      <h2 id="others-h"><span class="room-title">${esc(here.name)}</span> <span class="room-count" id="room-count">${count ? `${count} here` : ""}</span></h2>
+      <h2 id="others-h"><span class="room-title">${esc(here.name)}</span> <span class="room-count" id="room-count">${hereCount(count, awayCount)}</span></h2>
       <div class="view-switch" role="radiogroup" aria-label="How to see everyone" hidden><label><input type="radio" name="view" value="cards" checked><span>Cards</span></label><label><input type="radio" name="view" value="room"><span>Room</span></label></div><p id="live" class="live" role="status" hidden></p>
     </div>
     ${roomSettings(here)}
@@ -493,7 +494,7 @@ export function roomsPage(rooms: (RoomInfo & { lately: number; here: number; min
     const wall = SCENE_PARTS.walls.find((x) => x.id === r.scene.walls)?.colour ?? "#434c66";
     return `<li><a class="room-card" href="${roomHref(r)}" style="--wall:${wall}">
       <span class="room-card-art" aria-hidden="true">${roomPicture(r.scene, r.here)}</span>
-      <span class="room-card-text"><strong>${esc(r.name)}</strong><small>${r.here ? `${r.here} here now` : r.lately ? `${r.lately} talked lately` : "Quiet"}${r.listed ? "" : " · link only"}${r.mine ? " · yours" : ""}</small></span>
+      <span class="room-card-text"><strong>${esc(r.name)}</strong><small>${r.here ? `${r.here} here` : r.lately ? `${r.lately} talked lately` : "Quiet"}${r.listed ? "" : " · link only"}${r.mine ? " · yours" : ""}</small></span>
     </a></li>`;
   };
   const make = joined
