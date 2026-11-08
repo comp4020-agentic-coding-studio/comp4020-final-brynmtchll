@@ -110,6 +110,7 @@ function listen(headers: Record<string, string> = {}, query = "") {
     });
   return {
     ready,
+    seen,
     waitFor,
     waitUntil,
     close: () => {
@@ -152,6 +153,30 @@ describe.skipIf(!writable)("the room", () => {
     expect(e).toMatchObject({ type: "joined", name: p.name });
     expect(e.hue).toBeGreaterThanOrEqual(0);
     expect(e.hue).toBeLessThan(360);
+    expect(e).not.toHaveProperty("back");
+    watcher.close();
+  });
+
+  it("says someone's only back, not newly come in, when their page reconnects", async () => {
+    const watcher = listen();
+    await watcher.ready;
+    const p = await person();
+    await watcher.waitFor(p.name);
+    // their page opening for the first time: come in
+    const fresh = listen({ cookie: p.cookie });
+    await fresh.ready;
+    await new Promise((r) => setTimeout(r, 150));
+    const joins = () => watcher.seen.filter((x) => x.type === "joined" && (x as { name?: string }).name === p.name) as { back?: boolean }[];
+    expect(joins().length).toBe(2);
+    expect(joins()[1].back).toBeUndefined();
+    fresh.close();
+    await new Promise((r) => setTimeout(r, 150));
+    // and reconnecting, as a browser does, with the last id it saw: back
+    const again = listen({ cookie: p.cookie, "last-event-id": "0" });
+    await again.ready;
+    const e = await watcher.waitUntil((x) => x.type === "joined" && x.name === p.name && "back" in x);
+    expect(e.back).toBe(true);
+    again.close();
     watcher.close();
   });
 

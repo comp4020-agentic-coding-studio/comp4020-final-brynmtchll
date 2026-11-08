@@ -408,7 +408,9 @@ function listen(req: IncomingMessage, res: ServerResponse, l: Live, after: strin
     if (first && !coming) showWalk(l, who.name, null);
     // someone come into a room that wasn't showing them: every page there
     // gives them a place
-    if (first) tell(l, `event: joined\ndata: ${JSON.stringify({ name: who.name, hue: hueOf(room.seatOf(who.name)), look: room.lookOf(who.name), ...(l.id === space?.id ? room.spotOf(who.id) : {}) })}\n\n`);
+    // (a page only reconnecting, a phone woken or a deploy, is "back": their
+    // avatar doesn't wave hello all over again)
+    if (first) tell(l, `event: joined\ndata: ${JSON.stringify({ name: who.name, hue: hueOf(room.seatOf(who.name)), look: room.lookOf(who.name), ...(l.id === space?.id ? room.spotOf(who.id) : {}), ...(coming ? { back: true } : {}) })}\n\n`);
   }
   // The room as it is now: whose hands are up and who's away. A page coming
   // back after its connection dropped (a phone asleep, a deploy) missed more

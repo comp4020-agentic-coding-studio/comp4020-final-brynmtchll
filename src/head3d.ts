@@ -1090,7 +1090,10 @@ function frame(now: number): void {
   let voiced: [HTMLElement, number] | null = null;
   for (const [slot, s] of heads) if (now - s.voice.loudAt < VOICE_FOR && (!voiced || s.voice.since > voiced[1])) voiced = [slot, s.voice.since];
   const speakerNow = voiced?.[0] ?? speaker;
-  const talker = speakerNow && heads.has(speakerNow) ? centre(speakerNow) : null;
+  // (failing a speaker, someone just come in, for a moment: everyone looks)
+  const newcomer = arrived && now - arrived.at < LOOK_AT_NEW && heads.has(arrived.slot) ? arrived.slot : null;
+  const lookAt = speakerNow && heads.has(speakerNow) ? speakerNow : newcomer;
+  const talker = lookAt ? centre(lookAt) : null;
   const inRoom: RoomHead[] = [];
   let yours: [HTMLElement, Shown] | null = null;
   for (const [slot, s] of heads) {
@@ -1132,7 +1135,7 @@ function frame(now: number): void {
     const me = roomDraw ? centre(slot) : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     let look = { x: s.glance.x, y: s.glance.y };
     if (live) look = s.target.f ? { x: s.detail.lookX, y: s.detail.lookY } : { x: s.e.lookX, y: s.e.lookY };
-    else if (talker && speakerNow !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
+    else if (talker && lookAt !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
     else if (!calm && now > s.glance.at) s.glance = { x: (Math.random() - 0.5) * 0.8, y: (Math.random() - 0.5) * 0.4, at: now + 1800 + Math.random() * 3500 };
     // (an emote that looks somewhere, up and aside for a "hmm", looks there
     // while it lasts)
@@ -1537,6 +1540,14 @@ export function arms(slot: HTMLElement, b: Body | null): void {
 // Who's speaking now, so every other head can look at them; the last to
 // start, if several are.
 const talking: HTMLElement[] = [];
+// Someone just come in: everyone's eyes go to them for a moment, as heads
+// turn when a door opens, and they wave.
+const LOOK_AT_NEW = 2200; // ms
+let arrived: { slot: HTMLElement; at: number } | null = null;
+export function cameIn(slot: HTMLElement): void {
+  arrived = { slot, at: performance.now() };
+}
+
 export function speaking(slot: HTMLElement, on: boolean): void {
   const i = talking.indexOf(slot);
   if (i >= 0) talking.splice(i, 1);

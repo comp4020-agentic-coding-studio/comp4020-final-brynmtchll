@@ -4,7 +4,7 @@
 // at a time and sends each phrase as it's heard.
 import { avatarSvg, fromShapes, placed, poseFrom, resting, REST, smoother, STILL, type Expression, type Look, type Placed, type Pose } from "./avatar.ts";
 import { face52, faceFilter, type Face52 } from "./arkit.ts";
-import { arms as headArms, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
+import { arms as headArms, cameIn, emote as headEmote, handUp, head3d, sayWord, speaking, voiceLevels, webgl } from "./head3d.ts";
 import type { Body } from "./body.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { onNear, overHead, setScene, showRoom, sit, walked, walkSent } from "./room3d.ts";
@@ -582,12 +582,23 @@ function connect(): void {
     wait = Math.min(wait * 2, 30_000);
   });
   stream.addEventListener("joined", (e) => {
-    const p = JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue"> & { look: Look };
+    const p = JSON.parse((e as MessageEvent<string>).data) as Pick<Phrase, "name" | "hue"> & { look: Look; back?: boolean };
     // (you, opening this room in another tab: you're here already)
     if (p.name === myName) return;
+    const wasHere = !!cardOf(p.name) && !cardOf(p.name)?.hasAttribute("data-away");
     spotFor(p, p.look);
     cardOf(p.name)?.removeAttribute("data-away");
     showQueue(queueNow);
+    // someone come in (not just another tab of someone here): they wave, and
+    // everyone looks their way for a moment (once their head's drawn)
+    if (wasHere || p.back || still.matches) return;
+    setTimeout(() => {
+      const slot = cardOf(p.name)?.querySelector<HTMLElement>(".spot-avatar");
+      const hi = emoteOf("hi");
+      if (!slot || !hi) return;
+      cameIn(slot);
+      headEmote(slot, hi);
+    }, 700);
   });
   stream.addEventListener("face", (e) => {
     const { name, e: expression, pose, body, f } = JSON.parse((e as MessageEvent<string>).data) as { name: string; e: Expression; pose?: Pose | null; body?: Body | null; f?: Face52 };
