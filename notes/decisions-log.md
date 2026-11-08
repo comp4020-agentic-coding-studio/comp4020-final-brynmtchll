@@ -615,6 +615,21 @@ led to. Claude chose how to build each; what to build was yours.
         without a camera ([`40c7d73`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/40c7d73)).
       - Measured: the room with twelve people at phone size, CPU slowed four
         times, 48 frames a second, against 45 before these changes.
+      - listeners nod now and then as someone finishes a phrase
+        ([`61fec0b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/61fec0b)).
+    - A bug hunt (a subagent driving the local app at both sizes and both
+      themes) found, among others: six people talking at once piled their
+      captions on each other and on the room's controls; the help, the room
+      switcher and the room's settings didn't close on Esc; nobody's words
+      could be reacted to from the keyboard; the room's settings ran off a
+      phone's screen. Fixed:
+      - a crowded room's captions sit side by side, stepping down to a line,
+        then a name ([`60ddf8d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/60ddf8d));
+      - Esc and a click outside close any open panel; someone's latest words
+        are one Tab stop, the arrows choose a word and Enter reacts; the
+        room's settings open as a sheet on a phone; the effects in the help
+        listed from the effects there are
+        ([`39a6a2a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/39a6a2a)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 

@@ -1999,6 +1999,7 @@ let pickedFrom: HTMLElement | null = null;
 function closePicker(back = false): void {
   picker?.setAttribute("hidden", "");
   reactingTo = null;
+  pickedFrom?.classList.remove("reacting");
   // (from the keyboard, back to the phrase it was opened from)
   if (back) pickedFrom?.closest<HTMLElement>(".phrase[tabindex]")?.focus();
   pickedFrom = null;
@@ -2063,12 +2064,17 @@ document.querySelector(".room-labels")?.addEventListener("click", (e) => {
 });
 function openPicker(to: { id: number; index: number }, w: HTMLElement): void {
   if (!picker || !myName || !Number.isFinite(to.id) || !Number.isFinite(to.index)) return;
+  pickedFrom?.classList.remove("reacting");
   reactingTo = to;
   pickedFrom = w;
+  w.classList.add("reacting");
   const r = w.getBoundingClientRect();
   picker.hidden = false;
   picker.style.left = `${Math.max(8, Math.min(innerWidth - picker.offsetWidth - 8, r.left + r.width / 2 - picker.offsetWidth / 2))}px`;
-  picker.style.top = `${r.top + scrollY - picker.offsetHeight - 8}px`;
+  // above the word, or under it when the top of the screen's in the way
+  // (under the header, it'd be half hidden)
+  const above = r.top - picker.offsetHeight - 8 >= 64;
+  picker.style.top = `${(above ? r.top - picker.offsetHeight - 8 : r.bottom + 8) + scrollY}px`;
   (picker.querySelector("button") as HTMLButtonElement | null)?.focus();
 }
 picker?.addEventListener("click", async (e) => {
