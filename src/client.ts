@@ -1398,7 +1398,7 @@ if (talk) {
 const VISION = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1";
 const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 const READ_EVERY = 30; // ms: at most this often, slower if reading takes long
-const SEND_EVERY = 50; // ms
+const SEND_EVERY = 40; // ms (25 a second, under the server's 300 in ten seconds)
 
 type Landmarker = {
   detectForVideo(
@@ -1413,11 +1413,14 @@ let faceOn = false;
 let stopFace: (() => void) | undefined;
 let myName = document.querySelector<HTMLElement>(".spot.mine")?.dataset.name ?? "";
 
-// Sent as it changes, at most every SEND_EVERY, one at a time (a slow
-// connection drops readings rather than queueing them), and again now and
-// then while still: the server puts back to rest a face it stops hearing of.
-// A change too small to see isn't sent.
-let sendingFace = false;
+// Sent as it changes, at most every SEND_EVERY, and no more than two at once
+// (a round trip to the server takes longer than SEND_EVERY, so one at a time
+// would send half as often; any more, and a slow connection would queue
+// readings rather than drop them), and again now and then while still: the
+// server puts back to rest a face it stops hearing of. A change too small to
+// see isn't sent.
+const SENDING_AT_ONCE = 2;
+let sendingFace = 0;
 let lastSent = "";
 let lastSentAt = 0;
 const coarse = (o: Record<string, number> | null): string => (o ? Object.values(o).map((v) => Math.round(v * 40)).join(",") : "-");
@@ -1426,8 +1429,11 @@ async function sendFace(e: Expression | null, pose: Pose | null = null, f: Face5
   const body = e && hands ? bodyNow : null;
   const key = coarse(e) + "|" + coarse(pose) + "|" + (f ? f.map((v) => Math.round(v * 25)).join("") : "-") + "|" + (body ? JSON.stringify(body) : "-");
   const since = Date.now() - lastSentAt;
-  if (sendingFace || since < SEND_EVERY || (key === lastSent && since < 2000)) return;
-  sendingFace = true;
+  // (a face put away always goes, however many are on their way: it's the
+  // last word on it)
+  const putAway = e === null && key !== lastSent;
+  if (!putAway && (sendingFace >= SENDING_AT_ONCE || since < SEND_EVERY || (key === lastSent && since < 2000))) return;
+  sendingFace++;
   lastSent = key;
   lastSentAt = Date.now();
   try {
@@ -1435,7 +1441,7 @@ async function sendFace(e: Expression | null, pose: Pose | null = null, f: Face5
   } catch {
     // a missed reading is soon replaced by the next
   } finally {
-    sendingFace = false;
+    sendingFace--;
   }
 }
 // a face lost from view eases back to rest
@@ -1613,6 +1619,13 @@ function faceStop(): void {
   drawAvatar(myName, REST);
   lastSent = "";
   void sendFace(null);
+  // and again a moment later, in case a face still on its way got there
+  // after it
+  setTimeout(() => {
+    if (faceOn) return;
+    lastSent = "";
+    void sendFace(null);
+  }, 400);
   faceButton!.setAttribute("aria-pressed", "false");
   faceButton!.querySelector(".label")!.textContent = "Show my face";
 }
