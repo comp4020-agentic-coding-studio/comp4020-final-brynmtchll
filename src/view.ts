@@ -415,7 +415,7 @@ export function roomPage(
       <p class="room-hint" aria-hidden="true">Walk up to a group to read them: W A S D or tap the floor · drag to look round</p>
     </div>
     <ul id="stage" class="stage" data-up-to="${upTo}">${others}</ul>
-    <p id="nobody" class="fine" ${others ? "hidden" : ""}>${here.id === 1 ? "Nobody else is here yet." : `Nobody else is here yet. <button type="button" class="copy-link">Copy the link</button> to bring someone.`}</p>
+    <div id="nobody" class="nobody" ${others ? "hidden" : ""}><span class="nobody-seats" aria-hidden="true"><i></i><i></i><i></i></span><p><strong>Nobody else is here yet.</strong> ${here.id === 1 ? "Whoever comes in sits here, their words big as they say them." : `Whoever comes in sits here. <button type="button" class="copy-link">Copy the link</button> to bring someone.`}</p></div>
   </section>
   <details class="record-wrap">
     <summary><h2 id="record-h">Lately</h2><span class="near-note">In the room, what's said near you; further off, fainter</span></summary>

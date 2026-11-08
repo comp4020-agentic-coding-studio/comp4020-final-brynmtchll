@@ -438,6 +438,16 @@ main.room {
 
 /* everyone else, stacked */
 .others { display: grid; gap: 12px; align-content: start; }
+/* with nobody else there, empty seats where they'll be */
+.nobody { display: grid; justify-items: center; gap: 14px; padding: 36px 20px 40px; border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; color: var(--muted); font-size: 0.875rem; }
+.nobody[hidden] { display: none; }
+.nobody p { margin: 0; max-width: 32ch; line-height: 1.5; }
+.nobody strong { display: block; color: var(--ink); font-weight: 600; font-size: 0.9375rem; margin-bottom: 2px; }
+.nobody-seats { display: flex; gap: 12px; }
+.nobody-seats i { width: 46px; height: 46px; border-radius: 50%; border: 1.5px dashed var(--faint); animation: seat-wait 3.6s ease-in-out infinite; }
+.nobody-seats i:nth-child(2) { animation-delay: 0.6s; }
+.nobody-seats i:nth-child(3) { animation-delay: 1.2s; }
+@keyframes seat-wait { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; translate: 0 -2px; } }
 .others-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 2px; }
 /* cards, or everyone in a room */
 .view-switch { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); margin-left: auto; }
@@ -884,7 +894,7 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 /* the effect buttons show what they do */
 .fx-button .w { font-size: inherit; transform: none; opacity: 1; margin: 0; display: inline; }
 @media (prefers-reduced-motion: reduce) {
-  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .room-word .w, .talk.recording .dot, .caret, .bubble.draft, .phrase.settled, .spot, .spot.speaking, .queue, .room3d, .hero-words .w, .room-hint, .help-body { animation: none; }
+  .w.fx-impact, .w.fx-glow, .w.fx-shake, .w.fx-wave, .w.fx-rainbow, .w.fx-spooky, .w.fx-sparkle::after, .spot-word.arrive .w, .room-word .w, .talk.recording .dot, .caret, .bubble.draft, .phrase.settled, .spot, .spot.speaking, .queue, .room3d, .hero-words .w, .room-hint, .help-body, .nobody-seats i { animation: none; }
 }
 
 /* ---- the README page ---- */
