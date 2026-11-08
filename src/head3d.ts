@@ -91,7 +91,7 @@ type Shown = {
   word: { shapes: string[]; from: number; until: number } | null;
   talk: { from: number; until: number; loud: number };
   // their voice: levels (0 to 1) waiting to be played, one every LEVEL_EVERY
-  voice: { level: number; to: number; queue: number[]; nextAt: number; loudAt: number; since: number };
+  voice: { level: number; to: number; queue: number[]; nextAt: number; loudAt: number; since: number; syllable: number; syllableAt: number };
   // a reaction to a word, fading: brows up, eyes wide, a nod, a lean
   accent: { at: number; hold: number; brows: number; wide: number; nod: number; lean: number; smile: number; squint: number; down: number; tilt: number };
   // their own rhythm (breathing, idle sway), so a roomful don't move as one
@@ -114,6 +114,9 @@ type Shown = {
   open: number; // how open its mouth was last drawn
 };
 const LEVEL_EVERY = 43; // ms: one microphone batch
+// the shapes a talking mouth goes through, one per syllable, before the
+// words themselves arrive (visemes.ts): a run that reads as speech
+const TALKING = ["ah", "oo", "eh", "mbp", "oh", "ee", "ah", "l", "oh", "fv", "eh", "k"];
 const VOICE_FOR = 600; // ms after the last loud level that someone's still talking
 
 // how big each head is drawn before it's copied into its card's canvas: as
@@ -1244,6 +1247,19 @@ function frame(now: number): void {
       // and the parts of the emote's face the expression can't make
       if (s.doing.detail) dd = overlay(dd, Object.fromEntries(Object.entries(s.doing.detail).map(([key, v]) => [key, (v ?? 0) * doingAmount])));
     }
+    // Their voice coming before their words do (a quarter of a second
+    // ahead): not one shape opening and shutting, but a mouth that changes
+    // shape as it goes, round, then wide, then a lip pressed, with each rise
+    // in the voice (a new syllable), as talking does. Which shape is the
+    // same for a given syllable on every page, from when it started.
+    if (!live && !calm && !(s.word && now < s.word.until) && s.voice.level > 0.12) {
+      if (s.voice.to > s.voice.level + 0.1 && now - s.voice.syllableAt > 110) {
+        s.voice.syllableAt = now;
+        s.voice.syllable++;
+      }
+      const shape = TALKING[s.voice.syllable % TALKING.length];
+      dd = overlay(dd, detailOf(mouthFace(mouthAt([shape], 0.05, 0.3), s.voice.level)));
+    }
     // the mouth's shapes from the word going up, without a camera: the
     // letters' shapes in time, opened as wide as the voice is loud (or as the
     // word was said, with no voice coming)
@@ -1419,7 +1435,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       detail: known?.detail ?? { ...STILL_DETAIL },
       word: known?.word ?? null,
       talk: known?.talk ?? { from: 0, until: 0, loud: 0 },
-      voice: known?.voice ?? { level: 0, to: 0, queue: [], nextAt: 0, loudAt: -Infinity, since: 0 },
+      voice: known?.voice ?? { level: 0, to: 0, queue: [], nextAt: 0, loudAt: -Infinity, since: 0, syllable: 0, syllableAt: 0 },
       accent: known?.accent ?? { at: -Infinity, hold: 0, brows: 0, wide: 0, nod: 0, lean: 0, smile: 0, squint: 0, down: 0, tilt: 0 },
       seed: known?.seed ?? Math.random() * 100,
       lag: known?.lag ?? { pitch: 0, yaw: 0, roll: 0 },
