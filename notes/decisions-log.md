@@ -705,6 +705,19 @@ led to. Claude chose how to build each; what to build was yours.
       Left as they were: the phone header drops "Rooms" when the room
       switcher shows (the switcher lists every room); /readme/ has no "?"
       (the page is the explanation).
+    - Words that are gestures of their own: "hi" waves, "me" a hand to the
+      chest, "you" an open hand out, "huge" hands apart, "tiny" a pinch,
+      "maybe" a shrug, "wait" palms out, "yes" a nod, "no" a shake
+      ([`2533047`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/2533047)). With "you" and "me" counting every time, a paragraph
+      of ordinary talk had one gesture in five words; with them and others
+      said in passing counting only when leaned on, one in twenty, and a
+      card widens to show one ([`3148db2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/3148db2)). Your own head starts one 10
+      to 50 ms after Enter (measured).
+    - Emotes with no arm of their own got one, or both: a hand on the belly
+      laughing, hands to the cheeks for wow, fists for grr, palms under the
+      chin for zzz, arms folded for cool ([`ae6098a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/ae6098a)). 12 people on a
+      phone at CPU 4x: 44.4 frames a second after (41 to 51 before); 11
+      talking on cards, 57.1.
 
 ### What the three spikes measured (22 October, for the next decisions)
 
