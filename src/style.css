@@ -189,6 +189,10 @@ main.room {
 .spot:has(.head3d) .spot-avatar { transition: transform 0.35s ease, translate 0.35s ease; transform-origin: 0 0; z-index: 1; }
 .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.5); translate: 0 12px; }
 .mine-card .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.36); translate: 0 16px; }
+/* (and the name and word step aside for the hand, rather than have it drawn
+   across them: a hand up covered the name, on 9 Nov) */
+.spot:has(.head3d) :is(.spot-name, .spot-word) { transition: translate 0.35s ease; }
+.stage .spot:has(.spot-avatar[data-arms]) :is(.spot-name, .spot-word) { translate: 28px 0; }
 @media (max-width: 600px) {
   .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.4); translate: 0 10px; }
   .mine-card .spot:has(.head3d) .spot-avatar[data-arms] { transform: scale(1.3); }
@@ -943,6 +947,9 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 /* what rises from someone's head when they emote */
 .spot-avatar { position: relative; }
 .burst { position: absolute; left: 50%; top: 10%; font-size: 1.6em; pointer-events: none; animation: burst 1.5s ease-out forwards; z-index: 2; }
+/* (on a card, beside the top of the head and rising less: from its top it
+   went off the card's edge, cut in half, and lower down it hid the face) */
+.spot .spot-avatar > .burst { top: 24%; left: 82%; --rise: -22px; font-size: 1.25em; }
 .mine-card .burst { font-size: 2.2em; }
 .room-label .burst { top: auto; bottom: 100%; font-size: 1.8rem; }
 /* a reaction landing: one, smaller than an emote's */
@@ -952,7 +959,7 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
 @keyframes burst {
   0% { transform: translate(-50%, 0) scale(0.4); opacity: 0; }
   15% { transform: translate(calc(-50% + var(--dx) * 0.3), -10px) scale(1.15); opacity: 1; }
-  100% { transform: translate(calc(-50% + var(--dx)), -80px) scale(0.9); opacity: 0; }
+  100% { transform: translate(calc(-50% + var(--dx)), var(--rise, -80px)) scale(0.9); opacity: 0; }
 }
 /* typing instead: a box and Say it, how it's said under it, your voice
    folded away below */
@@ -1191,7 +1198,9 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px 
    reach (over the room, partway down the page, its end was off the screen) */
 @media (max-width: 600px) {
   /* (no margin: its own, under it, held it a strip off the bottom) */
-  .room-settings[open] { position: fixed; top: auto; bottom: 0; left: 0; right: 0; margin: 0; max-height: 82dvh; border-radius: var(--radius) var(--radius) 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); z-index: 40; }
+  .room-settings[open] { position: fixed; top: auto; bottom: 0; left: 0; right: 0; margin: 0; max-height: 82dvh; border-radius: var(--radius) var(--radius) 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); z-index: 40; box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.45), 0 -12px 40px -12px rgb(0 0 0 / 0.5); }
+  /* (the page behind dimmed, so the sheet reads as over it, not part of it:
+     the type box showed above it, looking like the sheet's own) */
 }
 /* on a phone: the switcher and the way round on one line, the switcher
    giving way first */

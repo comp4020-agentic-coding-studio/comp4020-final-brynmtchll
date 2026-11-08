@@ -502,7 +502,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   // the studio, for making your avatar: only for someone who's joined (a
   // look is someone's), so anyone else is sent to join first
   if (req.method === "GET" && url.pathname === "/studio" && here.id === MAIN) {
-    if (!me) return back(res, base, "no-person");
+    if (!me) return back(res, base, "studio-join");
     const from = room.roomBySlug(url.searchParams.get("from") ?? "");
     return send(res, 200, "text/html; charset=utf-8", studioPage(me, room.lookOf(me.name), room.savedLooks(me.id), hueOf(room.seatOf(me.name)), from && from.id !== MAIN ? `/r/${from.slug}/` : "/"));
   }

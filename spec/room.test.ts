@@ -514,7 +514,8 @@ describe.skipIf(!writable)("the room", () => {
     // nobody else's: not joined, sent to join
     const anon = await fetch(new URL("/studio", baseUrl), { redirect: "manual" });
     expect(anon.status).toBe(303);
-    expect(anon.headers.get("location")).toBe("/?m=no-person");
+    expect(anon.headers.get("location")).toBe("/?m=studio-join");
+    expect(await (await fetch(new URL("/?m=studio-join", baseUrl))).text()).toContain("then you can make your avatar");
     // and the room points there
     expect(await p.page()).toContain('href="/studio"');
   });

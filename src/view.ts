@@ -60,6 +60,8 @@ const MESSAGES: Record<string, string> = {
   "name-bad": "Pick a name between 1 and 20 characters.",
   "name-taken": "Someone here already goes by that name.",
   "no-person": "Pick a name first.",
+  // (from the studio: what the name is for, not only that one is wanted)
+  "studio-join": "Pick a name to join, and then you can make your avatar.",
   "too-many-joins": "That's a lot of new names from here at once. Try again in a few minutes.",
   "room-name-bad": "Give the room a name between 1 and 40 characters.",
   "too-many-rooms": "You've made a lot of rooms. Use one of yours, or try again later.",
