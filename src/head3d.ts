@@ -1144,6 +1144,11 @@ function frame(now: number): void {
     let look = { x: s.glance.x, y: s.glance.y };
     if (live) look = s.target.f ? { x: s.detail.lookX, y: s.detail.lookY } : { x: s.e.lookX, y: s.e.lookY };
     else if (talker && lookAt !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
+    // (the one talking, if they're answering someone: at them)
+    else if (replyTo?.from === slot && lookAt === slot && heads.has(replyTo.to)) {
+      const them = centre(replyTo.to);
+      look = { x: clamp((them.x - me.x) / 500, -1, 1), y: clamp((me.y - them.y) / 500, -1, 1) };
+    }
     else if (!calm && now > s.glance.at) s.glance = { x: (Math.random() - 0.5) * 0.8, y: (Math.random() - 0.5) * 0.4, at: now + 1800 + Math.random() * 3500 };
     // (an emote that looks somewhere, up and aside for a "hmm", looks there
     // while it lasts)
@@ -1413,10 +1418,10 @@ function drawCard(slot: HTMLElement, s: Shown): void {
 
 // how a head is turned, and its mouth open, as drawn: for the checks that
 // time it
-export const drawn = (slot: HTMLElement): { pose: Pose; open: number; eyes: { x: number; y: number }; blinking: boolean } | null => {
+export const drawn = (slot: HTMLElement): { pose: Pose; open: number; eyes: { x: number; y: number }; blinking: boolean; answering: boolean } | null => {
   const s = heads.get(slot);
   const now = performance.now();
-  return s ? { pose: { ...s.pose }, open: s.open, eyes: { ...s.eyes }, blinking: now >= s.blinkAt && now < s.blinkAt + BLINK } : null;
+  return s ? { pose: { ...s.pose }, open: s.open, eyes: { ...s.eyes }, blinking: now >= s.blinkAt && now < s.blinkAt + BLINK, answering: replyTo?.from === slot } : null;
 };
 
 // Draw (or redraw) a person's head in their avatar's slot, in their look,
@@ -1600,12 +1605,24 @@ export function noticed(slot: HTMLElement): void {
   arrived = { slot, at: performance.now(), for: LOOK_AT_EMOTE };
 }
 
+// Who spoke last before whoever's speaking now, and until when: someone
+// replying looks at them, as people talking to each other do, rather than
+// at nobody in particular. Only for a while after: a reply long after isn't
+// to anyone in particular.
+const REPLY_WITHIN = 20_000; // ms
+let lastDone: { slot: HTMLElement; at: number } | null = null;
+let replyTo: { from: HTMLElement; to: HTMLElement } | null = null;
 export function speaking(slot: HTMLElement, on: boolean): void {
   const i = talking.indexOf(slot);
   const was = i >= 0;
   if (was) talking.splice(i, 1);
   if (on) talking.push(slot);
   speaker = talking.at(-1) ?? null;
+  if (on && !was) replyTo = lastDone && lastDone.slot !== slot && performance.now() - lastDone.at < REPLY_WITHIN && heads.has(lastDone.slot) ? { from: slot, to: lastDone.slot } : null;
+  if (was && !on) {
+    lastDone = { slot, at: performance.now() };
+    if (replyTo?.from === slot) replyTo = null;
+  }
   // someone finishing what they were saying: a listener or two nods, as
   // people listening do, now and then (a nod, nothing more: nobody's face
   // says anything for them)
