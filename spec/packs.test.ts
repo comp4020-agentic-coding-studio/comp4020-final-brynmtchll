@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECTS, fullLook, isEffect, lookFor, MORE_EXTRAS, PARTS, randomLook, SLIDERS, STYLES, stylesCss, VOICES } from "../src/packs.ts";
+import { STILL_DETAIL } from "../src/arkit.ts";
+import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECTS, EMOTES, fullLook, isEffect, lookFor, MORE_EXTRAS, PARTS, randomLook, SLIDERS, STYLES, stylesCss, VOICES } from "../src/packs.ts";
 
 // What someone can choose about how they look, checked as data: every
 // choice is somewhere the checks on what's sent will accept, and nothing
@@ -119,5 +120,25 @@ describe("shaping a look finer, and wearing more than one thing", () => {
     let seed = 3;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let i = 0; i < 30; i++) for (const v of Object.values(randomLook(rnd).tune ?? {})) expect(Math.abs(v)).toBeLessThanOrEqual(0.6);
+  });
+});
+
+describe("the faces emotes pull", () => {
+  it("pulls only parts a head has, each within range, and each one's face is its own", () => {
+    const parts = new Set(Object.keys(STILL_DETAIL));
+    const shown = new Set<string>();
+    for (const em of EMOTES) {
+      if (!("detail" in em)) continue;
+      for (const [k, v] of Object.entries(em.detail)) {
+        expect(parts.has(k), `${em.id}: ${k}`).toBe(true);
+        const sideways = k === "jawSide" || k === "mouthSide" || k === "lookX" || k === "lookY";
+        expect(v).toBeGreaterThanOrEqual(sideways ? -1 : 0);
+        expect(v).toBeLessThanOrEqual(1);
+      }
+      shown.add(JSON.stringify({ ...em.face, ...em.detail }));
+    }
+    // (most emotes have one; no two look the same)
+    expect(EMOTES.filter((em) => "detail" in em).length).toBeGreaterThan(EMOTES.length * 0.8);
+    expect(shown.size).toBe(EMOTES.filter((em) => "detail" in em).length);
   });
 });

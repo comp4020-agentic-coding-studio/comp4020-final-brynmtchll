@@ -98,7 +98,7 @@ type Shown = {
   away: number; // how far they're shown as away (no page open): eyes shut, head down
   // an emote it's doing (packs.ts EMOTES): how its head moves, the face it
   // pulls meanwhile, and since when
-  doing: { head: string; face: Partial<Expression>; arm?: string; at: number } | null;
+  doing: { head: string; face: Partial<Expression>; detail?: Partial<Detail>; arm?: string; at: number } | null;
   // their arms: as read off their camera (null when they aren't sending
   // them), and as drawn, easing towards that, or an emote's, or resting
   arms: { target: Body | null; at: number; busyAt: number; left: Arm; right: Arm; tilt: number; turn: number; shown: number; up: boolean };
@@ -1118,6 +1118,12 @@ function frame(now: number): void {
     if (live) look = s.target.f ? { x: s.detail.lookX, y: s.detail.lookY } : { x: s.e.lookX, y: s.e.lookY };
     else if (talker && speakerNow !== slot) look = { x: clamp((talker.x - me.x) / 500, -1, 1), y: clamp((me.y - talker.y) / 500, -1, 1) };
     else if (!calm && now > s.glance.at) s.glance = { x: (Math.random() - 0.5) * 0.8, y: (Math.random() - 0.5) * 0.4, at: now + 1800 + Math.random() * 3500 };
+    // (an emote that looks somewhere, up and aside for a "hmm", looks there
+    // while it lasts)
+    if (s.doing && !live) {
+      const f = s.doing.face as Partial<Expression>;
+      if (f.lookX !== undefined || f.lookY !== undefined) look = { x: f.lookX ?? look.x, y: f.lookY ?? look.y };
+    }
     s.gaze.x = ease(s.gaze.x, look.x, k(live ? 30 : 8));
     s.gaze.y = ease(s.gaze.y, look.y, k(live ? 30 : 8));
     // a word's reaction rises fast and fades over half a second or so
@@ -1156,6 +1162,7 @@ function frame(now: number): void {
     // an emote: its face blended in, rising and falling over EMOTE_FOR, and
     // its head's move on top of whatever else the head is doing
     let move = STILL;
+    let doingAmount = 0;
     // (what its arm does, if anything: kept for after, which may end it)
     const doingArm = s.doing?.arm && GESTURE_ARMS[s.doing.arm] ? { arm: s.doing.arm, t: (now - s.doing.at) / EMOTE_FOR } : null;
     if (s.doing) {
@@ -1165,7 +1172,13 @@ function frame(now: number): void {
       else {
         const amount = Math.max(0, Math.sin(Math.PI * Math.min(1, t * 1.6))) ** 0.7 * (t > 0.8 ? (1 - t) / 0.2 : 1);
         for (const [key, v] of Object.entries(s.doing.face) as [keyof Expression, number][]) e[key] = e[key] + (v - e[key]) * amount;
-        if (!calm) move = MOVES[s.doing.head]?.(t, amount) ?? STILL;
+        doingAmount = amount;
+        if (!calm) {
+          move = MOVES[s.doing.head]?.(t, amount) ?? STILL;
+          // a laugh's mouth goes with its bounce: open at the top of each
+          // one, ha, ha, ha
+          if (s.doing.head === "bounce") e.open *= 0.45 + 0.55 * Math.abs(Math.sin(t * Math.PI * 5));
+        }
       }
     }
     // and a blink every few seconds, BLINK long
@@ -1193,7 +1206,11 @@ function frame(now: number): void {
     // a word's accent, the voice's open, an emote's face, a blink)
     const extra = detailFrom(e);
     dd = overlay(dd, { jaw: extra.jaw, lidL: extra.lidL, lidR: extra.lidR, innerUp: Math.max(0, extra.innerUp - want.innerUp), outerUpL: extra.outerUpL, outerUpR: extra.outerUpR, wideL: extra.wideL, wideR: extra.wideR });
-    if (s.doing) dd = overlay(dd, detailFrom({ ...e }));
+    if (s.doing) {
+      dd = overlay(dd, detailFrom({ ...e }));
+      // and the parts of the emote's face the expression can't make
+      if (s.doing.detail) dd = overlay(dd, Object.fromEntries(Object.entries(s.doing.detail).map(([key, v]) => [key, (v ?? 0) * doingAmount])));
+    }
     // the mouth's shapes from the word going up, without a camera: the
     // letters' shapes in time, opened as wide as the voice is loud (or as the
     // word was said, with no voice coming)
@@ -1451,9 +1468,9 @@ const MOVES: Record<string, (t: number, amount: number) => Pose> = {
 };
 
 // An emote, for a head: its head moves and its face is pulled for a moment.
-export function emote(slot: HTMLElement, e: { head: string; face: Partial<Expression>; arm?: string }): void {
+export function emote(slot: HTMLElement, e: { head: string; face: Partial<Expression>; detail?: Partial<Detail>; arm?: string }): void {
   const s = heads.get(slot);
-  if (s) s.doing = { head: e.head, face: e.face, arm: e.arm, at: performance.now() };
+  if (s) s.doing = { head: e.head, face: e.face, detail: e.detail, arm: e.arm, at: performance.now() };
 }
 
 // A hand held up to speak next, or put down: it stays up till then (unless

@@ -3,7 +3,8 @@
 // which can follow your face and try an emote) and is saved for everyone a
 // moment later; undo and redo walk back and forth through what you've
 // changed. Without this script the page is a plain form, and nothing saves.
-import { avatarSvg, fromShapes, REST, smoother, type Expression, type Pose } from "./avatar.ts";
+import { avatarSvg, fromShapes, resting, REST, smoother, type Expression, type Pose } from "./avatar.ts";
+import { face52, faceFilter } from "./arkit.ts";
 import { arms, emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { emoteOf, MORE_EXTRAS, randomLook, SLIDERS, STYLES, type Look } from "./packs.ts";
@@ -442,6 +443,12 @@ faceButton.addEventListener("click", async () => {
     video.srcObject = camera;
     await video.play();
     const steady = smoother<Expression>(1.2, 0.6);
+    // every part of the face as well, each side on its own, as the room
+    // shows it (client.ts), with this face's rest taken off
+    const steady52 = faceFilter();
+    const rest = resting();
+    let restNow = rest.rest();
+    let readings = 0;
     const { poseFrom, placed } = await import("./avatar.ts");
     let home: ReturnType<typeof placed> | undefined;
     let running = true;
@@ -453,9 +460,13 @@ faceButton.addEventListener("click", async () => {
       const shapes = seen.faceBlendshapes?.[0]?.categories as { categoryName: string; score: number }[] | undefined;
       const matrix = seen.facialTransformationMatrixes?.[0]?.data as number[] | undefined;
       if (!shapes) return;
-      face = steady(fromShapes(Object.fromEntries(shapes.map((c) => [c.categoryName, c.score]))), performance.now() / 1000);
+      const scores = Object.fromEntries(shapes.map((c) => [c.categoryName, c.score]));
+      rest.add(scores);
+      if (++readings % 15 === 0) restNow = rest.rest();
+      face = steady(fromShapes(scores, restNow), performance.now() / 1000);
+      const f = steady52(face52(scores, restNow), performance.now() / 1000);
       if (matrix) home ??= placed(matrix);
-      void head3d(slot, look, face, matrix ? poseFrom(matrix, home) : null);
+      void head3d(slot, look, face, matrix ? poseFrom(matrix, home) : null, f);
       hands?.frame(video, performance.now());
     };
     read();
