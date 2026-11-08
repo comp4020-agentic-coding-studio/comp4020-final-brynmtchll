@@ -98,6 +98,8 @@ type Shown = {
   seed: number;
   // where the head was turned a moment ago, which the hair follows
   lag: { pitch: number; yaw: number; roll: number };
+  // when they last nodded along to someone who'd finished a phrase
+  listenNod: number;
   gaze: { x: number; y: number };
   glance: { x: number; y: number; at: number };
   blinkAt: number;
@@ -1223,6 +1225,9 @@ function frame(now: number): void {
       e.blink = Math.max(e.blink, s.away);
       move = { ...move, pitch: move.pitch + 0.22 * s.away, y: move.y - 0.15 * s.away };
     }
+    // a listener's nod: one small dip and back, over half a second
+    const sinceNod = (now - s.listenNod) / 500;
+    if (!calm && sinceNod > 0 && sinceNod < 1) move = { ...move, pitch: move.pitch + Math.sin(sinceNod * Math.PI) * 0.09 };
     const moved = { ...s.pose, pitch: s.pose.pitch + move.pitch, yaw: s.pose.yaw + move.yaw, roll: s.pose.roll + move.roll, y: s.pose.y + move.y, z: s.pose.z + move.z };
     // The face as drawn, each side on its own (arkit.ts Detail). From a
     // camera's 52 scores, if they're coming, every muscle as it is; otherwise
@@ -1439,6 +1444,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       accent: known?.accent ?? { at: -Infinity, hold: 0, brows: 0, wide: 0, nod: 0, lean: 0, smile: 0, squint: 0, down: 0, tilt: 0 },
       seed: known?.seed ?? Math.random() * 100,
       lag: known?.lag ?? { pitch: 0, yaw: 0, roll: 0 },
+      listenNod: known?.listenNod ?? -Infinity,
       gaze: known?.gaze ?? { x: 0, y: 0 },
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
@@ -1571,7 +1577,18 @@ export function noticed(slot: HTMLElement): void {
 
 export function speaking(slot: HTMLElement, on: boolean): void {
   const i = talking.indexOf(slot);
-  if (i >= 0) talking.splice(i, 1);
+  const was = i >= 0;
+  if (was) talking.splice(i, 1);
   if (on) talking.push(slot);
   speaker = talking.at(-1) ?? null;
+  // someone finishing what they were saying: a listener or two nods, as
+  // people listening do, now and then (a nod, nothing more: nobody's face
+  // says anything for them)
+  if (was && !on && !still.matches) {
+    for (const [other, s] of heads) {
+      if (other === slot || s.target.pose !== null || s.doing || Math.random() > 0.35) continue;
+      const at = performance.now() + 150 + Math.random() * 450;
+      s.listenNod = at;
+    }
+  }
 }
