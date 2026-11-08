@@ -2,7 +2,7 @@
 
 A room where you speak instead of type, and everyone sees how you said it.
 
-> **Draft:** the "What good means here" section below is Bryn's to write. What's
+> **Draft:** the "What good means here" section below is Brynly's to write. What's
 > here so far only describes what the app does.
 
 ## How it works
@@ -50,7 +50,7 @@ before you can talk; after that it's cached. Chrome is recommended.
 
 ## What good means here
 
-*To be written by Bryn: who this is for, what it should do well, and why,
+*To be written by Brynly: who this is for, what it should do well, and why,
 argued from sources.*
 
 ## What's checked and what's judged
@@ -76,11 +76,11 @@ Checked automatically in `spec/`:
 
 Judged by people:
 
-*To be written by Bryn.*
+*To be written by Brynly.*
 
 ## Sources
 
-*To be completed by Bryn.* Candidates found while building:
+*To be completed by Brynly.* Candidates found while building:
 
 - de Lacerda Pataca, C., & Costa, P. D. P. (2023). Hidden bawls, whispers, and
   yelps: can text be made to sound more than just its words? *IEEE

@@ -454,9 +454,11 @@ led to. Claude chose how to build each; what to build was yours.
     picture the site and think about how it can be slick, streamlined and
     useful (and not clunky) if this might entail some radical change then
     thats ok".
-    - Claude built a captions-only version with no avatars or 3D room. It's
-      kept on the branch `rethink` (`fd005d2`, `aa5eebf`), not merged; the
-      site as it was before is tagged `before-rethink` (`d627070`). Brynly:
+    - Claude built a captions-only version with no avatars or 3D room
+      (`fd005d2`, `aa5eebf`), not merged. Brynly, later that evening: "nup i
+      don't like the rethink at all, scrap it". Its branch was deleted; the
+      tag `rethink-trial` keeps it as process evidence. The site as it was
+      before is tagged `before-rethink` (`d627070`). Brynly:
       "no i still want the avatars", then "i feel like i just need a good
       purpose for the site, what s a good use for being able to walk around
       as an avatar with live captions". Of the purposes Claude offered,
@@ -521,6 +523,29 @@ led to. Claude chose how to build each; what to build was yours.
     - Found while checking: with Space added to the header, the room switcher
       covered the Rooms link on a phone. On a phone, Rooms now goes when
       there's a switcher, since the switcher lists every room.
+
+12. **A reason to come: games you play by talking.** Brynly, 8 November:
+    "nup i don't like the rethink at all, scrap it. i want rather to think of
+    ways to give a feeling of purpose to the original site, or something like
+    a task to make it engaging and give users a reason to visit it", then "i
+    want to establish acomprehnsive list of changes and improvements to
+    together unify and give purpose to the site as well as extend it and
+    refine it, enough so so that this can be worked on all through the
+    night." The list is `notes/overnight-plan.md`.
+    - Games at each room's table ([`6189d0f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/6189d0f)), from a
+      new Play tab:
+      - Say it like…: everyone says a line a given way and picks the take
+        that nailed it.
+      - Guess how: one person says a line a secret way, and the others guess
+        the way from the drawing.
+      - The question: everyone answers one question by talking.
+      What you say during a round is your take. The round's card is above
+      the room, with a sign over the 3D table. Checks: `rounds.test.ts` (5),
+      and in `room.test.ts`: "plays a round in a room…" and "tells only
+      whoever says it how a Guess how round is to be said, until it's done".
+    - Found while checking, same commit: on a phone, a caption over a head
+      could run off the room's right edge. It's now measured after its words
+      are in and kept within the room.
 
 ### What the three spikes measured (22 October, for the next decisions)
 
