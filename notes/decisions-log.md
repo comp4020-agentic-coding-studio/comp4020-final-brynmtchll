@@ -629,7 +629,26 @@ led to. Claude chose how to build each; what to build was yours.
         are one Tab stop, the arrows choose a word and Enter reacts; the
         room's settings open as a sheet on a phone; the effects in the help
         listed from the effects there are
-        ([`39a6a2a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/39a6a2a)).
+        ([`39a6a2a`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/39a6a2a));
+      - a reaction sits under its word rather than over it; the picker marks
+        the word and opens below it near the top of the screen; a phone's
+        header reads the room's whole name, not "The main r…"
+        ([`6b3e2f9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/6b3e2f9));
+      - in Space, people in one corner were drawn on top of each other; now
+        they come apart along its edges, and an empty field says so
+        ([`c9c1334`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/c9c1334));
+      - the studio's undo and redo drawn as arrows, its saved looks given a
+        title, a bigger head on a phone
+        ([`9d883a9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/9d883a9)).
+    - More on the heads:
+      - eyes get to whoever starts talking within 60 ms, blinking, and the
+        head turns after over about 400 ms (measured)
+        ([`d05d63c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/d05d63c));
+      - a word's effect shows on its speaker's face while it's said (spooky,
+        eyes wide; sparkle, a smile; shake, the head shakes), and a drawn-out
+        word raises one brow; the first values were too slight to see on a
+        contact sheet, so a check now holds each to at least half way
+        ([`f85ef30`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/f85ef30)).
 
 ### What the three spikes measured (22 October, for the next decisions)
 
