@@ -523,9 +523,12 @@ main.room {
 .room3d.full .room-full { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
 :root:has(.room3d.full) { overflow: hidden; }
 /* the stick, on a touch screen: bottom left, a ring and a knob */
-.room-stick { display: none; position: absolute; left: 14px; bottom: 62px; z-index: 3; width: 88px; height: 88px; opacity: 0.55; transition: opacity 0.2s; border-radius: 50%; background: radial-gradient(circle, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.14)); border: 1px solid rgb(255 255 255 / 0.22); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); touch-action: none; }
-.room-stick:active, .room3d[data-up] .room-stick { opacity: 1; }
-.room-knob { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: rgb(255 255 255 / 0.9); box-shadow: 0 4px 14px rgb(0 0 0 / 0.35); transition: transform 0.12s var(--ease); pointer-events: none; }
+.room-stick { display: none; position: absolute; left: 14px; bottom: 62px; z-index: 3; width: 88px; height: 88px; opacity: 0.4; transition: opacity 0.2s; border-radius: 50%; background: radial-gradient(circle, rgb(255 255 255 / 0.04), rgb(255 255 255 / 0.1)); border: 1px solid rgb(255 255 255 / 0.22); touch-action: none; }
+/* (faint and see-through while it's left alone, so whoever sits behind it
+   still shows; solid while a thumb's on it) */
+.room-stick:active, .room3d[data-up] .room-stick { opacity: 1; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.room-stick:not(:active) .room-knob { scale: 0.8; }
+.room-knob { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: rgb(255 255 255 / 0.9); box-shadow: 0 4px 14px rgb(0 0 0 / 0.35); transition: transform 0.12s var(--ease), scale 0.2s var(--ease); pointer-events: none; }
 .room-stick:active .room-knob { transition: none; }
 @media (pointer: coarse) { .room.joined .room-stick { display: block; } }
 /* up, on a phone: six in the bar, so each a little narrower */
