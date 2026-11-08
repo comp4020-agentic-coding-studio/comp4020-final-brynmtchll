@@ -91,7 +91,9 @@ type Shown = {
   // their voice: levels (0 to 1) waiting to be played, one every LEVEL_EVERY
   voice: { level: number; to: number; queue: number[]; nextAt: number; loudAt: number; since: number };
   // a reaction to a word, fading: brows up, eyes wide, a nod, a lean
-  accent: { at: number; brows: number; wide: number; nod: number; lean: number; smile: number };
+  accent: { at: number; hold: number; brows: number; wide: number; nod: number; lean: number; smile: number; squint: number; down: number; tilt: number };
+  // their own rhythm (breathing, idle sway), so a roomful don't move as one
+  seed: number;
   gaze: { x: number; y: number };
   glance: { x: number; y: number; at: number };
   blinkAt: number;
@@ -1128,16 +1130,22 @@ function frame(now: number): void {
     s.gaze.y = ease(s.gaze.y, look.y, k(live ? 30 : 8));
     // a word's reaction rises fast and fades over half a second or so
     const since = (now - s.accent.at) / 1000;
-    const a = calm || since > 1.2 ? 0 : Math.min(1, since / 0.06) * Math.exp(-since / 0.35);
+    // (held while the word's being said, so a face can be read with it)
+    const past = Math.max(0, since - s.accent.hold);
+    const a = calm || past > 1.2 ? 0 : Math.min(1, since / 0.06) * Math.exp(-past / 0.35);
     // turned as its owner's head is turned, if their camera's on; if not,
     // a little towards where it's looking, swaying slightly, nodding with
     // the beat of what they say
-    const sway = calm ? STILL : { ...STILL, pitch: Math.sin(t * 0.9 + r.left) * 0.025, yaw: Math.sin(t * 0.6 + r.top) * 0.04, roll: Math.sin(t * 0.5 + r.left) * 0.015 };
+    // (each their own: in the room every head's at the same place on the
+    // page, so a sway from where it is would have them all sway as one)
+    const sd = s.seed;
+    const sway = calm ? STILL : { ...STILL, pitch: Math.sin(t * 0.9 + sd) * 0.025, yaw: Math.sin(t * 0.6 + sd * 1.7) * 0.04 + Math.sin(t * 0.23 + sd * 2.3) * 0.02, roll: Math.sin(t * 0.5 + sd * 2.9) * 0.015, y: Math.sin(t * ((2 * Math.PI) / (3.6 + (sd % 1.4))) + sd) * 0.012 };
     const to: Pose = s.target.pose ?? {
       ...sway,
       pitch: -s.gaze.y * 0.15 + sway.pitch + s.voice.level * 0.05 + s.accent.nod * a,
       yaw: s.gaze.x * 0.3 + sway.yaw,
       z: s.accent.lean * a,
+      roll: sway.roll + s.accent.tilt * a,
     };
     for (const key of Object.keys(s.pose) as (keyof Pose)[]) s.pose[key] = ease(s.pose[key], to[key], k(live ? 30 : 10));
     const e = { ...s.e };
@@ -1206,6 +1214,12 @@ function frame(now: number): void {
     // a word's accent, the voice's open, an emote's face, a blink)
     const extra = detailFrom(e);
     dd = overlay(dd, { jaw: extra.jaw, lidL: extra.lidL, lidR: extra.lidR, innerUp: Math.max(0, extra.innerUp - want.innerUp), outerUpL: extra.outerUpL, outerUpR: extra.outerUpR, wideL: extra.wideL, wideR: extra.wideR });
+    // a word said quietly or low: a softer squint, the brows a little down
+    if (!live && !calm && a > 0.01 && (s.accent.squint > 0 || s.accent.down > 0)) {
+      const sq = s.accent.squint * a;
+      const dn = s.accent.down * a;
+      dd = overlay(dd, { squintL: sq, squintR: sq, downL: dn, downR: dn });
+    }
     if (s.doing) {
       dd = overlay(dd, detailFrom({ ...e }));
       // and the parts of the emote's face the expression can't make
@@ -1383,7 +1397,8 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       word: known?.word ?? null,
       talk: known?.talk ?? { from: 0, until: 0, loud: 0 },
       voice: known?.voice ?? { level: 0, to: 0, queue: [], nextAt: 0, loudAt: -Infinity, since: 0 },
-      accent: known?.accent ?? { at: -Infinity, brows: 0, wide: 0, nod: 0, lean: 0, smile: 0 },
+      accent: known?.accent ?? { at: -Infinity, hold: 0, brows: 0, wide: 0, nod: 0, lean: 0, smile: 0, squint: 0, down: 0, tilt: 0 },
+      seed: known?.seed ?? Math.random() * 100,
       gaze: known?.gaze ?? { x: 0, y: 0 },
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
@@ -1407,7 +1422,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
 // for a Whisper, a smile for a Glow. And if their voice isn't coming
 // through to move its mouth, the mouth moves for as long as the word was
 // said, opening once per syllable, wider the louder it was.
-export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; syllables: number; effect: string | null; text?: string }): void {
+export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; rise?: number; syllables: number; effect: string | null; text?: string }): void {
   const s = heads.get(slot);
   if (!s) return;
   const now = performance.now();
@@ -1416,15 +1431,24 @@ export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; p
   if (w.text) s.word = { shapes: visemesOf(w.text), from: now, until: now + Math.max(0.15, w.seconds) * 1000 };
   const loud = clamp((w.loud - 3) / 9, 0, 1);
   const high = clamp((w.pitch - 1.5) / 6, 0, 1);
+  // (and the other way: said quietly, a softer squint; said low, the brows
+  // come down a little; a word that rises, a question, tilts the head)
+  const soft = clamp((-w.loud - 3) / 9, 0, 1);
+  const low = clamp((-w.pitch - 1.5) / 6, 0, 1);
+  const rising = clamp(((w.rise ?? 0) - 2) / 6, 0, 1);
   const impact = w.effect === "impact" ? 1 : 0;
-  if (loud > 0.05 || high > 0.05 || w.effect) {
+  if (loud > 0.05 || high > 0.05 || soft > 0.05 || low > 0.05 || rising > 0.05 || w.effect) {
     s.accent = {
       at: now,
-      brows: Math.max(high, loud * 0.5, impact * 0.6),
+      hold: clamp(w.seconds, 0, 0.8),
+      brows: Math.max(high, loud * 0.5, impact * 0.6, rising * 0.6),
       wide: Math.max(loud * 0.7, impact * 0.8),
       nod: Math.max(loud * 0.12, impact * 0.2),
-      lean: w.effect === "whisper" ? 0.6 : 0,
+      lean: w.effect === "whisper" ? 0.6 : soft * 0.3,
       smile: w.effect === "glow" ? 0.5 : 0,
+      squint: Math.max(soft * 0.5, low * 0.3),
+      down: low * 0.5,
+      tilt: rising * 0.14,
     };
   }
   if (now - s.voice.loudAt < 1500) return; // their voice is moving it already

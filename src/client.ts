@@ -192,6 +192,7 @@ function play(spot: Spot): void {
       seconds: w.d,
       loud: n("--loud"),
       pitch: n("--pitch"),
+      rise: n("--rise"),
       syllables: vowels(shown.textContent ?? "").length,
       effect: /fx-(\w+)/.exec(shown.className)?.[1] ?? null,
       text: shown.textContent ?? "",
