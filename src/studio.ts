@@ -4,7 +4,7 @@
 // moment later; undo and redo walk back and forth through what you've
 // changed. Without this script the page is a plain form, and nothing saves.
 import { avatarSvg, fromShapes, resting, REST, smoother, type Expression, type Pose } from "./avatar.ts";
-import { face52, faceFilter } from "./arkit.ts";
+import { ARKIT, face52, faceFilter, type ArkitName } from "./arkit.ts";
 import { arms, emote, head3d, webgl, withBody, zoom } from "./head3d.ts";
 import { readHands, type HandReader } from "./handreader.ts";
 import { emoteOf, MORE_EXTRAS, randomLook, SLIDERS, STYLES, type Look } from "./packs.ts";
@@ -34,8 +34,10 @@ let turn: Pose = { pitch: 0.05, yaw: -0.35, roll: 0, x: 0, y: 0, z: 0 };
 let face: Expression = REST;
 let following = false;
 let near = 1.1;
+// (the face being pulled, while "Pull faces" goes, as 52 scores)
+let pulled: number[] | null = null;
 function draw(): void {
-  if (webgl) void head3d(slot, look, face, following ? null : turn);
+  if (webgl) void head3d(slot, look, face, following ? null : pulled ? { ...turn, yaw: turn.yaw * 0.5 } : turn, pulled);
   else slot.innerHTML = avatarSvg(look, face, "Your avatar");
 }
 
@@ -94,6 +96,56 @@ document.getElementById("studio-front")?.addEventListener("click", () => {
   zoom(slot, near);
   draw();
 });
+// Pull faces: your avatar runs through a dozen expressions, one after
+// another, so you can see how your look shows each without a camera (here
+// only: nobody else sees it). As a camera's 52 scores would be (arkit.ts),
+// so it's the same face the room shows.
+const FACES: [string, Partial<Record<ArkitName, number>>][] = [
+  ["Happy", { mouthSmileLeft: 0.85, mouthSmileRight: 0.85, cheekSquintLeft: 0.6, cheekSquintRight: 0.6, eyeSquintLeft: 0.4, eyeSquintRight: 0.4, jawOpen: 0.2 }],
+  ["Surprised", { jawOpen: 0.7, browInnerUp: 0.75, browOuterUpLeft: 0.6, browOuterUpRight: 0.6, eyeWideLeft: 0.7, eyeWideRight: 0.7 }],
+  ["Cross", { browDownLeft: 0.75, browDownRight: 0.75, noseSneerLeft: 0.4, noseSneerRight: 0.4, mouthPressLeft: 0.6, mouthPressRight: 0.6, eyeSquintLeft: 0.4, eyeSquintRight: 0.4 }],
+  ["Glum", { browInnerUp: 0.75, mouthFrownLeft: 0.55, mouthFrownRight: 0.55, mouthShrugLower: 0.5, eyeBlinkLeft: 0.25, eyeBlinkRight: 0.25, eyeLookDownLeft: 0.5, eyeLookDownRight: 0.5 }],
+  ["Smug", { mouthSmileRight: 0.65, mouthDimpleRight: 0.4, browOuterUpLeft: 0.7, eyeSquintRight: 0.35, mouthRight: 0.3, eyeBlinkLeft: 0.3, eyeBlinkRight: 0.3 }],
+  ["Yuck", { noseSneerLeft: 0.75, noseSneerRight: 0.75, mouthUpperUpLeft: 0.6, mouthUpperUpRight: 0.6, browDownLeft: 0.4, browDownRight: 0.4, mouthFrownLeft: 0.3, mouthFrownRight: 0.3 }],
+  ["Scared", { browInnerUp: 0.85, eyeWideLeft: 0.8, eyeWideRight: 0.8, mouthStretchLeft: 0.55, mouthStretchRight: 0.55, jawOpen: 0.2 }],
+  ["Wink", { eyeBlinkRight: 0.95, mouthSmileRight: 0.55, cheekSquintRight: 0.5, browOuterUpLeft: 0.3 }],
+  ["Pout", { mouthPucker: 0.75, mouthShrugLower: 0.55, browInnerUp: 0.45, mouthFunnel: 0.2, eyeLookUpLeft: 0.4, eyeLookUpRight: 0.4 }],
+  ["Blep", { jawOpen: 0.35, tongueOut: 0.65, eyeBlinkLeft: 0.85, eyeBlinkRight: 0.85 }],
+  ["Puffed", { cheekPuff: 0.75, mouthPressLeft: 0.3, mouthPressRight: 0.3, eyeWideLeft: 0.35, eyeWideRight: 0.35 }],
+  ["Hmm", { mouthLeft: 0.5, mouthPressLeft: 0.4, mouthPressRight: 0.4, browDownRight: 0.5, browOuterUpLeft: 0.5, eyeLookUpLeft: 0.5, eyeLookUpRight: 0.5, eyeLookInLeft: 0.4, eyeLookOutRight: 0.4 }],
+];
+const FACE_FOR = 1300; // ms each
+const facesButton = document.getElementById("studio-faces") as HTMLButtonElement | null;
+let pulling: number | undefined;
+function stopFaces(): void {
+  clearInterval(pulling);
+  pulling = undefined;
+  pulled = null;
+  facesButton?.setAttribute("aria-pressed", "false");
+  if (facesButton) facesButton.textContent = "Pull faces";
+  zoom(slot, near);
+  if (!following) draw();
+}
+facesButton?.addEventListener("click", () => {
+  if (pulling !== undefined) return stopFaces();
+  if (following || !webgl) return;
+  facesButton.setAttribute("aria-pressed", "true");
+  // (in close, on the face, while it pulls them)
+  zoom(slot, Math.max(near, 2));
+  let i = 0;
+  const next = (): void => {
+    if (i >= FACES.length) return stopFaces();
+    const [name, scores] = FACES[i++];
+    facesButton.textContent = `${name} · stop`;
+    // (turned a little towards you, and "live", so it shows the scores
+    // rather than easing in as a resting face does)
+    pulled = ARKIT.map((k) => scores[k] ?? 0);
+    draw();
+  };
+  next();
+  pulling = window.setInterval(next, FACE_FOR);
+});
+
 // try an emote on yourself (here only: nobody else sees it)
 document.getElementById("studio-emote")?.addEventListener("change", (e) => {
   const select = e.target as HTMLSelectElement;
@@ -410,6 +462,7 @@ handsButton.addEventListener("click", () => {
   });
 });
 faceButton.addEventListener("click", async () => {
+  stopFaces();
   if (stopFace) {
     stopFace();
     stopFace = undefined;

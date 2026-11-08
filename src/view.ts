@@ -210,6 +210,7 @@ export function studioPage(me: Person, look: Look, saved: (Look | null)[], hue: 
       <button type="button" id="studio-face" aria-pressed="false">Follow my face</button>
       <button type="button" id="studio-hands" aria-pressed="false" hidden>Hands too</button>
       <button type="button" id="studio-front">Face front</button>
+      <button type="button" id="studio-faces" aria-pressed="false">Pull faces</button>
       <select id="studio-emote" aria-label="Try an emote"><option value="">Try an emote…</option>${EMOTES.map((em) => `<option value="${em.id}">${em.burst ? em.burst + " " : ""}${esc(em.label)}</option>`).join("")}</select>
     </div>
   </section>
