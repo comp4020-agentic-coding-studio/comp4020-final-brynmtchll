@@ -395,6 +395,36 @@ led to. Claude chose how to build each; what to build was yours.
    - Found while rebuilding: in `0023cd6`, D and right on the stick walked
      you left, and A right. Fixed in `990b708`, with a check.
 
+9. **Rooms, how a room looks, and one place for the controls.** Brynly,
+   8 November: "things are still bugging and i want customisability /
+   options for selection for the room, along with options to have different
+   rooms / spaces, featuring different groups etc and i want the ui to feel
+   more cohesive and intuitive"
+   ([`a15b5d9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/a15b5d9)).
+   - Rooms: the main room stays at `/`; anyone who's joined can make
+     another (up to 12 each) at `/r/<name>/`, listed on a Rooms page or
+     kept to whoever has the link. What's said, hands, walking and emotes
+     stay in their room, live and stored; who you are and how you look go
+     with you. Someone who goes into another room leaves the first one's
+     cards rather than showing as away there.
+   - How a room looks: outside (golden hour, midday, night, snow, seaside),
+     walls, floor and rug, or six themes that set them all (lounge, garden
+     room, late night, cabin, beach house, studio). Only whoever made a room
+     can change it, only to these, and every page in it repaints at once.
+     The light, the sky, the rug and the curtains follow it.
+   - The room page: your card, then a panel for saying something
+     (microphone, hand, typing), then tabs (emotes, your words, you), in one
+     column beside the room; on a phone, under the 3D room and above the
+     cards. A room switcher in the header. On a phone, cards of people who
+     haven't said anything lately are shorter.
+   - Bugs fixed in the same commit, each with a check: a tap behind a full
+     back row (in rooms of 5, 7 to 12) had the way-finding call itself until
+     the page ran out of stack, on every frame, so the room's picture froze
+     until a key was pressed (found by a bug-hunting subagent, and
+     separately by a check over taps everywhere); a reload, or a tab closed
+     and opened again, while standing left you standing on everyone else's
+     page for up to a minute while your own had you sitting. 197 checks.
+
 ### What the three spikes measured (22 October, for the next decisions)
 
 Half-day tests before building, each on Brynly's M4 Pro in headless Chrome.
