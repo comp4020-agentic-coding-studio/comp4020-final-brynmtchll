@@ -16,7 +16,9 @@ The first build was a shared chat log
 - Each phrase became a line in one list.
 - Two speakers' lines interleaved, in the order each finished.
 
-> *Brynly: what was wrong with the log for this app.*
+With several people talking, I couldn't follow any one person through the
+interleaved lines, and a log shows what was written, not how it was said.
+The point of the pivot was inflection, and a log had nowhere to put it.
 
 ## Options
 
@@ -60,7 +62,11 @@ How it was built:
   ([`5d51566`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/5d51566),
   [`e9e6e80`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/e9e6e80)).
 
-> *Brynly: why the stage serves "good" better than the log or grid.*
+The stage serves "good" better because it shows speech happening rather than
+text that was written. A fixed spot and colour tell you whose words are whose
+without reading a name. Words one at a time in the same spot keep the pace of
+the speaker, and the fading last word stops anything piling up. The log and
+the grid both showed finished text.
 
 ## Consequences
 
@@ -70,7 +76,10 @@ How it was built:
   newcomer couldn't catch up. That conflicts with the brief's "persists".
 - **The queue delayed every word by about 1 s.**
 
-> *Brynly: what this cost, and who lost out.*
+The cost fell on anyone who arrived late, looked away, or reads slowly,
+including deaf and hard-of-hearing readers who rely on captions: once a word
+faded, it was gone. The queue also made the speaker wait on every word, which
+worked against the live feel.
 
 ## What changed after crit 9
 
@@ -98,4 +107,6 @@ Each person still keeps a place. The rest changed with use:
   - The stage separated voices by place. The party separates them by
     distance.
 
-> *Brynly: did the party replace this decision or extend it?*
+The party extended this decision rather than replacing it. Each person keeps a
+place and a colour, and words still arrive as said. What changed is how voices
+are told apart: by place on the stage, by distance in the party.

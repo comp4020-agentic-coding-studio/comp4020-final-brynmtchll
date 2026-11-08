@@ -55,7 +55,7 @@ CLAUDE.md came late, inferred from my directions on 7 Nov ([`df22520`](https://g
 
 ## My position on what I read
 
-De Lacerda Pataca et al. (CHI 2023) found deaf and hard-of-hearing viewers wanted emotion labelled. I made it inferable instead ([`8ba746e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/8ba746e)). I read their finding as a need for access to emotion. A label is one way to give it, but it flattens. It says "sad" where the voice and face show how sad. The tension is emotes. They're labels, and a big laugh or gasp read from the camera sends one by itself ([`2a52afe`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/2a52afe)). I think it still fits. [YOU: one sentence on why.]
+De Lacerda Pataca et al. (CHI 2023) found deaf and hard-of-hearing viewers wanted emotion labelled. I made it inferable instead ([`8ba746e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/8ba746e)). I read their finding as a need for access to emotion. A label is one way to give it, but it flattens. It says "sad" where the voice and face show how sad. The tension is emotes. They're labels, and a big laugh or gasp read from the camera sends one by itself ([`2a52afe`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-brynmtchll/commit/2a52afe)). I think it still fits.
 
 ## Close
 

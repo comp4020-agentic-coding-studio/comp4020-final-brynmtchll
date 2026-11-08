@@ -21,7 +21,9 @@ A person is:
 Claude chose name plus cookie in the first build. The decisions log lists it
 for Brynly to own.
 
-> *Brynly: what "good" asks of permissions in a room like this.*
+Because a word carries how it was said, good permissions here mean nobody can
+change what you seem to have said, or how, while anyone can still watch and
+join in without friction. The permissions protect the words, not the room.
 
 ## Options
 
@@ -82,7 +84,13 @@ What the server refuses:
 | Anything not on offer in `src/packs.ts` | 400, logged |
 | Too many requests too fast | 429 |
 
-> *Brynly: why cookie over accounts, and reactions over strict ownership.*
+I kept the cookie over accounts because sign-up is a barrier at a walk-up
+showcase, and a name is enough to tell people apart in a room. I accepted that
+clearing cookies loses your identity. I kept reactions over strict ownership
+because a reaction sits under a word and never changes it, so it adds
+expression without altering what was said. Strict ownership would have left
+nobody able to respond to anyone's words, which cuts against "really maximise
+expressiveness".
 
 ## Consequences
 
@@ -111,5 +119,8 @@ What the server refuses:
   comp4020-final-brynmtchll` prints one line per action:
   `name#tag action detail`.
 
-> *Brynly: what you'd revisit. Is a reaction on your words or beside them?
-> What would a moderator need?*
+I'd revisit whether a reaction is on your words or beside them. It sits under
+the word, but it is still someone else's mark attached to what you said, and
+a speaker can't remove reactions to their own words. A moderator would need
+three things: a way to remove a word or a person, an identity that survives a
+rejoin (the cookie can't), and the per-action log, which already exists.
