@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { STILL_DETAIL } from "../src/arkit.ts";
-import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECTS, EMOTES, fullLook, isEffect, lookFor, MORE_EXTRAS, PARTS, randomLook, SLIDERS, STYLES, stylesCss, VOICES } from "../src/packs.ts";
+import { COLOURS, cleanLook, DEFAULT_LOOK, EFFECT_FACES, EFFECTS, EMOTES, fullLook, isEffect, lookFor, MORE_EXTRAS, PARTS, randomLook, SLIDERS, STYLES, stylesCss, VOICES } from "../src/packs.ts";
 
 // What someone can choose about how they look, checked as data: every
 // choice is somewhere the checks on what's sent will accept, and nothing
@@ -120,6 +120,30 @@ describe("shaping a look finer, and wearing more than one thing", () => {
     let seed = 3;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let i = 0; i < 30; i++) for (const v of Object.values(randomLook(rnd).tune ?? {})) expect(Math.abs(v)).toBeLessThanOrEqual(0.6);
+  });
+});
+
+describe("the faces a word's effect pulls on its speaker", () => {
+  it("gives every effect a face, from the accent or its own, each of parts a head has, and each its own", () => {
+    const parts = new Set(Object.keys(STILL_DETAIL));
+    // (these three are in how a word's loudness and warmth show already)
+    const inAccent = new Set(["impact", "whisper", "glow"]);
+    const shown = new Set<string>();
+    for (const e of EFFECTS) {
+      const f = EFFECT_FACES[e.id];
+      expect(!!f || inAccent.has(e.id), e.id).toBe(true);
+      if (!f) continue;
+      for (const [k, v] of Object.entries(f.detail)) {
+        expect(parts.has(k), `${e.id}: ${k}`).toBe(true);
+        expect(v).toBeGreaterThan(0);
+        expect(v).toBeLessThanOrEqual(1);
+      }
+      // (enough to read from across a room: one part at least half way;
+      // at first they were all too slight to see, 9 Nov)
+      expect(Math.max(...Object.values(f.detail)), e.id).toBeGreaterThanOrEqual(0.5);
+      shown.add(JSON.stringify(f.detail));
+    }
+    expect(shown.size).toBe(Object.keys(EFFECT_FACES).length);
   });
 });
 

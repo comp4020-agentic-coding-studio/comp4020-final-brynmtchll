@@ -18,7 +18,7 @@
 import { STILL, type Expression, type Pose } from "./avatar.ts";
 import { detailFrom, detailOf, easeDetail, overlay, STILL_DETAIL, type Detail, type Face52 } from "./arkit.ts";
 import { mouthAt, mouthFace, visemesOf } from "./visemes.ts";
-import type { Look } from "./packs.ts";
+import { EFFECT_FACES, type Effect, type Look } from "./packs.ts";
 import { handPoints, HAND_UP, RESTING, GESTURE_ARMS, unit, type Arm, type Body, type Side, type Vec } from "./body.ts";
 
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
@@ -93,7 +93,7 @@ type Shown = {
   // their voice: levels (0 to 1) waiting to be played, one every LEVEL_EVERY
   voice: { level: number; to: number; queue: number[]; nextAt: number; loudAt: number; since: number; syllable: number; syllableAt: number };
   // a reaction to a word, fading: brows up, eyes wide, a nod, a lean
-  accent: { at: number; hold: number; brows: number; wide: number; nod: number; lean: number; smile: number; squint: number; down: number; tilt: number };
+  accent: { at: number; hold: number; brows: number; wide: number; nod: number; lean: number; smile: number; squint: number; down: number; tilt: number; detail?: Partial<Detail>; move?: string };
   // their own rhythm (breathing, idle sway), so a roomful don't move as one
   seed: number;
   // where the head was turned a moment ago, which the hair follows
@@ -1173,12 +1173,16 @@ function frame(now: number): void {
     // page, so a sway from where it is would have them all sway as one)
     const sd = s.seed;
     const sway = calm ? STILL : { ...STILL, pitch: Math.sin(t * 0.9 + sd) * 0.025, yaw: Math.sin(t * 0.6 + sd * 1.7) * 0.04 + Math.sin(t * 0.23 + sd * 2.3) * 0.02, roll: Math.sin(t * 0.5 + sd * 2.9) * 0.015, y: Math.sin(t * ((2 * Math.PI) / (3.6 + (sd % 1.4))) + sd) * 0.012 };
+    // (a word said shaking shakes the head a little as it's said; said in a
+    // wave, it rocks side to side)
+    const wordMove = s.accent.move === "shake" ? Math.sin(since * Math.PI * 9) * 0.07 * a : 0;
+    const wordRock = s.accent.move === "wave" ? Math.sin(since * Math.PI * 3) * 0.09 * a : 0;
     const to: Pose = s.target.pose ?? {
       ...sway,
       pitch: -s.gaze.y * 0.15 + sway.pitch + s.voice.level * 0.05 + s.accent.nod * a,
-      yaw: s.gaze.x * 0.3 + sway.yaw,
+      yaw: s.gaze.x * 0.3 + sway.yaw + wordMove,
       z: s.accent.lean * a,
-      roll: sway.roll + s.accent.tilt * a,
+      roll: sway.roll + s.accent.tilt * a + wordRock,
     };
     for (const key of Object.keys(s.pose) as (keyof Pose)[]) s.pose[key] = ease(s.pose[key], to[key], k(live ? 30 : 10));
     const e = { ...s.e };
@@ -1258,6 +1262,8 @@ function frame(now: number): void {
       const dn = s.accent.down * a;
       dd = overlay(dd, { squintL: sq, squintR: sq, downL: dn, downR: dn });
     }
+    // and a drawn-out word's brow, or the face of an effect it was said with
+    if (!live && !calm && a > 0.01 && s.accent.detail) dd = overlay(dd, Object.fromEntries(Object.entries(s.accent.detail).map(([key, v]) => [key, (v ?? 0) * a])));
     if (s.doing) {
       dd = overlay(dd, detailFrom({ ...e }));
       // and the parts of the emote's face the expression can't make
@@ -1481,7 +1487,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
 // for a Whisper, a smile for a Glow. And if their voice isn't coming
 // through to move its mouth, the mouth moves for as long as the word was
 // said, opening once per syllable, wider the louder it was.
-export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; rise?: number; syllables: number; effect: string | null; text?: string }): void {
+export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; pitch: number; rise?: number; held?: boolean; syllables: number; effect: string | null; text?: string }): void {
   const s = heads.get(slot);
   if (!s) return;
   const now = performance.now();
@@ -1496,10 +1502,16 @@ export function sayWord(slot: HTMLElement, w: { seconds: number; loud: number; p
   const low = clamp((-w.pitch - 1.5) / 6, 0, 1);
   const rising = clamp(((w.rise ?? 0) - 2) / 6, 0, 1);
   const impact = w.effect === "impact" ? 1 : 0;
-  if (loud > 0.05 || high > 0.05 || soft > 0.05 || low > 0.05 || rising > 0.05 || w.effect) {
+  // (a word drawn out: one brow up, on a side of their own, as people's go)
+  const held = w.held ? 1 : 0;
+  const side = s.seed % 2 < 1 ? "L" : "R";
+  const fx = w.effect ? EFFECT_FACES[w.effect as Effect] : undefined;
+  if (loud > 0.05 || high > 0.05 || soft > 0.05 || low > 0.05 || rising > 0.05 || held || w.effect) {
     s.accent = {
+      detail: { ...(held ? { [`outerUp${side}`]: 0.8, [`wide${side}`]: 0.3 } : {}), ...fx?.detail },
+      move: fx?.move,
       at: now,
-      hold: clamp(w.seconds, 0, 0.8),
+      hold: clamp(w.seconds, fx ? 0.5 : 0, held ? 1.2 : 0.8),
       brows: Math.max(high, loud * 0.5, impact * 0.6, rising * 0.6),
       wide: Math.max(loud * 0.7, impact * 0.8),
       nod: Math.max(loud * 0.12, impact * 0.2),

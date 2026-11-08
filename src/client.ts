@@ -194,6 +194,7 @@ function play(spot: Spot): void {
       loud: n("--loud"),
       pitch: n("--pitch"),
       rise: n("--rise"),
+      held: !!shown.querySelector(".held"),
       syllables: vowels(shown.textContent ?? "").length,
       effect: /fx-(\w+)/.exec(shown.className)?.[1] ?? null,
       text: shown.textContent ?? "",

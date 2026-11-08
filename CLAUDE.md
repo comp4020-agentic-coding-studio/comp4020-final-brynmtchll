@@ -95,7 +95,12 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   twelve faces sent from one page and drawn on another (probe `faces.mjs`),
   before a change to how a head is drawn is kept. An avatar never shows a
   feeling its person didn't: others' heads only glance at someone who
-  emotes or comes in; nobody's face is pulled for them.
+  emotes or comes in; nobody's face is pulled for them. How a word was said
+  shows on its speaker's own face as it's said, both ways (loud, quiet, high,
+  low, a question, drawn out), and so does an effect they put on it, enough
+  to read across a room (`packs.test.ts`: "the faces a word's effect pulls
+  on its speaker"). Eyes get somewhere before the head does (probe
+  `eyes-lead.mjs`).
 - The room is a place to be in, not only to look at: you can walk your
   avatar about it, everyone sees you there, and it can fill the screen
   ("make it so that you can control your avatar and move around, also i

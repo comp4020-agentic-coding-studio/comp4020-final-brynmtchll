@@ -27,6 +27,18 @@ export const EFFECTS = [
 ] as const satisfies readonly (Choice & { key: string })[];
 export type Effect = (typeof EFFECTS)[number]["id"];
 export const isEffect = (v: unknown): v is Effect => EFFECTS.some((e) => e.id === v);
+// How a word said with an effect shows on its speaker's own face while it's
+// said (arkit.ts's parts): the way they chose to say it, never a feeling
+// read off them. Impact, whisper and glow are in how loud, quiet and warm a
+// word is already (head3d.ts sayWord); the rest each pull a face of their
+// own, and shake and wave move the head as well.
+export const EFFECT_FACES: Partial<Record<Effect, { detail: Record<string, number>; move?: "shake" | "wave" }>> = {
+  spooky: { detail: { innerUp: 1, wideL: 0.9, wideR: 0.9, funnel: 0.6, jaw: 0.25 } },
+  sparkle: { detail: { cheekUp: 0.9, smileL: 0.8, smileR: 0.8, outerUpL: 0.4, outerUpR: 0.4 } },
+  rainbow: { detail: { cheekUp: 0.7, smileL: 0.6, smileR: 0.6, outerUpL: 0.7, outerUpR: 0.7, innerUp: 0.3 } },
+  shake: { detail: { squintL: 0.6, squintR: 0.6, downL: 0.4, downR: 0.4, press: 0.4 }, move: "shake" },
+  wave: { detail: { smileL: 0.5, smileR: 0.5, cheekUp: 0.3 }, move: "wave" },
+};
 
 // How someone's words are drawn, chosen once for all of them: the lettering,
 // and how strongly being loud, high or drawn out shows (style.css reads
