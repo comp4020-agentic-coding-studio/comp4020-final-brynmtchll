@@ -130,7 +130,9 @@ function painted(THREE: T, w: number, h: number, paint: (g: CanvasRenderingConte
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
-  paint(c.getContext("2d")!, w, h);
+  // (some paint reads its pixels back, for noise: said up front, the
+  // browser keeps it in memory rather than warn about reading the GPU)
+  paint(c.getContext("2d", { willReadFrequently: true })!, w, h);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;

@@ -504,7 +504,7 @@ export function spacePage(me: (InSpace & { look: Look }) | undefined, people: (I
     <p class="live" id="live" hidden></p>
   </div>
   ${msg && MESSAGES[msg] ? `<p class="notice">${MESSAGES[msg]}</p>` : ""}
-  <div class="space-field" id="field" tabindex="0" aria-label="Space: everyone here, as their words. Arrow keys move you.">${people.map(body).join("")}</div>
+  <div class="space-field" id="field" tabindex="0" aria-label="Space: everyone here, as their words. Arrow keys move you.">${people.map(body).join("")}<p class="space-alone">${me ? "Nobody else here yet. Say something: whoever comes in will find it, and you." : "Nobody here yet."}<br>Or there’s <a href="/">the main room</a>, round a table.</p></div>
   ${
     me
       ? `<form class="space-say" id="type-box" autocomplete="off">

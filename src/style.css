@@ -1226,6 +1226,11 @@ main.space-page > .visually-hidden { position: absolute; }
 .being.quiet:not(.mine) .being-words { font-size: 0; padding: 0; min-height: 0; }
 .being.quiet:not(.mine) .being-words::before { content: ""; display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--person); opacity: 0.6; }
 .being.out { opacity: 0.5; }
+/* with nobody else there, a word on what Space is for, in the middle, out of
+   the way of where you are; gone as soon as anyone comes */
+.space-alone { position: absolute; left: 50%; top: 30%; translate: -50% -50%; width: min(26em, 80%); margin: 0; text-align: center; color: var(--faint); font-size: 0.875rem; line-height: 1.6; pointer-events: none; transition: opacity 0.4s; }
+.space-alone a { color: var(--muted); pointer-events: auto; }
+.space-field:has(.being:not(.mine)) .space-alone { opacity: 0; visibility: hidden; }
 /* someone talking, and you, drawn over the rest, on a ground of their own so
    words that overlap stay readable */
 .being.speaking { z-index: 2; }

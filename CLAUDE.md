@@ -151,7 +151,9 @@ sophisticated expression out of them and more responsiveness", 8 Nov).
   are ways to read the same words as said, drawn from their numbers
   (`src/lens.ts`), in Space and over heads in the room; Tones are a way to
   hear them, as notes made from the numbers, never anyone's voice, and only
-  when turned on. Judged
+  when turned on. Nobody's name or words are drawn on anyone else's, even
+  with several in one corner (probe `space-corner.mjs`: they were, in a
+  corner, on 9 Nov), and a field with nobody else in it says so. Judged
   from screenshots, both sizes and both themes, joined and not; on a phone
   the field is shown turned, and right on the screen is still right.
 - Everything works from the keyboard, with a ring you can see on whatever's

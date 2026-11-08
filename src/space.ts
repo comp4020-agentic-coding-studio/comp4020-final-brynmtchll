@@ -32,7 +32,7 @@ const turned = (): boolean => field.clientHeight > field.clientWidth;
 // where a place on the floor is on the screen, 0 to 1 each way, and back
 const onScreen = (p: { x: number; y: number }): { x: number; y: number } => (turned() ? { x: 1 - p.y, y: p.x } : p);
 const onFloor = (p: { x: number; y: number }): { x: number; y: number } => (turned() ? { x: p.y, y: 1 - p.x } : p);
-const SPREAD = 8; // px between two beings drawn too close to read
+const SPREAD = 10; // px between two beings drawn too close to read
 
 // Each being drawn where it is, unless it would sit on someone else's
 // words: then the two are drawn a little apart (only drawn: where they are,
@@ -45,7 +45,7 @@ function layOut(): void {
     const far = Number(el.style.getPropertyValue("--far")) || 1;
     return { name, el, x: s.x * w, y: s.y * h, bw: el.offsetWidth * far, bh: el.offsetHeight * far, dx: 0, dy: 0, fixed: name === myName };
   });
-  for (let round = 0; round < 8; round++) {
+  for (let round = 0; round < 16; round++) {
     let moved = false;
     for (let i = 0; i < boxes.length; i++)
       for (let j = i + 1; j < boxes.length; j++) {
@@ -55,28 +55,47 @@ function layOut(): void {
         const oy = (a.bh + b.bh) / 2 + SPREAD - Math.abs(a.y + a.dy - (b.y + b.dy));
         if (ox <= 0 || oy <= 0) continue;
         moved = true;
-        // (apart the shorter way: up and down, usually, as words are wide)
-        const share = a.fixed ? [0, 1] : b.fixed ? [1, 0] : [0.5, 0.5];
-        if (oy < ox) {
-          const sign = a.y + a.dy <= b.y + b.dy ? -1 : 1;
-          a.dy += sign * oy * share[0];
-          b.dy -= sign * oy * share[1];
+        // (apart the shorter way: up and down, usually, as words are wide;
+        // but never into the field's edge, where they'd only be put back:
+        // the other way, or across, whichever has the room)
+        // (half each, or all of it one of them, if the other's against an edge)
+        const shares = a.fixed ? [[0, 1]] : b.fixed ? [[1, 0]] : [[0.5, 0.5], [1, 0], [0, 1]];
+        const ys = a.y + a.dy <= b.y + b.dy ? -1 : 1;
+        const xs = a.x + a.dx <= b.x + b.dx ? -1 : 1;
+        const ways: ["x" | "y", number, number][] = oy < ox ? [["y", ys, oy], ["y", -ys, oy], ["x", xs, ox], ["x", -xs, ox]] : [["x", xs, ox], ["x", -xs, ox], ["y", ys, oy], ["y", -ys, oy]];
+        const tries = ways.flatMap((way) => shares.map((sh) => [way, sh] as const));
+        const [[axis, sign, by], share] = tries.find(([[ax, sg, n], sh]) => fits(a, ax, sg * n * sh[0], w, h) && fits(b, ax, -sg * n * sh[1], w, h)) ?? tries[0];
+        if (axis === "y") {
+          a.dy += sign * by * share[0];
+          b.dy -= sign * by * share[1];
         } else {
-          const sign = a.x + a.dx <= b.x + b.dx ? -1 : 1;
-          a.dx += sign * ox * share[0];
-          b.dx -= sign * ox * share[1];
+          a.dx += sign * by * share[0];
+          b.dx -= sign * by * share[1];
         }
       }
+    // (kept on the field each round, so two pushed into a corner come apart
+    // along its edge, rather than being put back on each other at the end)
+    for (const b of boxes) {
+      b.dx = within(b.x + b.dx, b.bw, w) - b.x;
+      b.dy = within(b.y + b.dy, b.bh, h) - b.y;
+    }
     if (!moved) break;
   }
   for (const b of boxes) {
-    // (kept on the field, whatever the nudge)
-    const x = Math.min(Math.max(b.x + b.dx, b.bw / 2 + 4), w - b.bw / 2 - 4);
-    const y = Math.min(Math.max(b.y + b.dy, b.bh / 2 + 4), h - b.bh / 2 - 4);
-    b.el.style.setProperty("--x", (x / w).toFixed(4));
-    b.el.style.setProperty("--y", (y / h).toFixed(4));
+    b.el.style.setProperty("--x", ((b.x + b.dx) / w).toFixed(4));
+    b.el.style.setProperty("--y", ((b.y + b.dy) / h).toFixed(4));
   }
 }
+// a place across the field, kept so a box that wide is all on it
+const within = (at: number, size: number, of: number): number => Math.min(Math.max(at, size / 2 + 4), of - size / 2 - 4);
+type Box = { x: number; y: number; bw: number; bh: number; dx: number; dy: number };
+// whether a box moved that far that way stays on the field
+const fits = (b: Box, axis: "x" | "y", by: number, w: number, h: number): boolean => {
+  if (!by) return true;
+  const at = axis === "x" ? b.x + b.dx + by : b.y + b.dy + by;
+  const size = axis === "x" ? b.bw : b.bh;
+  return Math.abs(within(at, size, axis === "x" ? w : h) - at) < 0.5;
+};
 const setAt = (el: HTMLElement, p: { x: number; y: number }): void => {
   el.dataset.x = String(p.x);
   el.dataset.y = String(p.y);
