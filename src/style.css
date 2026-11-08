@@ -728,7 +728,7 @@ main.in-room #stage, main.in-room #nobody { position: absolute; width: 1px; heig
 .record li:hover { background: color-mix(in oklab, var(--surface-2) 70%, transparent); }
 .record strong { color: var(--person); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .record .said-text { color: color-mix(in oklab, var(--ink) 90%, var(--muted)); overflow-wrap: anywhere; }
-.record time { color: var(--faint); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.record time { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 600px) {
   .record li { grid-template-columns: minmax(0, 1fr) auto; justify-content: stretch; row-gap: 0; }
   .record .said-text { grid-column: 1 / -1; grid-row: 2; }
@@ -972,7 +972,7 @@ main.prose { max-width: 68ch; margin: 0 auto; padding: 24px 20px 72px; font-size
    with a small Save tucked under it */
 .saved-block { display: grid; gap: 8px; }
 .saved-title { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
-.saved-title small { font-weight: 400; color: var(--faint); margin-left: 6px; }
+.saved-title small { font-weight: 400; color: var(--muted); margin-left: 6px; }
 .editor-head .history button { display: inline-flex; align-items: center; gap: 5px; }
 .history .turn { flex: none; }
 .saved-looks { display: grid; grid-template-columns: repeat(4, minmax(0, 64px)); gap: 10px; margin: 0; }
@@ -1196,7 +1196,7 @@ button.primary { justify-self: start; background: var(--accent); border-color: v
 /* Lately, in the room: what's said near you clear, further off faint */
 .record > li { transition: opacity 0.4s; }
 .record > li.far { opacity: 0.38; }
-.near-note { display: none; margin-left: 10px; font-size: 0.75rem; color: var(--faint); text-transform: none; letter-spacing: 0; font-weight: 500; }
+.near-note { display: none; margin-left: 10px; font-size: 0.75rem; color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 500; }
 main.in-room .near-note { display: inline; }
 
 /* ---- Space: you are your words ----
