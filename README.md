@@ -22,7 +22,7 @@ Use Chrome. A camera is optional.
 
 ## What good means here
 
-Said is for small groups talking in one room. Good means four things.
+Said is for small groups talking in one room. Like Sloan's (2020) app for one family of four, it needn't scale. It must feel like being there. Good means four things.
 
 - **Expressive.** How something was said comes through, not just what.
   Following de Lacerda Pataca and Costa (2023), loudness is weight and pitch
@@ -30,8 +30,8 @@ Said is for small groups talking in one room. Good means four things.
   the rest. De Lacerda Pataca et al. (2023) found deaf and hard-of-hearing
   viewers wanted emotions named. Said leaves them to be inferred instead.
 - **Accurate.** The right words, and only words someone said.
-- **Efficient.** Small delays. Words arrive about 1.2 s after a phrase ends.
-  The room stays smooth with 12 people in it.
+- **Efficient.** Small delays: words arrive ~1.2 s after a phrase ends. The
+  room stays smooth with 12 people.
 - **Customisable.** Features to explore that communicate effectively:
   avatars, word styles, effects, voices and rooms.
 
@@ -40,14 +40,13 @@ Said is for small groups talking in one room. Good means four things.
 Checked automatically in `spec/`:
 
 - **Efficient:** a word reaches every other open page within 1 s.
-- **Accurate:** noise, breath and silence are never transcribed. Hearing is
-  tested on JFK's 1961 inaugural address and CREMA-D actors.
+- **Accurate:** noise, breath and silence are never transcribed. Tested on
+  JFK's inaugural address and CREMA-D actors.
 - **Expressive:** loudness, pitch and held vowels are measured correctly on
-  known tones. Loud words carry further in the room.
-- **Customisable:** every choice comes from a fixed list. Nothing is free
-  text.
+  known tones.
+- **Customisable:** every choice comes from a fixed list.
 - **Safe:** only words and numbers are stored. Nobody can speak as or edit
-  anyone else. Everything shown is escaped.
+  anyone else.
 
 Judged by people:
 
@@ -69,6 +68,7 @@ Judged by people:
 - de Lacerda Pataca, C., Watkins, M., Peiris, R., Lee, S., & Huenerfauth, M.
   (2023). Visualization of speech prosody and emotion in captions:
   Accessibility for deaf and hard-of-hearing users. *CHI '23*.
+- Sloan, R. (2020). [An app can be a home-cooked meal](https://www.robinsloan.com/notes/home-cooked-app/).
 - Cao, H. et al. (2014). CREMA-D: Crowd-sourced Emotional Multimodal Actors
   Dataset. *IEEE Transactions on Affective Computing*, 5(4), 377–390.
 
@@ -79,4 +79,3 @@ Judged by people:
   reading.
 - **No "faster"/"slower".** On 178 acted takes, four pace measures
   disagreed.
-- **No games or scores.**
