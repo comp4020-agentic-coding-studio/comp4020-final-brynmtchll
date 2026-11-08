@@ -101,6 +101,9 @@ type Shown = {
   // when they last nodded along to someone who'd finished a phrase
   listenNod: number;
   gaze: { x: number; y: number };
+  // where the eyes are, ahead of the head: they jump to a new look and the
+  // head comes round after them, as people's do
+  eyes: { x: number; y: number };
   glance: { x: number; y: number; at: number };
   blinkAt: number;
   away: number; // how far they're shown as away (no page open): eyes shut, head down
@@ -1148,8 +1151,16 @@ function frame(now: number): void {
       const f = s.doing.face as Partial<Expression>;
       if (f.lookX !== undefined || f.lookY !== undefined) look = { x: f.lookX ?? look.x, y: f.lookY ?? look.y };
     }
-    s.gaze.x = ease(s.gaze.x, look.x, k(live ? 30 : 8));
-    s.gaze.y = ease(s.gaze.y, look.y, k(live ? 30 : 8));
+    // (the eyes there in a few hundredths of a second, the head a while
+    // after: a big turn, a third of the way across or more, with a blink on
+    // the way, as people blink when they look somewhere new)
+    // (not twice in one: only if it isn't blinking now)
+    const blinking = now >= s.blinkAt && now < s.blinkAt + BLINK;
+    if (!live && !calm && !blinking && Math.hypot(look.x - s.eyes.x, look.y - s.eyes.y) > 0.35) s.blinkAt = now;
+    s.eyes.x = ease(s.eyes.x, look.x, k(live ? 30 : 40));
+    s.eyes.y = ease(s.eyes.y, look.y, k(live ? 30 : 40));
+    s.gaze.x = ease(s.gaze.x, look.x, k(live ? 30 : 6));
+    s.gaze.y = ease(s.gaze.y, look.y, k(live ? 30 : 6));
     // a word's reaction rises fast and fades over half a second or so
     const since = (now - s.accent.at) / 1000;
     // (held while the word's being said, so a face can be read with it)
@@ -1314,13 +1325,13 @@ function frame(now: number): void {
     // was, a little, and only so far (calm: none)
     for (const key of ["pitch", "yaw", "roll"] as const) s.lag[key] = ease(s.lag[key], moved[key], k(7));
     const trail = calm ? STILL : { ...STILL, pitch: clamp((s.lag.pitch - moved.pitch) * 0.35, -0.07, 0.07), yaw: clamp((s.lag.yaw - moved.yaw) * 0.3, -0.07, 0.07), roll: clamp((s.lag.roll - moved.roll) * 0.35, -0.06, 0.06) };
-    const looks = [...Object.values(dd), ...Object.values(moved), trail.pitch, trail.yaw, trail.roll, s.gaze.x, s.gaze.y, ...armKey].map((v) => Math.round(v * 200)).join(",");
+    const looks = [...Object.values(dd), ...Object.values(moved), trail.pitch, trail.yaw, trail.roll, s.eyes.x, s.eyes.y, ...armKey].map((v) => Math.round(v * 200)).join(",");
     if (roomDraw) {
       // posed in place, and drawn with everyone after
       if (looks !== s.drawn) {
         s.drawn = looks;
         s.open = dd.jaw;
-        pose(s.head, dd, moved, s.gaze, trail);
+        pose(s.head, dd, moved, s.eyes, trail);
         if (body) {
           body.root.rotation.set(0, s.arms.turn, s.arms.tilt);
           poseArm(THREE_, body.left, s.arms.left);
@@ -1342,7 +1353,7 @@ function frame(now: number): void {
     if (looks === s.drawn) continue;
     s.drawn = looks;
     s.open = dd.jaw;
-    pose(s.head, dd, moved, s.gaze, trail);
+    pose(s.head, dd, moved, s.eyes, trail);
     drawCard(slot, s);
   }
   roomDraw?.draw(inRoom, THREE_);
@@ -1396,9 +1407,10 @@ function drawCard(slot: HTMLElement, s: Shown): void {
 
 // how a head is turned, and its mouth open, as drawn: for the checks that
 // time it
-export const drawn = (slot: HTMLElement): { pose: Pose; open: number } | null => {
+export const drawn = (slot: HTMLElement): { pose: Pose; open: number; eyes: { x: number; y: number }; blinking: boolean } | null => {
   const s = heads.get(slot);
-  return s ? { pose: { ...s.pose }, open: s.open } : null;
+  const now = performance.now();
+  return s ? { pose: { ...s.pose }, open: s.open, eyes: { ...s.eyes }, blinking: now >= s.blinkAt && now < s.blinkAt + BLINK } : null;
 };
 
 // Draw (or redraw) a person's head in their avatar's slot, in their look,
@@ -1446,6 +1458,7 @@ export async function head3d(slot: HTMLElement, look: Look, e: Expression, p: Po
       lag: known?.lag ?? { pitch: 0, yaw: 0, roll: 0 },
       listenNod: known?.listenNod ?? -Infinity,
       gaze: known?.gaze ?? { x: 0, y: 0 },
+      eyes: known?.eyes ?? { x: 0, y: 0 },
       glance: known?.glance ?? { x: 0, y: 0, at: 0 },
       blinkAt: known?.blinkAt ?? performance.now() + Math.random() * 4000,
       away: known?.away ?? (slot.closest(".spot[data-away]") ? 1 : 0),
