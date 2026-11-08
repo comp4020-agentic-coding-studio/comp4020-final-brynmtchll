@@ -19,8 +19,6 @@ A room where you speak instead of type, and everyone sees how you said it.
   and fade with distance; loud words carry further. Several conversations run
   at once, and you follow the one you walk up to. **Space** (`/r/space/`) does
   this with words alone.
-- **Also:** emotes, reactions, raising a hand to speak next, voices that read
-  others' words aloud, and Lately, so a newcomer can catch up.
 
 Use Chrome. A camera is optional.
 
@@ -52,8 +50,6 @@ Judged by people:
 
 ## Sources
 
-*To be completed by Brynly.* Candidates found while building:
-
 - de Lacerda Pataca, C., & Costa, P. D. P. (2023). Hidden bawls, whispers, and
   yelps: can text be made to sound more than just its words? *IEEE
   Transactions on Affective Computing*, 14, 6–16.
@@ -61,11 +57,6 @@ Judged by people:
 - de Lacerda Pataca, C., Watkins, M., Peiris, R., Lee, S., & Huenerfauth, M.
   (2023). Visualization of speech prosody and emotion in captions:
   Accessibility for deaf and hard-of-hearing users. *CHI '23*.
-- Caption Royale: Exploring the design space of affective captions from the
-  perspective of deaf and hard-of-hearing individuals. *CHI '24*.
-  [doi:10.1145/3613904.3642258](https://dl.acm.org/doi/10.1145/3613904.3642258)
-- Google, [Expressive Captions](https://blog.google/products-and-platforms/platforms/android/google-android-expressive-captions/)
-  (December 2024).
 - Cao, H. et al. (2014). CREMA-D: Crowd-sourced Emotional Multimodal Actors
   Dataset. *IEEE Transactions on Affective Computing*, 5(4), 377–390.
 
