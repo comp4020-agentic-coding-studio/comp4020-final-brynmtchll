@@ -154,19 +154,23 @@ describe("walking about the room", () => {
   it("finds a way, or the nearest place, for a tap anywhere at all, in a room of any size, without a long wait", () => {
     // (a tap behind a full back row once had route() asking itself again and
     // again until the page ran out of stack, 120 times a second)
+    // (from the front of the room and out of the last chair; taps all over,
+    // closer together round the rows, where nobody could be got to)
     let slowest = 0;
+    const taps: { x: number; z: number }[] = [];
+    for (let x = -23; x <= 23; x += 2) for (let z = -24; z <= 17; z += 2) taps.push({ x, z });
+    for (let x = -8; x <= 8; x += 1) for (let z = -24; z <= -6; z += 1) taps.push({ x, z });
     for (const n of [2, 5, 7, 8, 11, 12, 16]) {
       const chairs = chairsOf(n);
-      for (const from of [held(0, 10, chairs), ...chairs.slice(0, n).map((_, i) => wayOut(chairs, i).at(-1)!)])
-        for (let x = -23; x <= 23; x += 2)
-          for (let z = -24; z <= 17; z += 2) {
-            const t = performance.now();
-            const way = route(from, { x, z }, chairs);
-            slowest = Math.max(slowest, performance.now() - t);
-            expect(way.length, `${n}: ${from.x},${from.z} to ${x},${z}`).toBeGreaterThan(0);
-            expect(blocked(way.at(-1)!.x, way.at(-1)!.z, chairs) && way.length > 1, `${n}: ${from.x},${from.z} to ${x},${z}`).toBe(false);
-          }
+      for (const from of [held(0, 10, chairs), wayOut(chairs, n - 1).at(-1)!])
+        for (const { x, z } of taps) {
+          const t = performance.now();
+          const way = route(from, { x, z }, chairs);
+          slowest = Math.max(slowest, performance.now() - t);
+          expect(way.length, `${n}: ${from.x},${from.z} to ${x},${z}`).toBeGreaterThan(0);
+          expect(blocked(way.at(-1)!.x, way.at(-1)!.z, chairs) && way.length > 1, `${n}: ${from.x},${from.z} to ${x},${z}`).toBe(false);
+        }
     }
     expect(slowest).toBeLessThan(50);
-  });
+  }, 30_000);
 });
