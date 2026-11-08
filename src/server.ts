@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { marked } from "marked";
 import { MAIN, openRoom, type Message, type RoomInfo } from "./db.ts";
 import { APP, notFoundPage, readmePage, roomPage, roomsPage, spacePage, studioPage } from "./view.ts";
-import { clean, cleanVoice, hueOf, wordHtml } from "./voice.ts";
+import { clean, cleanVoice, hueOf, renderWords, wordHtml } from "./voice.ts";
 import { readExpression, type Face } from "./face.ts";
 import { cleanExpression, cleanPose, REST, type Expression, type Pose } from "./avatar.ts";
 import { cleanBody, type Body } from "./body.ts";
@@ -14,6 +14,7 @@ import { cleanLook, emoteOf, isEffect, reactionOf, SCENES, stylesCss, type Look 
 import { cleanSpot, type Spot } from "./walk.ts";
 import { overdue } from "./gone.ts";
 import { freeSpot } from "./hearing.ts";
+import { allVoted, GAMES, type Round, shownTo, startRound, takeFrom, tick, voteIn } from "./rounds.ts";
 
 // What's live in each room, in memory: the pages open on it (each a
 // stream), whose they are, whose hand is up, who's up and walking about, and
@@ -27,16 +28,48 @@ type Live = {
   hands: Map<string, number>; // name, when raised (oldest first)
   standing: Map<string, Spot>;
   awayShown: string;
+  round: Round | null; // the game going at the table, if any (rounds.ts)
+  rounds: number; // how many this room has had, to number the next
+  whose: WeakMap<ServerResponse, string>; // whose each open page is, for what only they're told
 };
 const lives = new Map<number, Live>();
 const liveOf = (id: number): Live => {
   let l = lives.get(id);
-  if (!l) lives.set(id, (l = { id, listening: new Set(), pagesOf: new Map(), goneSince: new Map(), hands: new Map(), standing: new Map(), awayShown: "" }));
+  if (!l) lives.set(id, (l = { id, listening: new Set(), pagesOf: new Map(), goneSince: new Map(), hands: new Map(), standing: new Map(), awayShown: "", round: null, rounds: 0, whose: new WeakMap() }));
   return l;
 };
 const tell = (l: Live, payload: string): void => {
   for (const listener of l.listening) listener.write(payload);
 };
+// a take's words, drawn as they were said (a phrase by its id)
+const takeHtml = (id: number): string => {
+  const m = room.message(id);
+  return m ? renderWords(m.words) : "";
+};
+// The round going in a room, to every page in it, each as its viewer may
+// see it (the sayer in Guess how is told the secret way; nobody else is,
+// until it's done); null when the table's free.
+const showRound = (l: Live): void => {
+  for (const listener of l.listening) {
+    const r = l.round;
+    listener.write(`event: round\ndata: ${JSON.stringify(r ? shownTo(r, l.whose.get(listener), takeHtml) : null)}\n\n`);
+  }
+};
+// time moving rounds on, and voting ending early once everyone's voted
+setInterval(() => {
+  for (const l of lives.values()) {
+    const r = l.round;
+    if (!r) continue;
+    const now = Date.now();
+    if (r.phase === "vote" && allVoted(r, hereIn(l))) r.until = now;
+    const next = tick(r, now);
+    if (next === r) continue;
+    l.round = next;
+    if (next?.phase === "done") log(undefined, "round", { room: l.id, game: next.game, takes: next.takes.length, votes: next.votes.size });
+    showRound(l);
+  }
+}, 1000).unref();
+
 // every page in every room: someone's look and face are theirs wherever
 // they are, so every room that shows them hears of a change
 const tellAll = (payload: string): void => {
@@ -161,6 +194,7 @@ const earlyTooFast = limiter(120);
 const emoteTooFast = limiter(20);
 const reactTooFast = limiter(60);
 const handTooFast = limiter(30);
+const roundTooFast = limiter(30);
 const walkTooFast = limiter(200);
 const looksTooFast = limiter(30);
 const roomsTooFast = limiter(40);
@@ -174,7 +208,7 @@ const readme = readmePage(await marked.parse(readFileSync("README.md", "utf8")))
 // time each is asked for (not at boot, so a server waking up answers sooner)
 // and serves plain JavaScript, which keeps the app free of a build step. Only
 // these files are served.
-const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "camera.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts", "walk.ts", "hearing.ts", "space.ts", "listen.ts", "lens.ts", "tones.ts"]);
+const SCRIPTS = new Set(["client.ts", "studio.ts", "voice.ts", "prosody.ts", "phrases.ts", "face.ts", "avatar.ts", "body.ts", "hands.ts", "handreader.ts", "packs.ts", "head3d.ts", "room3d.ts", "seats.ts", "camera.ts", "speech.ts", "worker.ts", "tap.ts", "typed.ts", "kokoro.ts", "kokoro-text.ts", "vad.ts", "walk.ts", "hearing.ts", "space.ts", "listen.ts", "lens.ts", "tones.ts", "rounds.ts", "play.ts"]);
 const stripped = new Map<string, string>();
 const scriptOf = (f: string): string | undefined => {
   if (!SCRIPTS.has(f)) return undefined;
@@ -394,6 +428,7 @@ function listen(req: IncomingMessage, res: ServerResponse, l: Live, after: strin
   res.write(`id: ${upTo}\n: listening\n\n`);
   l.listening.add(res);
   const who = room.findPerson(cookieId(req));
+  if (who) l.whose.set(res, who.name);
   if (who) {
     const first = !l.pagesOf.get(who.name);
     l.pagesOf.set(who.name, (l.pagesOf.get(who.name) ?? 0) + 1);
@@ -412,7 +447,7 @@ function listen(req: IncomingMessage, res: ServerResponse, l: Live, after: strin
   // than what was said: who arrived or changed how they look, and what was
   // done to what's already on it. So it also gets who's on the stage and the
   // latest phrases as they stand, edited, reacted to, or gone.
-  const now: Record<string, unknown> = { upTo, queue: handQueue(l), away: away(l), elsewhere: [...elsewhere(l)], standing: Object.fromEntries(l.standing) };
+  const now: Record<string, unknown> = { upTo, queue: handQueue(l), away: away(l), elsewhere: [...elsewhere(l)], standing: Object.fromEntries(l.standing), round: l.round ? shownTo(l.round, who?.name, takeHtml) : null };
   if (coming) {
     const latest = room.recent(CAUGHT_UP, l.id);
     now.people = peopleIn(l).map((p) => ({ name: p.name, hue: hueOf(p.seat), look: room.lookOf(p.name) }));
@@ -686,6 +721,36 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   // A hand up to speak next, or down: only your own (from the cookie). From
   // the page's script as JSON, or without it from the button's form, which
   // comes back to the room.
+  // A round of a game (rounds.ts): anyone who's joined starts one when the
+  // table's free, and votes in it; what they say is their take.
+  if (req.method === "POST" && url.pathname === "/round") {
+    if (!me) return json(res, 401, { error: "no-person" });
+    if (roundTooFast(me.id)) return json(res, 429, { error: "too-fast" });
+    let parsed: { start?: unknown; vote?: unknown; n?: unknown } = {};
+    try {
+      parsed = JSON.parse((await body(req, 256)) ?? "{}") ?? {};
+    } catch {
+      parsed = {};
+    }
+    if (typeof parsed.start === "string") {
+      const game = GAMES.find((g) => g.id === parsed.start)?.id;
+      if (!game) return json(res, 400, { error: "no-such-game" });
+      if (l.round) return json(res, 409, { error: "round-going" });
+      l.round = startRound(game, me.name, ++l.rounds, Date.now());
+      log(me, "round", { room: l.id, game, start: "yes" });
+      showRound(l);
+      return json(res, 201, { n: l.round.n });
+    }
+    if (typeof parsed.vote === "string") {
+      const r = l.round;
+      if (!r || parsed.n !== r.n) return json(res, 409, { error: "no-such-round" });
+      if (!voteIn(r, me.name, parsed.vote, Date.now())) return json(res, 400, { error: "not-a-vote" });
+      showRound(l);
+      return json(res, 200, {});
+    }
+    return json(res, 400, { error: "not-a-round" });
+  }
+
   if (req.method === "POST" && url.pathname === "/hand") {
     const form = !(req.headers["content-type"] ?? "").includes("json");
     if (!me) return form ? back(res, base, "no-person") : json(res, 401, { error: "no-person" });
@@ -916,6 +981,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       console.error(`message ${m.id} couldn't be drawn`, err);
     }
     if (payload) tell(l, payload);
+    // (said while a round's taking takes: their take, if it's their first)
+    if (l.round && takeFrom(l.round, me.name, m.id, Date.now())) showRound(l);
     // they've had their turn
     if (Date.now() - (l.hands.get(me.name) ?? 0) > JUST_RAISED) handDown(l, me.name);
     return json(res, 201, { id: m.id });

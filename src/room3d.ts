@@ -1063,6 +1063,14 @@ export function readAs(l: Lens): void {
   saveLens(l);
 }
 
+// The round going at the table (play.ts), as a sign over it in the room:
+// what's asked, so anyone looking at the room sees there's a game on and
+// where. Drawn (and escaped) by the page that sets it.
+const tableSign = { text: "" };
+export function signOverTable(html: string): void {
+  tableSign.text = html;
+}
+
 // who's near enough to you to read, as names, whenever that changes (the
 // page shows what they've said, as "near you")
 let nearNow: string[] = [];
@@ -1476,6 +1484,8 @@ function draw(heads: RoomHead[], THREE: T): void {
   if (r.canvas.width !== Math.round(w * ratio) || r.canvas.height !== Math.round(h * ratio)) {
     r.renderer.setPixelRatio(ratio);
     r.renderer.setSize(w, h, false);
+    // (how wide a caption can be: style.css .room-said)
+    r.overlay.style.setProperty("--room-w", `${w}px`);
     r.post?.setSize(Math.round(w * ratio), Math.round(h * ratio));
     r.camera.aspect = w / Math.max(1, h);
     // a tall, narrow frame (a phone) sees wider, or a row of three is a
@@ -1672,6 +1682,26 @@ function draw(heads: RoomHead[], THREE: T): void {
     meHead.root.getWorldPosition(v);
     [ear.x, ear.z] = [v.x, v.z];
   }
+  // the round going at the table, if any, on a sign over it
+  if (tableSign.text) {
+    let sign = r.overlay.querySelector<HTMLElement>(".table-sign");
+    if (!sign) {
+      sign = document.createElement("div");
+      sign.className = "table-sign";
+      sign.setAttribute("aria-hidden", "true"); // (the round's card says it all)
+      r.overlay.append(sign);
+    }
+    if (sign.dataset.text !== tableSign.text) {
+      sign.dataset.text = tableSign.text;
+      sign.innerHTML = tableSign.text;
+      sign.classList.remove("arrive");
+      void sign.offsetWidth;
+      sign.classList.add("arrive");
+    }
+    v.set(0, FLOOR + 6.2, TABLE.z).project(r.camera);
+    sign.style.translate = `${((v.x * 0.5 + 0.5) * rect.width).toFixed(1)}px ${((-v.y * 0.5 + 0.5) * rect.height).toFixed(1)}px`;
+    sign.hidden = v.z > 1;
+  } else r.overlay.querySelector(".table-sign")?.remove();
   const nearby: string[] = [];
   for (const who of sitting) {
     seen.add(who.slot);
@@ -1790,7 +1820,10 @@ function draw(heads: RoomHead[], THREE: T): void {
     }
     if (!l.el.classList.contains("quiet")) done.push({ x: l.x, y, w: l.w, h: l.h });
     // (kept inside the room's edges: a caption by someone at the side ran off it)
-    const x = Math.min(Math.max(l.x, l.w / 2 + 6), rect.width - l.w / 2 - 6);
+    // (measured now, after this frame's words are in it: one that just grew
+    // was measured narrower; and never wider than the room)
+    const w = Math.min(l.el.offsetWidth, rect.width - 12);
+    const x = Math.min(Math.max(l.x, w / 2 + 6), rect.width - w / 2 - 6);
     l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
   }
   for (const [slot, el] of r.labels) {

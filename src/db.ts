@@ -395,7 +395,13 @@ export function openRoom(file: string, now: () => number = Date.now) {
   const spots = (): { name: string; seat: number; x: number; y: number; at: number }[] =>
     (db.prepare("SELECT p.name, p.rowid AS seat, s.x, s.y, s.at FROM spots s JOIN people p ON p.id = s.person_id WHERE s.at > ? ORDER BY s.at DESC LIMIT 60").all(now() - SPACE_WHILE) as { name: string; seat: number; x: number; y: number; at: number }[]).map((r) => ({ name: r.name, seat: Number(r.seat), x: Number(r.x), y: Number(r.y), at: Number(r.at) }));
 
-  return { spotOf, setSpot, spots, findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, savedLooks, saveLook, rooms, roomBySlug, roomById, makeRoom, changeRoom, close: () => db.close() };
+  // one thing said, by its id
+  const message = (id: number): Message | undefined => {
+    const r = db.prepare(`${SELECT} WHERE m.id = ?`).get(id) as MessageRow | undefined;
+    return r && toMessage(r);
+  };
+
+  return { message, spotOf, setSpot, spots, findPerson, join, say, edit, react, reactionsOn, threads, recent, since, people, seatOf, newest, record, setLook, lookOf, savedLooks, saveLook, rooms, roomBySlug, roomById, makeRoom, changeRoom, close: () => db.close() };
 }
 
 export type Room = ReturnType<typeof openRoom>;

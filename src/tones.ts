@@ -60,3 +60,27 @@ export function play(words: Note[], near: number, hue: number): void {
     osc.stop(at + len + 0.05);
   }
 }
+
+// A round's chime (play.ts): two soft notes, rising as a round starts or
+// moves to picking, falling as it ends; for anyone who's turned sound on.
+export function chime(rising: boolean): void {
+  const c = ctx ?? (typeof AudioContext !== "undefined" ? new AudioContext() : null);
+  if (!c) return;
+  const t0 = c.currentTime + 0.03;
+  const notes = rising ? [523.25, 783.99] : [659.25, 440];
+  notes.forEach((f, i) => {
+    const osc = c.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = f;
+    const env = c.createGain();
+    const at = t0 + i * 0.14;
+    env.gain.setValueAtTime(0, at);
+    env.gain.linearRampToValueAtTime(0.09, at + 0.02);
+    env.gain.exponentialRampToValueAtTime(0.001, at + 0.6);
+    osc.connect(env).connect(c.destination);
+    osc.start(at);
+    osc.stop(at + 0.65);
+  });
+  // (a context made only for this closes itself after)
+  if (c !== ctx) setTimeout(() => void c.close(), 1200);
+}

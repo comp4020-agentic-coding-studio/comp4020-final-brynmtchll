@@ -345,8 +345,13 @@ export function roomPage(
           ${typeBox(myLook!)}
         </div>
         <div class="me-tabs">
-          <div class="tabs" role="tablist" aria-label="More you can do">${tab("emotes", "Emotes", true)}${tab("words", "Your words")}${tab("you", "You")}</div>
-          <div class="tab-panel" role="tabpanel" id="panel-emotes" aria-labelledby="tab-emotes">
+          <div class="tabs" role="tablist" aria-label="More you can do">${tab("play", "Play", true)}${tab("emotes", "Emotes")}${tab("words", "Your words")}${tab("you", "You")}</div>
+          <div class="tab-panel" role="tabpanel" id="panel-play" aria-labelledby="tab-play">
+            <p class="play-lede">Something to do together. Start a round and everyone plays by talking.</p>
+            <div class="game-starts" id="game-starts"></div>
+            <p class="play-on">A round's going. What you say next is your take.</p>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-emotes" aria-labelledby="tab-emotes" hidden>
             <div class="emotes" role="toolbar" aria-label="Emotes: your head does it, for everyone">
               ${EMOTES.map((em) => `<button type="button" data-emote="${em.id}" title="${em.label} (Shift+${em.key})"><span aria-hidden="true">${em.burst || (em.head === "nod" ? "🙂" : "🙅")}</span><span class="emote-label">${em.label}</span></button>`).join("")}
             </div>
@@ -394,6 +399,8 @@ export function roomPage(
     </div>
     ${roomSettings(here)}
     <p id="queue" class="queue" aria-live="polite"${queue.length ? "" : " hidden"}>${queueHtml(queue, me?.name)}</p>
+    <section id="round" class="round" aria-label="The game going in this room" hidden></section>
+    <p id="round-said" class="visually-hidden" aria-live="polite"></p>
     <div id="room3d" class="room3d" tabindex="0" aria-label="The room, drawn. W, A, S and D, or a tap on the floor, walk you about it. Drag or use the arrow keys to look round, scroll, pinch or press plus and minus to zoom, 0 to put it back." hidden><canvas aria-hidden="true"></canvas><div class="room-labels"></div>
       <div class="room-bar"><div class="room-views" role="radiogroup" aria-label="Look at the room">${[["follow", "Everyone"], ["speaker", "Speaker"], ["wide", "Wide"], ["above", "Above"], ["me", "Me"]].map(([v, l]) => `<label${v === "me" ? ' class="room-me"' : ""}><input type="radio" name="room-view" value="${v}"${v === "follow" ? " checked" : ""}><span>${l}</span></label>`).join("")}</div><button type="button" class="room-reset" title="Put the camera back">Reset</button><button type="button" class="room-sit" title="Back to your chair">Sit</button></div>
       <div class="room-lens" role="radiogroup" aria-label="Read what's said as">${LENSES.map((l) => `<label title="Read it as ${l.label.toLowerCase()}"><input type="radio" name="room-lens" value="${l.id}"${l.id === "words" ? " checked" : ""}><span aria-hidden="true">${l.icon}</span><span class="visually-hidden">${l.label}</span></label>`).join("")}</div>

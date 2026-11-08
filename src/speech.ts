@@ -207,6 +207,8 @@ function hush(): void {
 
 // Voices on or off, for this page. On needs a tap (browsers won't speak
 // before one): this is called from the switch's own click.
+// whether this reader has said they want to hear things (voices on)
+export const hearingVoices = (): boolean => on;
 export function hearVoices(yes: boolean): void {
   on = yes && (canSpeak || canNatural);
   if (!on) hush();
